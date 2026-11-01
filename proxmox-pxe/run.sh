@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Starts the answer/boot HTTP server and dnsmasq in proxyDHCP mode.
-# The Spectrum router keeps handing out IPs; dnsmasq only adds PXE boot info.
-# Ctrl-C stops both.
+# Writes the dnsmasq (proxyDHCP + TFTP) config and starts the netboot app, which runs
+# the installer endpoints, the web UI and dnsmasq. The Spectrum router keeps handing
+# out IPs; dnsmasq only adds PXE boot info. Ctrl-C stops everything.
 set -euo pipefail
 cd "$(dirname "$0")"
 source ./config.env
@@ -32,25 +32,21 @@ pxe-service=BC_EFI,"Proxmox auto-install (UEFI)",ipxe.efi
 EOF
 "$DNSMASQ" --test -C out/dnsmasq.conf
 
+command -v uv >/dev/null || { echo "Install uv first: brew install uv" >&2; exit 1; }
+
+# The app starts dnsmasq with `sudo -n`, so cache the credential now, before any output.
 echo "sudo needed for dnsmasq ports 67/69/4011."
 sudo -v
 
-python3 server/server.py serve &
-server_pid=$!
-
-# dnsmasq repurposes SIGINT when kept in the foreground, so Ctrl-C alone won't stop it.
-# It drops to this user after binding, so a plain kill -TERM via its pid file works.
+# Normally the app stops dnsmasq itself; this covers a crash. dnsmasq runs as this
+# user after binding, so no sudo is needed to stop it.
 pidfile="$PWD/out/dnsmasq.pid"
-rm -f "$pidfile"
 cleanup() {
   trap - INT TERM EXIT
   [ -s "$pidfile" ] && kill -TERM "$(cat "$pidfile")" 2>/dev/null
-  kill "$server_pid" 2>/dev/null
-  echo "Stopped."
+  rm -f "$pidfile"
 }
 trap cleanup INT TERM EXIT
 
-echo "Starting dnsmasq (proxyDHCP + TFTP) on $LAN_IFACE. Ctrl-C to stop."
-echo "Mac kept awake (caffeinate) while this runs; keep it plugged in."
-caffeinate -i sudo "$DNSMASQ" --keep-in-foreground --log-facility=- --pid-file="$pidfile" -C out/dnsmasq.conf &
-wait $!
+echo "Mac kept awake (caffeinate) while this runs; keep it plugged in. Ctrl-C to stop."
+PXE_DNSMASQ="$DNSMASQ" caffeinate -i uv run --quiet server/app.py "$@"

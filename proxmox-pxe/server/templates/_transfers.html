@@ -1,0 +1,19 @@
+{% from "_icons.html" import lucide %}
+{% if transfers %}
+<ul class="transfer-list">
+  {% for t in transfers %}
+  <li class="transfer" data-state="{{ 'active' if not t.finished else ('done' if t.ok else 'dropped') }}">
+    <span class="transfer-icon">{{ lucide("check" if t.finished and t.ok else ("alert" if t.finished else "download"), 14) }}</span>
+    <span class="transfer-file"><span class="truncate">{{ t.file }}</span><span class="muted mono">{{ t.client }}</span></span>
+    <span class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ t.pct | round | int }}" aria-label="{{ t.file }} to {{ t.client }}"><span style="width: {{ '%.1f' | format(t.pct) }}%"></span></span>
+    <span class="transfer-meta mono">
+      {% if not t.finished %}{{ t.sent | bytes }} / {{ t.total | bytes }}{% if t.rate %} · {{ t.rate | bytes }}/s{% endif %}{% if t.eta is not none %} · {{ t.eta | seconds }} left{% endif %}
+      {% elif t.ok %}{{ t.total | bytes }} · {{ t.rate | bytes }}/s
+      {% else %}dropped at {{ '%.0f' | format(t.pct) }}%{% endif %}
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="quiet">No downloads right now. Each install pulls the kernel, initrd and a 1.6 GB installer image from this Mac.</p>
+{% endif %}

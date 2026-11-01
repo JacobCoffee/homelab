@@ -40,7 +40,7 @@ docker run --rm -v "$PWD":/work -e SERVER_IP="$SERVER_IP" -e HTTP_PORT="$HTTP_PO
 printf 'SERVER_IP=%s\n' "$SERVER_IP" > out/build.env
 
 echo "==> Validating answer file"
-python3 server/server.py render-sample \
+python3 server/core.py render-sample \
   | docker run --rm -i pve-pxe-builder sh -c 'cat > /tmp/answer.toml && proxmox-auto-install-assistant validate-answer /tmp/answer.toml'
 
 echo "==> Done. Server IP baked in: $SERVER_IP. Start with ./run.sh"

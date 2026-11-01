@@ -1,0 +1,4 @@
+{% from "_icons.html" import status_glyph, status_label %}
+{% for status, count in counts.items() if count %}
+<span class="count">{{ status_glyph(status) }}{{ count }} {{ status_label[status] | lower }}</span>
+{% endfor %}

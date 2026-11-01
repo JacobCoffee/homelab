@@ -1,0 +1,3 @@
+{% for e in entries %}
+<li class="log-line" data-source="{{ e.source }}" data-level="{{ e.level }}"><time>{{ e.ts }}</time><span class="src">{{ e.source }}</span><span class="msg">{{ e.text }}</span></li>
+{% endfor %}

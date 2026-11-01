@@ -1,0 +1,88 @@
+{% from "_icons.html" import lucide %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Netboot · Proxmox VE</title>
+  <script>
+    // Follow the system theme before first paint.
+    (() => {
+      const m = matchMedia("(prefers-color-scheme: dark)");
+      const apply = () => document.documentElement.classList.toggle("dark", m.matches);
+      apply();
+      m.addEventListener("change", apply);
+    })();
+  </script>
+  <link rel="preconnect" href="https://rsms.me/">
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@1.1.0/dist/basecoat.cdn.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="mark" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+        <rect x="1" y="1" width="16" height="5" rx="1.5"/><rect x="1" y="7.5" width="16" height="5" rx="1.5" opacity=".6"/><rect x="1" y="14" width="16" height="3" rx="1.5" opacity=".3"/>
+      </svg>
+      <span class="brand-name">Netboot</span>
+      <span class="crumb">Proxmox VE installs</span>
+    </div>
+    <div id="status" class="top-status">{% include "_status.html" %}</div>
+    <div class="top-actions">
+      <span id="conn" class="conn" data-state="connecting">Connecting</span>
+      {% if has_password %}
+      <button class="btn" data-variant="outline" data-size="sm" type="button" data-copy-url="/ui/root-password" data-tooltip="Root password for every node (SSH and :8006)" data-side="bottom">
+        {{ lucide("key", 14) }}<span>Root password</span>
+      </button>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="pane pane-nodes" aria-labelledby="nodes-title">
+      <div class="pane-head">
+        <h1 id="nodes-title">Nodes</h1>
+        <div id="summary" class="summary">{% include "_summary.html" %}</div>
+      </div>
+      <div id="nodes" class="pane-body">{% include "_nodes.html" %}</div>
+      <div class="pane-head pane-head-sub">
+        <h2>Downloads</h2>
+      </div>
+      <div id="transfers" class="pane-body">{% include "_transfers.html" %}</div>
+    </section>
+
+    <section class="pane pane-activity" aria-labelledby="activity-title">
+      <div class="pane-head">
+        <h2 id="activity-title">Activity</h2>
+        <div class="filters" role="group" aria-label="Filter activity">
+          <button type="button" class="filter" data-filter="all" aria-pressed="true">All</button>
+          <button type="button" class="filter" data-filter="install" aria-pressed="false">Install</button>
+          <button type="button" class="filter" data-filter="dnsmasq" aria-pressed="false">dnsmasq</button>
+          <button type="button" class="filter" data-filter="http" aria-pressed="false">Downloads</button>
+        </div>
+      </div>
+      <div class="log-wrap">
+        <ol id="log" class="log" aria-live="polite" aria-relevant="additions">{% include "_log.html" %}</ol>
+        <button id="jump" class="btn jump" data-size="sm" type="button" hidden>{{ lucide("arrow-down", 14) }}<span>Latest</span></button>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="forget-dialog" class="dialog" aria-labelledby="forget-title" aria-describedby="forget-desc"
+          onpointerdown="this.dataset.backdropPress = event.target === this"
+          onclick="if (event.target === this && this.dataset.backdropPress === 'true') this.close()">
+    <div class="sm:max-w-md">
+      <header>
+        <h2 id="forget-title">Reinstall <span data-name></span>?</h2>
+        <p id="forget-desc">The next time <span data-name></span> boots from the network, it reinstalls Proxmox and wipes its USB stick. Its internal drive isn't touched, but VM configs, node settings and cluster membership live on the stick and are lost.</p>
+      </header>
+      <footer>
+        <button class="btn" data-variant="outline" type="button" onclick="this.closest('dialog').close()">Cancel</button>
+        <button class="btn" data-variant="destructive" type="button" data-confirm-forget>Reinstall on next boot</button>
+      </footer>
+    </div>
+  </dialog>
+</body>
+</html>

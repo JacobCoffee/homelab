@@ -1,0 +1,6 @@
+<span class="pill" data-state="running" data-tooltip="iPXE, installer images and answer files" data-side="bottom">
+  <span class="dot"></span>HTTP <span class="mono">{{ base | replace("http://", "") }}</span>
+</span>
+<span class="pill" data-state="{{ dnsmasq.state }}" data-tooltip="{{ dnsmasq.detail }}" data-side="bottom">
+  <span class="dot"></span>dnsmasq <span class="pill-detail">{{ {"running": "running", "starting": "starting", "error": "stopped", "off": "off"}[dnsmasq.state] }}</span>
+</span>

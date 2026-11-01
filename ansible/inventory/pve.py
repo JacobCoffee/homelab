@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Ansible inventory: every Proxmox node the PXE server has seen install.
 
-Reads ../../proxmox-pxe/state/hosts.json (written by proxmox-pxe/server/server.py)
+Reads ../../proxmox-pxe/state/hosts.json (written by proxmox-pxe/server/core.py, via server/app.py)
 and puts each installed node in group `pve` with its install-time IP.
 Static group membership (e.g. `core`) lives in inventory/groups.yml.
 """

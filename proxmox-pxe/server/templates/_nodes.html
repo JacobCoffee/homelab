@@ -1,0 +1,57 @@
+{% from "_icons.html" import lucide, status_glyph, status_label %}
+{% if nodes %}
+<div class="table-head" aria-hidden="true">
+  <span></span><span>Name</span><span>Status</span><span>IP</span><span class="col-mac">MAC</span><span class="col-model">Model</span><span class="col-time">Updated</span><span></span>
+</div>
+<ul class="node-list">
+  {% for n in nodes %}
+  <li class="node" data-node="{{ n.name }}" data-status="{{ n.status }}">
+    <div class="node-row">
+      <button class="row-toggle" type="button" data-toggle aria-expanded="false" aria-controls="detail-{{ n.name }}" aria-label="Details for {{ n.name }}">
+        {{ lucide("chevron", 14) }}
+      </button>
+      <span class="node-name"><strong>{{ n.name }}</strong><span class="muted">{{ n.fqdn.split(".", 1)[1] }}</span></span>
+      <span class="node-status">{{ status_glyph(n.status) }}{{ status_label[n.status] }}</span>
+      <span class="mono">{{ n.ip or "—" }}</span>
+      <span class="mono col-mac">{{ n.mac or "—" }}</span>
+      <span class="col-model truncate" title="{{ n.model_full or '' }}">{{ n.model or "—" }}</span>
+      <span class="col-time"><time data-ts="{{ n.updated }}">{{ n.updated[11:16] }}</time></span>
+      <span class="row-actions">
+        {% if n.ip and n.mac %}
+        <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" data-copy="{{ n.ip }} {{ n.mac }}" data-tooltip="Copy IP and MAC for the Spectrum reservation" aria-label="Copy IP and MAC">{{ lucide("copy", 15) }}</button>
+        <a class="btn" data-variant="ghost" data-size="icon-sm" href="https://{{ n.ip }}:8006" target="_blank" rel="noopener" data-tooltip="Open the Proxmox web UI" aria-label="Open {{ n.name }} web UI">{{ lucide("external", 15) }}</a>
+        {% endif %}
+        <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" data-forget="{{ n.name }}" data-tooltip="Reinstall on next network boot" aria-label="Reinstall {{ n.name }}">{{ lucide("reinstall", 15) }}</button>
+      </span>
+    </div>
+    <div class="node-detail" id="detail-{{ n.name }}" hidden>
+      <dl>
+        <dt>FQDN</dt><dd class="mono">{{ n.fqdn }}</dd>
+        <dt>MACs</dt><dd class="mono">{{ n.macs | join(", ") }}</dd>
+        <dt>Boot disk</dt><dd class="mono">{{ n.boot_disk or "—" }}</dd>
+        <dt>Model</dt><dd>{{ n.model_full or "—" }}</dd>
+      </dl>
+      {% if n.first_boot %}
+      <p class="detail-label">First-boot report</p>
+      <pre class="report">{{ n.first_boot | join("\n") }}</pre>
+      {% elif n.status == "installed" %}
+      <p class="detail-note">Installed. Waiting for the first-boot script to report back (storage, repos, journald).</p>
+      {% elif n.status == "installing" %}
+      <p class="detail-note">Got its answer file and is installing to its USB stick. The installer reports back when it finishes.</p>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="empty">
+  <div class="empty-mark">{{ lucide("network", 20) }}</div>
+  <h3>No nodes yet</h3>
+  <p>Network-boot a PC, or boot its USB stick with iPXE. It shows up here as soon as the installer asks for its answer file, and becomes <span class="mono">{{ next_name }}</span>.</p>
+  <ol class="steps">
+    <li><span>1</span>Firmware: network boot on, Secure Boot off</li>
+    <li><span>2</span>Boot menu: pick the IPv4 entry for the built-in port</li>
+    <li><span>3</span>Leave it alone. About 1.7 GB comes from this Mac, then it installs</li>
+  </ol>
+</div>
+{% endif %}
