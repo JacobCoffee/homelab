@@ -32,10 +32,13 @@ pxe-service=BC_EFI,"Proxmox auto-install (UEFI)",ipxe.efi
 EOF
 "$DNSMASQ" --test -C out/dnsmasq.conf
 
+echo "sudo needed for dnsmasq ports 67/69/4011."
+sudo -v
+
 python3 server/server.py serve &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null' EXIT
 
-echo "Starting dnsmasq (proxyDHCP + TFTP) on $LAN_IFACE; sudo needed for ports 67/69/4011."
+echo "Starting dnsmasq (proxyDHCP + TFTP) on $LAN_IFACE."
 echo "Mac kept awake (caffeinate) while this runs; keep it plugged in."
 caffeinate -i sudo "$DNSMASQ" --keep-in-foreground --log-facility=- -C out/dnsmasq.conf
