@@ -1,0 +1,10 @@
+#!ipxe
+# Embedded in ipxe.efi / undionly.kpxe. The server decides per MAC whether to
+# run the installer or hand back to the firmware (already installed).
+dhcp || goto offline
+chain http://@SERVER@/boot.ipxe?mac=${netX/mac:hexhyp} || goto offline
+
+:offline
+echo PXE boot server http://@SERVER@ unreachable; continuing with local boot.
+sleep 5
+exit

@@ -1,0 +1,8 @@
+# Generated root password + hash
+secrets/
+# Node MACs/IPs recorded during installs
+state/
+# Proxmox ISO and iPXE source (~2 GB)
+cache/
+# Build output: installer image, iPXE binaries, dnsmasq.conf (~1.6 GB)
+out/
