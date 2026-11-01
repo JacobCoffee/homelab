@@ -1,0 +1,43 @@
+{
+  "dock_apps": ["org.jellyfin.androidtv", "com.wbd.stream", "com.apple.atve.androidtv.appletv", "com.google.android.youtube.tv"],
+  "columns": 4,
+  "live_tv_package": "com.tcl.tv",
+  "hidden_apps": ["com.tcl.suspension", "com.tcl.t_solo"],
+  "restore_key_services": true,
+  "app_keys": [
+    "297:input:com.tcl.tvinput/.TvPassThroughService/HW16",
+    "4062:input:com.tcl.tvinput/.TvPassThroughService/HW16",
+    "4099:input:com.tcl.tvinput/.TvPassThroughService/HW16",
+    "190:input:com.tcl.tvinput/.TvPassThroughService/HW16",
+    "313:input:com.tcl.tvinput/.TvPassThroughService/HW16",
+    "4141:input:com.tcl.tvinput/.TvPassThroughService/HW16",
+    "4001:input:com.tcl.tvinput/.TvPassThroughService/HW16"
+  ],
+
+  "background_color": "#030407",
+  "wallpaper": true,
+  "wallpaper_true_color": true,
+  "wallpaper_dim": 0,
+  "wallpaper_rotation_minutes": 20,
+  "wallpaper_order": "sequential",
+  "wallpaper_moods": {
+    "morning": ["morning-1.jpg", "morning-2.jpg", "morning-3.jpg"],
+    "evening": ["evening-1.jpg", "evening-2.jpg", "evening-3.jpg"],
+    "night": ["night-1.jpg", "night-2.jpg", "night-3.jpg"]
+  },
+  "dock_band": false,
+  "ambient_glow": false,
+  "app_glow": false,
+  "glass_style": "halo",
+  "focus_overshoot": false,
+  "advanced_effects": true,
+  "fade_rows": true,
+  "show_greeting": false,
+  "icon_only_buttons": true,
+  "icon_only_inputs": true,
+  "wifi_status_color": true,
+  "home_idle_clock_minutes": 10,
+  "clock_wallpaper": true,
+  "clock_wallpaper_dim": 55,
+  "clock_glow": false
+}

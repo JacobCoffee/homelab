@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Local Dimming — launcher preview</title>
+<!--
+  Browser approximation of the cleanyourtv launcher with launcher-config/config.json applied.
+  Serve the tcl-tv folder and open /launcher-config/preview/ (it fetches ../config.json and ../wallpapers/).
+  Layout measured from shots/06-home-after-installs.png; the Apple TV tile is a placeholder.
+-->
+<style>
+  @font-face { font-family: Outfit; src: url(../../cleanyourtv/launcher/app/src/main/res/font/outfit.ttf); font-weight: 100 900; }
+  :root { --bg: #030407; --ease: cubic-bezier(.22, 1, .36, 1); }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { font-family: Outfit, system-ui, sans-serif; }
+  #stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; background: var(--bg); color: #fff;
+           overflow: hidden; transform-origin: center; }
+  .wp { position: absolute; inset: 0; background: center / cover no-repeat; opacity: 0; transition: opacity 1.2s ease; }
+  .wp.on { opacity: 1; }
+
+  .clock { position: absolute; left: 112px; top: 92px; display: flex; align-items: baseline; z-index: 3; }
+  .time { font-size: 104px; font-weight: 300; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .ampm { font-size: 28px; font-weight: 400; letter-spacing: .08em; margin-left: 14px; opacity: .85; }
+  .rule { width: 2px; height: 50px; background: rgba(255,255,255,.22); margin: 0 30px 0 34px; align-self: center; }
+  .date { font-size: 27px; font-weight: 400; letter-spacing: .2em; opacity: .62; }
+
+  .btns { position: absolute; right: 114px; top: 119px; display: flex; gap: 22px; z-index: 3; }
+  .btn { width: 82px; height: 82px; border-radius: 50%; background: rgba(255,255,255,.07);
+         border: 1.5px solid rgba(255,255,255,.16); display: grid; place-items: center;
+         transition: background .2s var(--ease), border-color .2s var(--ease), transform .22s var(--ease); }
+  .btn svg { width: 34px; height: 34px; fill: #fff; }
+  .btn.wifi svg { fill: #4ADE80; }
+  .btn.focus { background: rgba(255,255,255,.9); border-color: #fff; transform: scale(1.08); }
+  .btn.focus svg { fill: #05070b; }
+
+  .hero { position: absolute; left: 138px; top: 535px; font-size: 96px; font-weight: 250; letter-spacing: -0.01em;
+          z-index: 2; transition: opacity .26s ease; }
+  /* fade_rows: the rows fade out under the clock; the mask stays put while the grid scrolls inside it. */
+  #rows { position: absolute; inset: 0; z-index: 2;
+          -webkit-mask-image: linear-gradient(to bottom, transparent 200px, #000 300px);
+                  mask-image: linear-gradient(to bottom, transparent 200px, #000 300px); }
+  #grid { position: absolute; inset: 0; transition: transform .32s var(--ease); }
+  .tile { position: absolute; width: 353px; height: 199px; border-radius: 17px; background: #111 center / cover;
+          transition: transform .24s var(--ease), box-shadow .24s var(--ease); }
+  .tile.focus { transform: scale(1.11); z-index: 2;
+      box-shadow: 0 0 0 4px rgba(255,255,255,.92), 0 0 34px 6px rgba(255,255,255,.30), 0 18px 40px rgba(0,0,0,.55); }
+  .name { position: absolute; left: 0; right: 0; top: calc(100% + 26px); text-align: center; font-size: 26px;
+          letter-spacing: .02em; opacity: 0; transition: opacity .2s ease; }
+  .row2 .tile.focus .name { opacity: .9; }
+
+  #saver { position: absolute; inset: 0; z-index: 10; background: rgba(0,0,0,.55); opacity: 0; pointer-events: none;
+           transition: opacity .6s ease; }
+  #saver.on { opacity: 1; }
+  #saver .sclock { position: absolute; font-weight: 200; font-size: 150px; letter-spacing: -0.02em; line-height: 1;
+                   transition: left 2s var(--ease), top 2s var(--ease); font-variant-numeric: tabular-nums; }
+  #saver .sdate { font-size: 28px; font-weight: 400; letter-spacing: .2em; opacity: .6; margin-top: 18px; }
+
+  #hud { position: fixed; right: 16px; bottom: 16px; z-index: 20; font: 13px/1.5 ui-monospace, Menlo, monospace;
+         color: #cfd6e4; background: rgba(12,14,20,.86); border: 1px solid rgba(255,255,255,.12); border-radius: 10px;
+         padding: 12px 14px; min-width: 250px; }
+  #hud b { color: #fff; font-weight: 600; }
+  #hud kbd { display: inline-block; min-width: 1.4em; text-align: center; padding: 0 4px; border-radius: 4px;
+             background: rgba(255,255,255,.1); color: #fff; font: inherit; }
+  #hud.off { display: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="wp" id="wpA"></div>
+  <div class="wp" id="wpB"></div>
+  <div class="clock"><span class="time" id="time"></span><span class="ampm" id="ampm"></span><span class="rule"></span><span class="date" id="date"></span></div>
+  <div class="btns" id="btns">
+    <div class="btn" title="Inputs"><svg viewBox="0 0 24 24"><path d="M8 2h8v6h2v6a6 6 0 0 1-5 5.9V22h-2v-2.1A6 6 0 0 1 6 14V8h2V2zm2 2v4h4V4h-4z"/></svg></div>
+    <div class="btn wifi" title="Wi-Fi"><svg viewBox="0 0 24 24"><path d="M12 20.5 9.2 17.6a4 4 0 0 1 5.6 0L12 20.5zM5.6 14a9 9 0 0 1 12.8 0l-1.8 1.8a6.5 6.5 0 0 0-9.2 0L5.6 14zM2 10.4a14 14 0 0 1 20 0l-1.8 1.8a11.5 11.5 0 0 0-16.4 0L2 10.4z"/></svg></div>
+    <div class="btn" title="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></div>
+  </div>
+  <div class="hero" id="hero"></div>
+  <div id="rows"><div id="grid"></div></div>
+  <div id="saver"><div class="sclock" id="sclock"><div id="stime"></div><div class="sdate" id="sdate"></div></div></div>
+</div>
+
+<div id="hud">
+  <div><b>Local Dimming</b> preview</div>
+  <div>mood <b id="hMood"></b> · frame <b id="hFrame"></b> <span id="hAuto"></span></div>
+  <div><b id="hFile"></b></div>
+  <div style="margin-top:8px">
+    <kbd>←↑→↓</kbd> move focus<br>
+    <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> morning / evening / night<br>
+    <kbd>0</kbd> follow the clock<br>
+    <kbd>F</kbd> next frame · <kbd>T</kbd> fast rotation (5 s)<br>
+    <kbd>C</kbd> clock screensaver · <kbd>H</kbd> hide this
+  </div>
+</div>
+
+<script>
+const APPS = [
+  ["Jellyfin", "jellyfin"], ["HBO Max", "hbo"], ["Apple TV", "appletv"], ["YouTube", "youtube"],
+  ["Netflix", "netflix"], ["Disney+", "disney"], ["Hulu", "hulu"], ["Prime Video", "prime"],
+];
+const COLS = 4, X0 = 162, PITCH_X = 414, DOCK_Y = 722, ROW2_Y = 1036, ROW_SHIFT = 314;
+const MOODS = ["morning", "evening", "night"];
+const $ = id => document.getElementById(id);
+
+let cfg, focus = { row: 1, col: 0 }, moodOverride = null, frame = 0, fast = false, rotateTimer, front = "wpA";
+
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  $("stage").style.transform = `translate(-50%, -50%) scale(${s})`;
+}
+
+function buildGrid() {
+  const dock = document.createElement("div"), row2 = document.createElement("div");
+  row2.className = "row2";                // grid-row tiles show their name when focused, like the launcher
+  $("grid").append(dock, row2);
+  APPS.forEach(([name, file], i) => {
+    const row = i < COLS ? 1 : 2, col = i % COLS;
+    const t = document.createElement("div");
+    t.className = "tile";
+    t.dataset.row = row; t.dataset.col = col;
+    t.style.left = `${X0 + col * PITCH_X}px`;
+    t.style.top = `${row === 1 ? DOCK_Y : ROW2_Y}px`;
+    t.style.backgroundImage = `url(tiles/${file}.png)`;
+    t.innerHTML = `<div class="name">${name}</div>`;
+    (row === 1 ? dock : row2).appendChild(t);
+  });
+}
+
+function render() {
+  document.querySelectorAll(".tile, .btn").forEach(el => el.classList.remove("focus"));
+  if (focus.row === 0) {
+    $("btns").children[focus.col].classList.add("focus");
+  } else {
+    document.querySelector(`.tile[data-row="${focus.row}"][data-col="${focus.col}"]`).classList.add("focus");
+  }
+  const onDock = focus.row === 1;
+  const idx = (focus.row - 1) * COLS + focus.col;
+  if (onDock) $("hero").textContent = APPS[idx][0];
+  $("hero").style.opacity = onDock ? 1 : 0;
+  $("grid").style.transform = focus.row === 2 ? `translateY(-${ROW_SHIFT}px)` : "none";
+}
+
+function move(dx, dy) {
+  let { row, col } = focus;
+  if (dy) {
+    row = Math.max(0, Math.min(2, row + dy));
+    if (row === 0) col = 2;              // up from the dock lands on Settings, like the launcher
+    else if (focus.row === 0) col = 0;
+  }
+  if (dx) col = Math.max(0, Math.min((row === 0 ? 3 : COLS) - 1, col + dx));
+  focus = { row, col };
+  render();
+}
+
+function moodNow(d = new Date()) {
+  const m = d.getHours() * 60 + d.getMinutes();
+  if (m >= 7 * 60 && m < 12 * 60) return "morning";
+  if (m >= 12 * 60 && m < 18 * 60 + 30) return "evening";
+  return "night";
+}
+
+function showWallpaper() {
+  const mood = moodOverride || moodNow();
+  const files = cfg.wallpaper_moods[mood];
+  const file = files[frame % files.length];
+  const back = front === "wpA" ? "wpB" : "wpA";
+  const img = new Image();
+  img.onload = () => {
+    $(back).style.backgroundImage = `url(${img.src})`;
+    $(back).classList.add("on");
+    $(front).classList.remove("on");
+    front = back;
+  };
+  img.src = `../wallpapers/${file}`;
+  $("hMood").textContent = mood;
+  $("hFrame").textContent = `${frame % files.length + 1}/${files.length}`;
+  $("hAuto").textContent = moodOverride ? "(pinned)" : "(follows clock)";
+  $("hFile").textContent = file;
+}
+
+function restartRotation() {
+  clearInterval(rotateTimer);
+  const ms = fast ? 5000 : cfg.wallpaper_rotation_minutes * 60000;
+  rotateTimer = setInterval(() => { frame++; showWallpaper(); }, ms);
+}
+
+function tick() {
+  const d = new Date();
+  const h = d.getHours() % 12 || 12, mm = String(d.getMinutes()).padStart(2, "0");
+  const date = d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }).replace(",", "").toUpperCase();
+  $("time").textContent = `${h}:${mm}`;
+  $("ampm").textContent = d.getHours() < 12 ? "AM" : "PM";
+  $("date").textContent = date;
+  $("stime").textContent = `${h}:${mm}`;
+  $("sdate").textContent = date;
+}
+
+function driftSaver() {
+  const c = $("sclock");
+  c.style.left = `${120 + Math.random() * 1200}px`;
+  c.style.top = `${120 + Math.random() * 640}px`;
+}
+
+let idle;
+function poke() {
+  clearTimeout(idle);
+  idle = setTimeout(() => { $("saver").classList.add("on"); driftSaver(); }, cfg.home_idle_clock_minutes * 60000);
+}
+
+addEventListener("keydown", e => {
+  if ($("saver").classList.contains("on")) { $("saver").classList.remove("on"); poke(); e.preventDefault(); return; }
+  poke();
+  const k = e.key;
+  if (k === "ArrowLeft") move(-1, 0);
+  else if (k === "ArrowRight") move(1, 0);
+  else if (k === "ArrowUp") move(0, -1);
+  else if (k === "ArrowDown") move(0, 1);
+  else if (k === "1" || k === "2" || k === "3") { moodOverride = MOODS[+k - 1]; frame = 0; showWallpaper(); }
+  else if (k === "0") { moodOverride = null; frame = 0; showWallpaper(); }
+  else if (k === "f" || k === "F") { frame++; showWallpaper(); }
+  else if (k === "t" || k === "T") { fast = !fast; restartRotation(); }
+  else if (k === "c" || k === "C") { $("saver").classList.add("on"); driftSaver(); }
+  else if (k === "h" || k === "H") $("hud").classList.toggle("off");
+  else return;
+  e.preventDefault();
+});
+
+(async () => {
+  cfg = await (await fetch("../config.json", { cache: "no-store" })).json();
+  document.documentElement.style.setProperty("--bg", cfg.background_color);
+  $("saver").style.background = `rgba(0,0,0,${cfg.clock_wallpaper_dim / 100})`;
+  fit(); addEventListener("resize", fit);
+  buildGrid(); render();
+  tick(); setInterval(tick, 1000); setInterval(driftSaver, 60000);
+  showWallpaper(); restartRotation(); poke();
+})();
+</script>
+</body>
+</html>

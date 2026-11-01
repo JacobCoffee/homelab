@@ -1,0 +1,56 @@
+# TCL QM8L (G17_4K_US, Android 14, firmware UTT2.250416.001 AU27) — this household's list.
+# Base: cleanyourtv/examples/tcl-65qm8l-google-tv/debloat.txt (same board + firmware), plus owner choices below.
+# Everything is DISABLED, not uninstalled.
+#
+# Apply:   (cd cleanyourtv && TV_ADB_BINARY=adb TV_HOST=<tv ip>:<port> tools/disable.sh ../debloat.txt)
+# Undo:    (cd cleanyourtv && TV_ADB_BINARY=adb TV_HOST=<tv ip>:<port> tools/restore.sh ../debloat.txt com.google.android.apps.tv.launcherx)
+#
+# Owner keeps: Chromecast, AirPlay, Miracast, firmware updates, YouTube, Netflix, Prime Video, Disney+, Hulu, Play Games.
+# Owner drops: Google Assistant, Tubi, YouTube TV, YouTube Music, Haystack, Instagram, TCL Browser/TV+/Media Center.
+
+# TCL telemetry and analytics
+com.tcl.ttvs                           # Samba TV ACR viewing tracking, TCL BI analytics
+com.tcl.logkit                         # log capture and upload
+com.tcl.usercenter                     # TCL account sign-in nags
+
+# TCL content, ads and promos
+com.tcl.channelplus                    # TCL Live FAST channels
+com.tcl.tv.tclhome_passive             # pushes TCL content to the home screen at boot
+com.tcl.partnercustomizer              # TCL tweaks to Google TV home rows
+com.tcl.interactive                    # TCL TIAS background service
+com.tcl.messagebox                     # TCL push messages and promos
+com.tcl.dashboard                      # TCL message/notification promo hub
+com.mirakulo.astrotv.service           # preloaded "AstroTV" content service
+
+# Retail demo / hotel mode
+com.tcl.exhibit                        # retail demo
+com.tcl.esticker                       # retail e-sticker overlay
+com.tcl.hotelmenu                      # hotel mode menu
+
+# Preloaded apps and services
+com.tcl.ocean.instructions             # e-manual
+com.tcl.repairguide                    # repair guide
+com.tcl.smartlink.core                 # TCL CustomInstallService (silent partner-app installer)
+android.autoinstalls.config.google.gtvpai   # silently installs partner apps
+com.google.android.partnersetup        # partner attribution
+com.google.android.feedback            # Google feedback uploader
+com.android.tv.feedbackconsent         # feedback consent prompt
+com.tcl.UpdatePeripheral               # TCL soundbar/speaker firmware updates
+
+# Owner choices: unused apps and Assistant
+com.google.android.katniss             # Google Assistant / Gemini / voice search (~120 MB resident)
+com.tubitv                             # Tubi
+com.google.android.youtube.tvunplugged # YouTube TV
+com.google.android.youtube.tvmusic     # YouTube Music
+com.google.android.play.games          # Google Play Games hub (consoles/cloud gaming don't use it)
+com.haystack.android                   # Haystack News
+com.instagram.airwave                  # Instagram for TV
+com.tcl.browser                        # TCL browser
+com.tcl.tv.plus                        # TCL TV+ FAST channels
+com.tcl.ui_mediaCenter                 # TCL USB media player
+
+# Launcher handover. Disable only AFTER the new launcher is installed and set as Home.
+# setupwraith: forget and re-join Wi-Fi first (it owns the saved network). dreamx: set ClockDream screensaver first.
+com.google.android.tungsten.setupwraith
+com.google.android.apps.tv.dreamx
+com.google.android.apps.tv.launcherx

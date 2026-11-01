@@ -1,0 +1,4 @@
+# Device dumps: serial, MAC, Bluetooth address, android_id, room name. Kept locally for reference.
+backup/
+# Screenshots show the Wi-Fi name, location and account details.
+shots/
