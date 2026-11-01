@@ -37,8 +37,20 @@ sudo -v
 
 python3 server/server.py serve &
 server_pid=$!
-trap 'kill "$server_pid" 2>/dev/null' EXIT
 
-echo "Starting dnsmasq (proxyDHCP + TFTP) on $LAN_IFACE."
+# dnsmasq repurposes SIGINT when kept in the foreground, so Ctrl-C alone won't stop it.
+# It drops to this user after binding, so a plain kill -TERM via its pid file works.
+pidfile="$PWD/out/dnsmasq.pid"
+rm -f "$pidfile"
+cleanup() {
+  trap - INT TERM EXIT
+  [ -s "$pidfile" ] && kill -TERM "$(cat "$pidfile")" 2>/dev/null
+  kill "$server_pid" 2>/dev/null
+  echo "Stopped."
+}
+trap cleanup INT TERM EXIT
+
+echo "Starting dnsmasq (proxyDHCP + TFTP) on $LAN_IFACE. Ctrl-C to stop."
 echo "Mac kept awake (caffeinate) while this runs; keep it plugged in."
-caffeinate -i sudo "$DNSMASQ" --keep-in-foreground --log-facility=- -C out/dnsmasq.conf
+caffeinate -i sudo "$DNSMASQ" --keep-in-foreground --log-facility=- --pid-file="$pidfile" -C out/dnsmasq.conf &
+wait $!
