@@ -158,3 +158,18 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Homelab: never commit keys, secrets or local machine state
+**/secrets/
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*_ed25519
+*_rsa
+*_ecdsa
+.env.*
+!.env.example
+*.local.json
+.DS_Store

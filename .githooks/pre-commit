@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Public repo guard. Enable once per clone: git config core.hooksPath .githooks
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+fail=0
+
+# 1. Ansible vault files must be encrypted.
+while IFS= read -r f; do
+  if [ "$(git show ":$f" | head -c 14)" != '$ANSIBLE_VAULT' ]; then
+    echo "pre-commit: $f is not ansible-vault encrypted" >&2
+    fail=1
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACMR | grep -E '(^|/)vault[^/]*\.ya?ml$' || true)
+
+# 2. Secret scan of the staged changes.
+if command -v mise >/dev/null; then
+  mise exec -- gitleaks git --staged --redact --no-banner || fail=1
+elif command -v gitleaks >/dev/null; then
+  gitleaks git --staged --redact --no-banner || fail=1
+else
+  echo "pre-commit: gitleaks not found (mise install)" >&2
+  fail=1
+fi
+
+exit $fail
