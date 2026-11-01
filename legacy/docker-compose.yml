@@ -1,0 +1,408 @@
+version: "3.7"
+services:
+  ###### ----- Networking ----- ######
+  swag:
+    image: lscr.io/linuxserver/swag
+    container_name: swag
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+      - URL=z7x.org
+      - SUBDOMAINS=wildcard
+      - VALIDATION=dns
+      - DNSPLUGIN=cloudflare
+      - EMAIL=${EMAIL:?set EMAIL in .env}
+    volumes:
+      - /data/swag:/config
+    ports:
+      - 443:443
+      - 80:80
+    restart:
+      unless-stopped
+      #traefik:
+    #image: traefik:v2.5.1
+    #container_name: traefik
+    #ports:
+    #- 80:80/tcp
+    #- 443:443/tcp
+    #- ${host_ip}:8081:8080/tcp
+    #labels:
+    #- traefik.enable=true
+    #- traefik.docker.network=traefik-public
+    #- traefik.constraint-label=traefik-public
+    #networks:
+    #- traefik-public
+    #volumes:
+    #- /data/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+    #- /data/traefik/routes:/etc/traefik/routes:ro
+    #- /data/traefik/logs:/var/log
+    #- /var/run/docker.sock:/var/run/docker.sock
+
+    #      restart: always
+
+  uptime-kuma:
+    image: louislam/uptime-kuma
+    container_name: uptime-kuma
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /data/uptime-kuma:/app/data
+    ports:
+      - 3001:3001
+    #depends_on:
+    # - "traefik"
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.uptime_kuma.entryPoints=websecure"
+      - "traefik.http.routers.uptime_kuma.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.uptime_kuma.rule=Host(`status.z7x.org`)"
+      - "traefik.http.services.uptime_kuma.loadbalancer.server.port=3001"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.port=3001"
+
+    restart: unless-stopped
+
+  ###### ----- Media related ----- ######
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin
+    container_name: jellyfin
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+      - JELLYFIN_PublishedServerUrl=${HOST_IP}
+    volumes:
+      - /data/jellyfin/config:/config
+      - /data/media:/data
+    ports:
+      - 8096:8096
+      - 8920:8920
+      - 7359:7359/udp
+      - 1900:1900/udp
+    #      devices:
+    #        - /dev/dri:/dev/dri
+    restart: unless-stopped
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=America/Chicago
+    ports:
+      - 5055:5055
+    volumes:
+      - /data/jellyseerr/app/config:/app/config
+    #depends_on:
+    # - "traefik"
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyseerr.entryPoints=websecure"
+      - "traefik.http.routers.jellyseerr.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.jellyseerr.rule=Host(`request.z7x.org`)"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.port=5055"
+    restart: unless-stopped
+
+  heimdall:
+    image: ghcr.io/linuxserver/heimdall
+    container_name: heimdall
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+    volumes:
+      - /data/heimdall:/config
+    #depends_on:
+    # - "traefik"
+    ports:
+      - 90:90
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.heimdall.entryPoints=websecure"
+      - "traefik.http.routers.heimdall.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.heimdall.rule=Host(`hub.z7x.org`)"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.port=80"
+    restart: unless-stopped
+
+  sonarr:
+    image: ghcr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+      - DOCKER_MODS=ghcr.io/gilbn/theme.park:sonarr
+      - TP_THEME=organizr
+    volumes:
+      - /data/sonarr/data:/config
+      - /data:/data
+    ports:
+      - 7878:7878
+      - 8989:8989
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarr.entryPoints=websecure"
+      - "traefik.http.routers.sonarr.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.z7x.org`)"
+      - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.port=8989"
+    #depends_on:
+    # - "traefik"
+    restart: unless-stopped
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr
+    container_name: bazarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+    volumes:
+      - /data/bazarr/data/config:/config
+      - /data/media:/data/media
+    ports:
+      - 6767:6767
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bazarr.entryPoints=websecure"
+      - "traefik.http.routers.bazarr.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.bazarr.rule=Host(`bazarr.z7x.org`)"
+      - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.port=6767"
+    #depends_on:
+    # - "traefik"
+    restart: unless-stopped
+
+  readarr:
+    image: ghcr.io/linuxserver/readarr:nightly
+    container_name: readarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+    volumes:
+      - /data/readarr/data:/config
+      - /mounted:/books
+    ports:
+      - 8788:8787
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.readarr.entryPoints=websecure"
+      - "traefik.http.routers.readarr.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.readarr.rule=Host(`readarr.z7x.org`)"
+      - "traefik.http.services.readarr.loadbalancer.server.port=8787"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.port=8787"
+    #depends_on:
+    # - "traefik"
+    restart: unless-stopped
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr
+    container_name: lidarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+    volumes:
+      - /data/lidarr/data:/config
+      - /data:/data
+    ports:
+      - 8686:8686
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidarr.entryPoints=websecure"
+      - "traefik.http.routers.lidarr.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.lidarr.rule=Host(`lidarr.z7x.org`)"
+      - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.port=8686"
+    #depends_on:
+    # - "traefik"
+    restart: unless-stopped
+
+  radarr:
+    image: linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+    volumes:
+      - /data/radarr/data:/config
+      - /data:/data
+    ports:
+      - 7676:7878
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.entryPoints=websecure"
+      - "traefik.http.routers.radarr.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.z7x.org`)"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+    #depends_on:
+    # - "traefik"
+
+  prowlarr:
+    image: ghcr.io/linuxserver/prowlarr:develop
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+    volumes:
+      - /data/prowlarr/data:/config
+    # network_mode: "host"
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.entryPoints=websecure"
+      - "traefik.http.routers.prowlarr.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.z7x.org`)"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+    #depends_on:
+    # - "traefik"
+  flaresolverr:
+    image: flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_HTML=${LOG_HTML:-false}
+      - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+      - TZ=America/Chicago
+    # network_mode: "host"
+    ports:
+      - "${PORT:-8191}:8191"
+    restart: unless-stopped
+
+  ### --- Usenet
+  #    nzbget: # ! WARN: Deprecated
+  #        container_name: nzbget
+  #        image: ghcr.io/hotio/nzbget:latest
+  #        restart: unless-stopped
+  #        logging:
+  #            driver: json-file
+  #        network_mode: bridge
+  #        ports:
+  #        - 6789:6789
+  #        environment:
+  #        - PUID=1000
+  #        - PGID=1000
+  #        - TZ=America/Chicago
+  #        #- DOCKER_MODS=ghcr.io/gilbn/theme.park:nzbget
+  #        - TP_THEME=hotpink
+  #        volumes:
+  #        - /etc/localtime:/etc/localtime:ro
+  #        - /docker/appdata/nzbget:/config
+  #        - /data/usenet:/data/usenet:rw
+  #        labels:
+  #            - "traefik.enable=true"
+  #            - "traefik.http.routers.nzbget.entryPoints=websecure"
+  #            - "traefik.http.routers.nzbget.tls.certResolver=letsEncrypt"
+  #            - "traefik.http.routers.nzbget.rule=Host(`nzbget.z7x.org`)"
+  #            - "traefik.http.services.nzbget.loadbalancer.server.port=9696"
+  #        depends_on:
+  #            - "traefik"
+
+  sabnzbd:
+    container_name: sabnzbd
+    image: ghcr.io/hotio/sabnzbd:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+    ports:
+      - 8080:8080
+      - 9090:9090
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Chicago
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /data/sabnzbd/data:/config
+      - /data/usenet:/data/usenet:rw
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nzbget.entryPoints=websecure"
+      - "traefik.http.routers.nzbget.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.nzbget.rule=Host(`nzbget.z7x.org`)"
+      - "traefik.http.services.nzbget.loadbalancer.server.port=9696"
+  #      depends_on:
+  #          - "traefik"
+
+  notifiarr:
+    container_name: notifiarr
+    hostname: notifiarr
+    image: golift/notifiarr
+    restart: unless-stopped
+    ports:
+      - "5454:5454"
+    volumes:
+      - /data/notifiarr:/config
+      - /var/run/utmp:/var/run/utmp
+      - /etc/machine-id:/etc/machine-id
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr
+    container_name: recyclarr
+    user: 1000:1000
+    networks: [recyclarr]
+    volumes:
+      - /data/recyclarr/config:/config
+    environment:
+      - TZ=America/Chicago
+  ###### ----- Docker control ----- ######
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce
+    restart: unless-stopped
+    command: -H unix:///var/run/docker.sock
+    ports:
+      - 9000:9000
+    networks:
+      - traefik-public
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /data/portainer:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.entryPoints=websecure"
+      - "traefik.http.routers.portainer.tls.certResolver=letsEncrypt"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.z7x.org`)"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.port=9000"
+#       depends_on:
+#           - "traefik"
+
+networks:
+  traefik-public:
+    external: true
+    driver: bridge
+
+  recyclarr:
+    name: recyclarr
+    external: true
