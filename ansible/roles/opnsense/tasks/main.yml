@@ -1,0 +1,36 @@
+- name: Does the OPNsense VM exist?
+  ansible.builtin.command: qm status {{ opnsense_vmid }}
+  register: opnsense_vm_status
+  changed_when: false
+  failed_when: false
+
+- name: Create and bootstrap the OPNsense VM
+  ansible.builtin.include_tasks: create.yml
+  when: opnsense_vm_status.rc != 0
+
+- name: Locate the WAN address
+  ansible.builtin.include_tasks: wan_ip.yml
+
+- name: Wait for the OPNsense API
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/core/firmware/status"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_api
+  until: opnsense_api.status == 200
+  retries: 60
+  delay: 5
+  no_log: true
+
+- name: Configure OPNsense via the REST API
+  ansible.builtin.include_tasks: api.yml
+
+- name: Report
+  ansible.builtin.debug:
+    msg: >-
+      {{ opnsense_hostname }} is up: https://{{ opnsense_wan_ip }}/ (OPNsense
+      {{ opnsense_api.json.product.CORE_VERSION | default('?') }}).
+      Reserve {{ opnsense_wan_ip }} for MAC {{ opnsense_wan_mac }} in the My Spectrum app.

@@ -1,0 +1,11 @@
+# Everything, in order:  ansible-playbook playbooks/site.yml
+- name: All Proxmox nodes
+  hosts: pve
+  roles:
+    - tailscale
+
+- name: Core node (extra NICs, OPNsense)
+  hosts: core
+  roles:
+    - pve_network
+    - opnsense

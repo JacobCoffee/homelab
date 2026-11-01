@@ -1,0 +1,301 @@
+# Post-bootstrap OPNsense 26.7 configuration, entirely through the REST API
+# (ansible.builtin.uri only -- the oxlorg collection only supports 26.1).
+# Idempotent: every mutating call is gated behind a GET/search done first;
+# a task only runs when the live config differs from the desired state, so
+# a clean second run reports changed=0. No plugins are installed here.
+#
+# DMZ zone is identified by descr == "DMZ" (see inventory/group_vars/all/main.yml
+# lab_zones); INT/K8S are "every other zone". Endpoints/field names verified
+# against opnsense/core@master source and a live 26.7 instance -- see
+# "API configuration" in ../NOTES.md.
+
+- name: API | identify the DMZ zone and the zones it must not reach
+  ansible.builtin.set_fact:
+    opnsense_dmz_zone: "{{ opnsense_zones | selectattr('descr', 'equalto', 'DMZ') | first }}"
+    opnsense_non_dmz_zones: "{{ opnsense_zones | rejectattr('descr', 'equalto', 'DMZ') | list }}"
+
+# ---------------------------------------------------------------------------
+# Dnsmasq: DHCPv4 per zone, per-range domain, register leases in DNS, DNS
+# listener moved off 53 (Unbound keeps 53; see docs.opnsense.org/manual/dnsmasq.html
+# "DNS Service" + forum guidance to use port 53053 for the dnsmasq connector).
+# ---------------------------------------------------------------------------
+- name: Dnsmasq | get current settings
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/get"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_dnsmasq_get
+
+- name: Dnsmasq | enable service, register DHCP leases in DNS, move DNS off 53
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/set"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      dnsmasq:
+        enable: "1"
+        regdhcp: "1"
+        port: "53053"
+  delegate_to: localhost
+  register: opnsense_dnsmasq_set
+  when: >-
+    opnsense_dnsmasq_get.json.dnsmasq.enable != "1" or
+    opnsense_dnsmasq_get.json.dnsmasq.regdhcp != "1" or
+    opnsense_dnsmasq_get.json.dnsmasq.port != "53053"
+  changed_when: opnsense_dnsmasq_set.json.result == "saved"
+  failed_when: opnsense_dnsmasq_set.json.result is not defined or opnsense_dnsmasq_set.json.result == "failed"
+
+- name: Dnsmasq | list existing DHCP ranges
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/searchRange"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_dnsmasq_ranges
+
+- name: Dnsmasq | add DHCP range per zone
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/addRange"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      range:
+        interface: "{{ item.name }}"
+        start_addr: "{{ item.dhcp_start }}"
+        end_addr: "{{ item.dhcp_end }}"
+        domain_type: range
+        domain: "{{ item.domain }}"
+        description: "ansible-managed range for {{ item.descr }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_zones }}"
+  loop_control: { label: "{{ item.descr }}" }
+  register: opnsense_dnsmasq_range_add
+  when: >-
+    opnsense_dnsmasq_ranges.json.rows
+    | selectattr('interface', 'equalto', item.name)
+    | selectattr('start_addr', 'equalto', item.dhcp_start)
+    | selectattr('end_addr', 'equalto', item.dhcp_end)
+    | list | length == 0
+  changed_when: opnsense_dnsmasq_range_add.json.result == "saved"
+  failed_when: opnsense_dnsmasq_range_add.json.result is not defined or opnsense_dnsmasq_range_add.json.result == "failed"
+
+- name: Dnsmasq | update DHCP range domain if it drifted
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/setRange/{{ (opnsense_dnsmasq_ranges.json.rows
+      | selectattr('interface', 'equalto', item.name)
+      | selectattr('start_addr', 'equalto', item.dhcp_start)
+      | selectattr('end_addr', 'equalto', item.dhcp_end)
+      | first).uuid }}"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      range:
+        interface: "{{ item.name }}"
+        start_addr: "{{ item.dhcp_start }}"
+        end_addr: "{{ item.dhcp_end }}"
+        domain_type: range
+        domain: "{{ item.domain }}"
+        description: "ansible-managed range for {{ item.descr }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_zones }}"
+  loop_control: { label: "{{ item.descr }}" }
+  register: opnsense_dnsmasq_range_set
+  vars:
+    opnsense_existing_range: >-
+      {{ (opnsense_dnsmasq_ranges.json.rows
+      | selectattr('interface', 'equalto', item.name)
+      | selectattr('start_addr', 'equalto', item.dhcp_start)
+      | selectattr('end_addr', 'equalto', item.dhcp_end)
+      | list | first) | default({}) }}
+  when: >-
+    opnsense_existing_range != {} and
+    opnsense_existing_range.domain != item.domain
+  changed_when: opnsense_dnsmasq_range_set.json.result == "saved"
+  failed_when: opnsense_dnsmasq_range_set.json.result is not defined or opnsense_dnsmasq_range_set.json.result == "failed"
+
+- name: Dnsmasq | reconfigure service
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/service/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: >-
+    opnsense_dnsmasq_set is changed or
+    opnsense_dnsmasq_range_add.results | default([]) | selectattr('changed', 'equalto', true) | list | length > 0 or
+    opnsense_dnsmasq_range_set.results | default([]) | selectattr('changed', 'equalto', true) | list | length > 0
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# Unbound: resolver on all interfaces, DNSSEC on, forward each zone's domain
+# to Dnsmasq's DNS listener so DHCP-registered hostnames resolve (the
+# documented Dnsmasq+Unbound "connector" pattern, docs.opnsense.org/manual/
+# dnsmasq.html "DNS Service" + unbound.html "Query Forwarding").
+# ---------------------------------------------------------------------------
+- name: Unbound | get current general settings
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/settings/get"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_unbound_get
+
+- name: Unbound | enable resolver on all interfaces with DNSSEC
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/settings/set"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      unbound:
+        general:
+          enabled: "1"
+          active_interface: ""
+          dnssec: "1"
+  delegate_to: localhost
+  register: opnsense_unbound_set
+  when: >-
+    opnsense_unbound_get.json.unbound.general.enabled != "1" or
+    opnsense_unbound_get.json.unbound.general.dnssec != "1" or
+    (opnsense_unbound_get.json.unbound.general.active_interface is mapping and
+     opnsense_unbound_get.json.unbound.general.active_interface.values() | selectattr('selected', 'equalto', 1) | list | length > 0)
+  changed_when: opnsense_unbound_set.json.result == "saved"
+  failed_when: opnsense_unbound_set.json.result is not defined or opnsense_unbound_set.json.result == "failed"
+
+- name: Unbound | list existing query-forwarding entries
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/settings/searchForward"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_unbound_forwards
+
+- name: Unbound | forward each zone domain to Dnsmasq (127.0.0.1:53053)
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/settings/addForward"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      dot:
+        enabled: "1"
+        domain: "{{ item.domain }}"
+        server: 127.0.0.1
+        port: "53053"
+        description: "ansible-managed forward for {{ item.descr }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_zones }}"
+  loop_control: { label: "{{ item.descr }}" }
+  register: opnsense_unbound_forward_add
+  when: >-
+    opnsense_unbound_forwards.json.rows
+    | selectattr('domain', 'equalto', item.domain)
+    | selectattr('server', 'equalto', '127.0.0.1')
+    | selectattr('port', 'equalto', '53053')
+    | list | length == 0
+  changed_when: opnsense_unbound_forward_add.json.result == "saved"
+  failed_when: opnsense_unbound_forward_add.json.result is not defined or opnsense_unbound_forward_add.json.result == "failed"
+
+- name: Unbound | reconfigure service
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/service/reconfigureGeneral"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: >-
+    opnsense_unbound_set is changed or
+    opnsense_unbound_forward_add.results | default([]) | selectattr('changed', 'equalto', true) | list | length > 0
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# Firewall: DMZ must not reach INT/K8S, evaluated before the bootstrap
+# "Default allow DMZ to any" rule (sequence=2 on the DMZ interface). Matched
+# by description for idempotence.
+# ---------------------------------------------------------------------------
+- name: Firewall | list existing rules
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/filter/search_rule/"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_filter_rules
+
+- name: Firewall | block DMZ from reaching other zone subnets
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/filter/add_rule/"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      rule:
+        enabled: "1"
+        sequence: "1"
+        action: block
+        quick: "1"
+        interface: "{{ opnsense_dmz_zone.name }}"
+        direction: in
+        ipprotocol: inet
+        protocol: any
+        source_net: "{{ opnsense_dmz_zone.name }}"
+        destination_net: "{{ item.cidr }}"
+        description: "Block {{ opnsense_dmz_zone.descr }} to {{ item.descr }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_non_dmz_zones }}"
+  loop_control: { label: "{{ item.descr }}" }
+  register: opnsense_filter_dmz_block_add
+  when: >-
+    opnsense_filter_rules.json.rows
+    | selectattr('description', 'equalto', 'Block ' ~ opnsense_dmz_zone.descr ~ ' to ' ~ item.descr)
+    | list | length == 0
+  changed_when: opnsense_filter_dmz_block_add.json.result == "saved"
+  failed_when: opnsense_filter_dmz_block_add.json.result is not defined or opnsense_filter_dmz_block_add.json.result == "failed"
+
+- name: Firewall | apply pending changes
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/filter/apply"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: >-
+    opnsense_filter_dmz_block_add.results | default([]) | selectattr('changed', 'equalto', true) | list | length > 0
+  changed_when: true

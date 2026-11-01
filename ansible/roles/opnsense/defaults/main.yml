@@ -1,0 +1,44 @@
+opnsense_version: "26.7"
+opnsense_mirror: https://pkg.opnsense.org/releases
+opnsense_image: "OPNsense-{{ opnsense_version }}-nano-amd64.img"
+
+opnsense_vmid: 100
+opnsense_hostname: "{{ site_code }}fw01"
+opnsense_domain: "{{ domain_int }}"
+opnsense_timezone: "{{ timezone }}"
+
+opnsense_storage: vmdata
+opnsense_cores: 2
+opnsense_memory: 4096
+opnsense_disk_size: 32G
+opnsense_workdir: /var/lib/vz/opnsense
+
+# net0 = WAN on the house LAN; net1.. = one NIC per lab zone, VLAN-tagged on the trunk.
+opnsense_wan_bridge: vmbr0
+opnsense_lab_bridge: vmbr1
+opnsense_wan_if: vtnet0
+opnsense_zones: >-
+  {%- set out = [] -%}
+  {%- for z in lab_zones -%}
+  {%- set _ = out.append({
+        'name': 'lan' if loop.first else 'opt' ~ (loop.index - 1),
+        'descr': z.name | upper,
+        'if': 'vtnet' ~ loop.index,
+        'vlan': z.vlan,
+        'ip': z.gateway,
+        'prefix': z.cidr.split('/')[1] | int,
+        'cidr': z.cidr,
+        'domain': z.domain,
+        'dhcp_start': z.dhcp[0],
+        'dhcp_end': z.dhcp[1]}) -%}
+  {%- endfor -%}
+  {{ out }}
+
+# WebGUI/SSH/API reachable on WAN from these sources (the house LAN, where the Mac is).
+opnsense_mgmt_sources:
+  - "{{ house_lan_cidr }}"
+
+opnsense_root_ssh_key: "{{ automation_ssh_pubkey }}"
+opnsense_root_password: "{{ vault_opnsense_root_password }}"
+opnsense_api_key: "{{ vault_opnsense_api_key }}"
+opnsense_api_secret: "{{ vault_opnsense_api_secret }}"

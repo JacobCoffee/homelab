@@ -1,0 +1,27 @@
+# vmbr1: VLAN-aware bridge on the lab trunk NIC; carries every lab zone VLAN.
+# vmbr0 (house LAN, management) is left exactly as the installer wrote it.
+- name: Require the trunk NIC name
+  ansible.builtin.assert:
+    that: pve_trunk_nic is defined
+    fail_msg: >-
+      Set pve_trunk_nic in inventory/host_vars/{{ inventory_hostname }}.yml
+      (run playbooks/discover-nics.yml to see the NIC names).
+
+- name: Lab trunk bridge vmbr1
+  ansible.builtin.blockinfile:
+    path: /etc/network/interfaces
+    marker: "# {mark} ANSIBLE lab trunk (roles/pve_network)"
+    block: |
+      auto vmbr1
+      iface vmbr1 inet manual
+      	bridge-ports {{ pve_trunk_nic }}
+      	bridge-stp off
+      	bridge-fd 0
+      	bridge-vlan-aware yes
+      	bridge-vids {{ lab_zones | map(attribute='vlan') | join(' ') }}
+  register: pve_network_interfaces
+
+- name: Apply network config
+  ansible.builtin.command: ifreload -a
+  when: pve_network_interfaces.changed
+  changed_when: true

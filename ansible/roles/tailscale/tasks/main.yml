@@ -1,0 +1,42 @@
+# Tailscale on each Proxmox host: remote management that doesn't depend on OPNsense.
+- name: Require a Tailscale auth key
+  ansible.builtin.assert:
+    that: tailscale_authkey is defined
+    fail_msg: "Add tailscale_authkey to inventory/group_vars/all/vault.yml (ansible-vault edit)."
+
+- name: Tailscale apt key
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/debian/{{ ansible_facts.distribution_release }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+
+- name: Tailscale apt source
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/tailscale.sources
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://pkgs.tailscale.com/stable/debian
+      Suites: {{ ansible_facts.distribution_release }}
+      Components: main
+      Signed-By: /usr/share/keyrings/tailscale-archive-keyring.gpg
+
+- name: Install tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    update_cache: true
+
+- name: Current Tailscale state
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+
+- name: Join the tailnet
+  # --accept-dns=false: keep the node's resolver as Proxmox configured it.
+  ansible.builtin.command: >-
+    tailscale up --auth-key={{ tailscale_authkey }} --hostname={{ inventory_hostname }}
+    --accept-dns=false
+  when: (tailscale_status.stdout | default('{}', true) | from_json).BackendState | default('') != 'Running'
+  no_log: true
+  changed_when: true

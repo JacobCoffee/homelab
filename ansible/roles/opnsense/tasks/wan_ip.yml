@@ -1,0 +1,24 @@
+- name: WAN NIC MAC (net0)
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    qm config {{ opnsense_vmid }} | sed -n 's/^net0: virtio=\([0-9A-Fa-f:]*\),.*/\1/p'
+  args:
+    executable: /bin/bash
+  register: opnsense_wan_mac_cmd
+  changed_when: false
+
+- name: WAN IP by neighbor scan on {{ opnsense_wan_bridge }}
+  ansible.builtin.script: >-
+    find-ip.py {{ opnsense_wan_mac_cmd.stdout }} {{ house_lan_cidr }} {{ opnsense_wan_bridge }}
+  args:
+    executable: python3
+  register: opnsense_find_ip
+  until: opnsense_find_ip.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+
+- name: Remember WAN address
+  ansible.builtin.set_fact:
+    opnsense_wan_mac: "{{ opnsense_wan_mac_cmd.stdout | lower }}"
+    opnsense_wan_ip: "{{ opnsense_find_ip.stdout | trim }}"

@@ -1,0 +1,193 @@
+{#
+  Minimal OPNsense 26.7 bootstrap config.xml.
+
+  This file is only used ONCE by the opnsense-importer on first boot
+  (src/sbin/opnsense-importer in opnsense/core). It must stay minimal:
+  everything beyond identity/network/SSH/API bootstrap is done later via
+  the OPNsense REST API, not by hand-writing more XML here.
+
+  Required variables (formats verified in ansible/roles/opnsense/NOTES.md):
+    opnsense_hostname            - e.g. "hnfw01"
+    opnsense_domain              - e.g. "int.z7x.org"
+    opnsense_timezone            - e.g. "America/Chicago"
+    opnsense_root_password_hash  - SHA-512 crypt ($6$), `openssl passwd -6` on the Proxmox host
+    opnsense_root_ssh_key        - single "ssh-ed25519 AAAA... comment" line
+    opnsense_api_key             - plaintext API key
+    opnsense_api_secret_hash     - SHA-512 crypt ($6$) of the API secret
+    opnsense_wan_if              - e.g. "vtnet0"
+    opnsense_zones               - list of {name, descr, if, ip, prefix}
+                                    name is one of lan/opt1/opt2/... (OPNsense
+                                    interface identifier), if is the NIC name
+                                    (vtnet1, vtnet2, ...)
+    opnsense_mgmt_sources        - list of CIDRs allowed to reach the
+                                    WebGUI (443) and SSH (22) on the WAN
+                                    interface
+-#}
+<?xml version="1.0"?>
+<opnsense>
+  <theme>opnsense</theme>
+  <system>
+    <optimization>normal</optimization>
+    <hostname>{{ opnsense_hostname }}</hostname>
+    <domain>{{ opnsense_domain }}</domain>
+    <dnsallowoverride>1</dnsallowoverride>
+    <dnsallowoverride_exclude/>
+    <group>
+      <name>admins</name>
+      <description>System Administrators</description>
+      <scope>system</scope>
+      <gid>1999</gid>
+      <member>0</member>
+      <priv>page-all</priv>
+    </group>
+    <user>
+      <name>root</name>
+      <descr>System Administrator</descr>
+      <scope>system</scope>
+      <groupname>admins</groupname>
+      <password>{{ opnsense_root_password_hash }}</password>
+      <uid>0</uid>
+      <authorizedkeys>{{ opnsense_root_ssh_key | b64encode }}</authorizedkeys>
+      <apikeys>
+        <item>
+          <key>{{ opnsense_api_key }}</key>
+          <secret>{{ opnsense_api_secret_hash }}</secret>
+        </item>
+      </apikeys>
+    </user>
+    <timezone>{{ opnsense_timezone }}</timezone>
+    <timeservers>0.opnsense.pool.ntp.org 1.opnsense.pool.ntp.org 2.opnsense.pool.ntp.org 3.opnsense.pool.ntp.org</timeservers>
+    <webgui>
+      <protocol>https</protocol>
+      <noroot>1</noroot>
+    </webgui>
+    <disablenatreflection>yes</disablenatreflection>
+    <usevirtualterminal>1</usevirtualterminal>
+    <disableconsolemenu/>
+    <ipv6allow>1</ipv6allow>
+    <powerd_ac_mode>hadp</powerd_ac_mode>
+    <powerd_battery_mode>hadp</powerd_battery_mode>
+    <powerd_normal_mode>hadp</powerd_normal_mode>
+    <bogons>
+      <interval>monthly</interval>
+    </bogons>
+    <pf_share_forward>1</pf_share_forward>
+    <lb_use_sticky>1</lb_use_sticky>
+    <ssh>
+      <enabled>1</enabled>
+      <permitrootlogin>1</permitrootlogin>
+      <interfaces>wan,lan</interfaces>
+      <group>admins</group>
+    </ssh>
+  </system>
+  <interfaces>
+    <wan>
+      <enable>1</enable>
+      <if>{{ opnsense_wan_if }}</if>
+      <descr>WAN</descr>
+      <spoofmac/>
+      <ipaddr>dhcp</ipaddr>
+      <ipaddrv6>none</ipaddrv6>
+      <blockpriv>0</blockpriv>
+      <blockbogons>1</blockbogons>
+      <dhcphostname/>
+    </wan>
+{% for zone in opnsense_zones %}
+    <{{ zone.name }}>
+      <enable>1</enable>
+      <if>{{ zone.if }}</if>
+      <descr>{{ zone.descr }}</descr>
+      <spoofmac/>
+      <ipaddr>{{ zone.ip }}</ipaddr>
+      <subnet>{{ zone.prefix }}</subnet>
+    </{{ zone.name }}>
+{% endfor %}
+  </interfaces>
+  <nat>
+    <outbound>
+      <mode>automatic</mode>
+    </outbound>
+  </nat>
+  <filter>
+  </filter>
+  <rrd>
+    <enable/>
+  </rrd>
+  <ntpd>
+    <prefer>0.opnsense.pool.ntp.org</prefer>
+    <ispool>0.opnsense.pool.ntp.org 1.opnsense.pool.ntp.org 2.opnsense.pool.ntp.org 3.opnsense.pool.ntp.org</ispool>
+  </ntpd>
+  <OPNsense>
+    <Firewall>
+      <Filter>
+        <rules>
+{% set ns = namespace(seq=1) %}
+{% for zone in opnsense_zones %}
+          <rule>
+            <enabled>1</enabled>
+            <statetype>keep</statetype>
+            <state-policy/>
+            <sequence>{{ ns.seq }}</sequence>
+            <action>pass</action>
+            <quick>1</quick>
+            <interfacenot>0</interfacenot>
+            <interface>{{ zone.name }}</interface>
+            <direction>in</direction>
+            <ipprotocol>inet</ipprotocol>
+            <protocol>any</protocol>
+            <source_net>{{ zone.name }}</source_net>
+            <source_not>0</source_not>
+            <source_port/>
+            <destination_net>any</destination_net>
+            <destination_not>0</destination_not>
+            <disablereplyto>0</disablereplyto>
+            <log>0</log>
+            <allowopts>0</allowopts>
+            <nosync>0</nosync>
+            <nopfsync>0</nopfsync>
+            <statetimeout/>
+            <tcpflags_any>0</tcpflags_any>
+            <description>Default allow {{ zone.descr }} to any rule</description>
+          </rule>
+{% set ns.seq = ns.seq + 1 %}
+{% endfor %}
+{% for src in opnsense_mgmt_sources %}
+{% for port in ['443', '22'] %}
+          <rule>
+            <enabled>1</enabled>
+            <statetype>keep</statetype>
+            <state-policy/>
+            <sequence>{{ ns.seq }}</sequence>
+            <action>pass</action>
+            <quick>1</quick>
+            <interfacenot>0</interfacenot>
+            <interface>wan</interface>
+            <direction>in</direction>
+            <ipprotocol>inet</ipprotocol>
+            <protocol>tcp</protocol>
+            <source_net>{{ src }}</source_net>
+            <source_not>0</source_not>
+            <source_port/>
+            <destination_net>(self)</destination_net>
+            <destination_not>0</destination_not>
+            <destination_port>{{ port }}</destination_port>
+            <disablereplyto>0</disablereplyto>
+            <log>0</log>
+            <allowopts>0</allowopts>
+            <nosync>0</nosync>
+            <nopfsync>0</nopfsync>
+            <statetimeout/>
+            <tcpflags_any>0</tcpflags_any>
+            <description>Mgmt access from {{ src }} to firewall port {{ port }}</description>
+          </rule>
+{% set ns.seq = ns.seq + 1 %}
+{% endfor %}
+{% endfor %}
+        </rules>
+        <snatrules/>
+        <npt/>
+        <onetoone/>
+      </Filter>
+    </Firewall>
+  </OPNsense>
+</opnsense>

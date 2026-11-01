@@ -1,0 +1,18 @@
+# Lists physical NICs per node so you can fill host_vars/<node>.yml.
+#   ansible-playbook playbooks/discover-nics.yml
+- name: Discover physical NICs
+  hosts: pve
+  gather_facts: true
+  tasks:
+    - name: Show physical NICs (name, MAC, driver, PCI address, link, speed)
+      ansible.builtin.debug:
+        msg: >-
+          {{ item }}: mac={{ ansible_facts[item].macaddress | default('?') }}
+          driver={{ ansible_facts[item].module | default('?') }}
+          pci={{ ansible_facts[item].pciid | default('?') }}
+          link={{ 'up' if ansible_facts[item].active | default(false) else 'down' }}
+          speed={{ ansible_facts[item].speed | default('?') }}
+      loop: >-
+        {{ ansible_facts.interfaces | map('replace', '-', '_')
+           | select('in', ansible_facts) | sort
+           | select('match', '^(en|eth|nic)') | list }}

@@ -1,0 +1,128 @@
+# One-time: nano image -> VM disk, bootstrap config.xml on a USB FAT image,
+# drive the first-boot importer over the serial socket, then detach the USB image.
+- name: Tools for the config image
+  ansible.builtin.apt:
+    name: [mtools, dosfstools, fdisk, bzip2]
+
+- name: Work directory
+  ansible.builtin.file:
+    path: "{{ opnsense_workdir }}/import/conf"
+    state: directory
+    mode: "0700"
+
+- name: Published checksums
+  ansible.builtin.uri:
+    url: "{{ opnsense_mirror }}/{{ opnsense_version }}/OPNsense-{{ opnsense_version }}-checksums-amd64.sha256"
+    return_content: true
+  register: opnsense_checksums
+
+- name: Download nano image
+  ansible.builtin.get_url:
+    url: "{{ opnsense_mirror }}/{{ opnsense_version }}/{{ opnsense_image }}.bz2"
+    dest: "{{ opnsense_workdir }}/{{ opnsense_image }}.bz2"
+    # BSD-style lines: SHA256 (file) = hash
+    checksum: >-
+      sha256:{{ opnsense_checksums.content
+      | regex_search('SHA256 \(' ~ (opnsense_image ~ '.bz2') | regex_escape ~ '\) = ([0-9a-f]{64})', '\1') | first }}
+    mode: "0600"
+
+- name: Decompress nano image
+  ansible.builtin.command: bunzip2 -k {{ opnsense_workdir }}/{{ opnsense_image }}.bz2
+  args:
+    creates: "{{ opnsense_workdir }}/{{ opnsense_image }}"
+
+- name: Hash root password and API secret (SHA-512 crypt)
+  ansible.builtin.command: openssl passwd -6 -stdin
+  args:
+    stdin: "{{ item }}"
+  loop:
+    - "{{ opnsense_root_password }}"
+    - "{{ opnsense_api_secret }}"
+  register: opnsense_hashes
+  changed_when: false
+  no_log: true
+
+- name: Bootstrap config.xml
+  ansible.builtin.template:
+    src: config.xml.j2
+    dest: "{{ opnsense_workdir }}/import/conf/config.xml"
+    mode: "0600"
+  vars:
+    opnsense_root_password_hash: "{{ opnsense_hashes.results[0].stdout }}"
+    opnsense_api_secret_hash: "{{ opnsense_hashes.results[1].stdout }}"
+  no_log: true
+
+# The importer only looks at partitions (da0s1), so: MBR + one FAT partition at 1 MiB.
+- name: Build USB config image (MBR, FAT partition, conf/config.xml at its root)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    rm -f config.img part.img
+    truncate -s 15M part.img
+    mkfs.vfat -n PROXCFG part.img >/dev/null
+    mcopy -i part.img -s import/conf ::/
+    truncate -s 1M config.img
+    cat part.img >> config.img
+    rm part.img
+    echo 'start=2048, type=c' | sfdisk -q config.img
+  args:
+    chdir: "{{ opnsense_workdir }}"
+    executable: /bin/bash
+  changed_when: true
+
+- name: Create VM
+  ansible.builtin.command: >-
+    qm create {{ opnsense_vmid }} --name {{ opnsense_hostname }}
+    --ostype other --machine pc --bios seabios --cpu host
+    --cores {{ opnsense_cores }} --memory {{ opnsense_memory }} --balloon 0
+    --onboot 1 --startup order=1
+    --serial0 socket
+    --net0 virtio,bridge={{ opnsense_wan_bridge }}
+    {% for z in opnsense_zones %}--net{{ loop.index }} virtio,bridge={{ opnsense_lab_bridge }},tag={{ z.vlan }} {% endfor %}
+    --args "-device qemu-xhci,id=cfgxhci -drive file={{ opnsense_workdir }}/config.img,format=raw,if=none,id=cfgusb -device usb-storage,bus=cfgxhci.0,drive=cfgusb"
+  changed_when: true
+
+- name: Import nano disk
+  ansible.builtin.command: qm disk import {{ opnsense_vmid }} {{ opnsense_workdir }}/{{ opnsense_image }} {{ opnsense_storage }} --format raw
+  register: opnsense_import
+  changed_when: true
+
+- name: Attach disk, grow it, boot from it
+  ansible.builtin.shell: |
+    set -euo pipefail
+    vol=$(qm config {{ opnsense_vmid }} | sed -n 's/^unused0: //p')
+    qm set {{ opnsense_vmid }} --virtio0 "$vol" --boot order=virtio0
+    qm disk resize {{ opnsense_vmid }} virtio0 {{ opnsense_disk_size }}
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Install importer driver
+  ansible.builtin.copy:
+    src: opnsense-import.py
+    dest: "{{ opnsense_workdir }}/opnsense-import.py"
+    mode: "0700"
+
+- name: Start VM and run the configuration importer
+  # Connect right after start: the importer prompt is only open for ~7 s.
+  ansible.builtin.shell: >-
+    qm start {{ opnsense_vmid }} &&
+    python3 {{ opnsense_workdir }}/opnsense-import.py
+    /var/run/qemu-server/{{ opnsense_vmid }}.serial0
+    --hostname {{ opnsense_hostname }} --timeout 900
+    2>{{ opnsense_workdir }}/console.log
+  register: opnsense_importer
+  changed_when: true
+
+- name: Importer result
+  ansible.builtin.debug:
+    msg: "{{ opnsense_importer.stdout | from_json }}"
+
+- name: Detach USB config image
+  ansible.builtin.command: qm set {{ opnsense_vmid }} --delete args
+  changed_when: true
+
+- name: Remove bootstrap material (contains password hashes)
+  ansible.builtin.file:
+    path: "{{ opnsense_workdir }}/{{ item }}"
+    state: absent
+  loop: [config.img, import]
