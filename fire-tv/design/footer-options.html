@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hearth · bottom-area directions</title>
+<style>
+  @font-face { font-family: "Libertinus Display"; src: url(assets/display.ttf); }
+  @font-face { font-family: "EB Garamond"; src: url(assets/body.ttf); }
+  :root {
+    --night: #0a0f1a; --ink: #f2efe9; --mist: #cfcac1; --gold: #d8ab5c; --gold-deep: #a88449;
+    --line: rgba(207, 202, 193, .26); --flavor: #ffd36a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #07090f; color: var(--ink); font-family: "EB Garamond", Georgia, serif; }
+  ::selection { background: var(--gold); color: #17130c; }
+  header.page { max-width: 1500px; margin: 0 auto; padding: 56px 32px 8px; }
+  header.page h1 { font: 400 34px/1 "Libertinus Display", serif; letter-spacing: .24em; text-transform: uppercase; margin: 0 0 14px; }
+  header.page p { color: var(--mist); font-size: 19px; max-width: 62ch; margin: 0; line-height: 1.5; }
+  section { max-width: 1500px; margin: 0 auto; padding: 48px 32px 24px; }
+  section h2 { font: 400 24px/1 "Libertinus Display", serif; letter-spacing: .24em; text-transform: uppercase; margin: 0 0 10px; color: var(--ink); }
+  section h2 b { color: var(--gold); font-weight: 400; margin-right: .5em; }
+  section .why { color: var(--mist); font-size: 18px; line-height: 1.5; max-width: 70ch; margin: 0 0 22px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .pair.single { grid-template-columns: 1fr; max-width: 980px; }
+  figure { margin: 0; }
+  figcaption { color: var(--mist); font-size: 15px; letter-spacing: .14em; text-transform: uppercase; margin-top: 10px; }
+
+  /* A 1920x1080 artboard scaled to its column. */
+  .tv { position: relative; aspect-ratio: 16 / 9; overflow: hidden; container-type: inline-size; border: 1px solid #1c2233; }
+  .board { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; transform: scale(calc(100cqw / 1920px)); }
+  .wall { position: absolute; inset: 0; background: url(assets/wallpaper.webp) center / cover; transform: scale(1.04); }
+  .wall::after { content: ""; position: absolute; inset: 0; background:
+      linear-gradient(to bottom, rgba(10,15,26,.78) 0%, rgba(10,15,26,.10) 26%, transparent 48%, rgba(10,15,26,.42) 70%, rgba(10,15,26,.62) 100%),
+      rgba(0,0,0,.16); }
+  .shot { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: url(assets/home.png) 0 0 / 1920px 1080px no-repeat;
+          -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 800px, transparent 846px); mask-image: linear-gradient(to bottom, #000 0, #000 800px, transparent 846px); }
+  .label { font: 500 14px/1 "EB Garamond", serif; letter-spacing: .18em; text-transform: uppercase; color: var(--mist); text-shadow: 0 2px 14px rgba(10,15,26,.95); }
+  .gold { color: var(--gold); }
+  svg.sigil { width: 34px; height: 34px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---- A: header sigils + More tile ---- */
+  .a-sigils { position: absolute; top: 74px; right: 380px; display: flex; gap: 34px; color: var(--mist); }
+  .a-sigils .s { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 64px; }
+  .a-sigils .s.focus { color: var(--gold); }
+  .a-sigils .s .label { opacity: 0; }
+  .a-sigils .s.focus .label { opacity: 1; color: var(--gold); }
+  .a-sigils .s.focus svg { filter: drop-shadow(0 0 8px rgba(255,211,106,.55)); }
+  .more-tile { position: absolute; left: 1277px; top: 634px; width: 252px; height: 141px; background: rgba(24,37,61,.86);
+               border: 1px solid var(--line); display: grid; place-items: center; }
+  .more-tile::after { content: ""; position: absolute; inset: 4px; border: 1px solid rgba(168,132,73,.38); }
+  .more-tile .dots { display: grid; grid-template-columns: repeat(3, 14px); gap: 10px; }
+  .more-tile .dots i { width: 10px; height: 10px; transform: rotate(45deg); border: 1px solid var(--gold-deep); }
+  .more-tile .t { position: absolute; bottom: 16px; font: 400 15px/1 "Libertinus Display"; letter-spacing: .2em; color: var(--mist); }
+  .veil { position: absolute; inset: 0; background: rgba(10,15,26,.74); }
+  .chamber { position: absolute; background: linear-gradient(#18253d, #0a0f1a 95%); border: 1px solid rgba(150,172,210,.26); }
+  .chamber::before { content: ""; position: absolute; inset: 5px; border: 1px solid var(--gold-deep); pointer-events: none; }
+  .ribbon { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); background: #22386a; padding: 12px 46px;
+            border-top: 1px solid var(--gold-deep); border-bottom: 1px solid var(--gold-deep);
+            font: 400 20px/1 "Libertinus Display"; letter-spacing: .3em; text-transform: uppercase;
+            clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 14px 100%, 0 50%); }
+  .icons { display: grid; grid-template-columns: repeat(5, 1fr); gap: 26px 22px; padding: 70px 60px 50px; }
+  .icon { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px 6px; border: 1px solid transparent; }
+  .icon .glyph { width: 74px; height: 74px; display: grid; place-items: center; border: 1px solid var(--line); color: var(--mist); background: rgba(10,15,26,.5); }
+  .icon .glyph svg { width: 38px; height: 38px; }
+  .icon .label { text-align: center; line-height: 1.35; }
+  .icon.focus { border-color: var(--gold); background: rgba(216,171,92,.08); }
+  .icon.focus .glyph { color: var(--gold); border-color: var(--gold-deep); }
+  .icon.focus .label { color: var(--gold); }
+  .icon.sep { grid-column: 1 / -1; padding: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-deep), transparent); border: 0; }
+
+  /* ---- B: command rail ---- */
+  .b-shot { transform: translateX(96px) scale(.95); transform-origin: 0 40%; }
+  .rail { position: absolute; left: 0; top: 0; bottom: 0; width: 120px; background: linear-gradient(90deg, rgba(10,15,26,.88), rgba(10,15,26,.0)); }
+  .rail .items { position: absolute; left: 44px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 40px; color: var(--mist); }
+  .rail .items .s { display: flex; align-items: center; gap: 18px; }
+  .rail .items .s .label { opacity: 0; white-space: nowrap; }
+  .rail.open { width: 420px; background: linear-gradient(90deg, rgba(10,15,26,.96) 60%, rgba(10,15,26,0)); }
+  .rail.open .items .s .label { opacity: 1; }
+  .rail .items .s.focus { color: var(--gold); }
+  .rail .items .s.focus .label { color: var(--gold); }
+  .rail .items .s.focus svg { filter: drop-shadow(0 0 8px rgba(255,211,106,.55)); }
+  .rail .rule { position: absolute; left: 118px; top: 220px; bottom: 220px; width: 1px; background: linear-gradient(transparent, var(--gold-deep), transparent); }
+
+  /* ---- C: one-line bar ---- */
+  .bar { position: absolute; left: 0; right: 0; bottom: 46px; display: flex; justify-content: center; align-items: center; gap: 22px; color: var(--mist); }
+  .bar .s { display: flex; align-items: center; gap: 12px; padding: 10px 6px; }
+  .bar .s svg { width: 24px; height: 24px; }
+  .bar .s.focus { color: var(--gold); border-bottom: 1px solid var(--gold-deep); }
+  .bar .s.focus .label { color: var(--gold); }
+  .bar .d { width: 6px; height: 6px; transform: rotate(45deg); background: var(--gold-deep); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.3 15.3 20.5 20.5"/></symbol>
+    <symbol id="i-arrange" viewBox="0 0 24 24"><path d="M12 2.5v19M2.5 12h19M12 2.5l-2.6 2.6M12 2.5l2.6 2.6M12 21.5l-2.6-2.6M12 21.5l2.6-2.6M2.5 12l2.6-2.6M2.5 12l2.6 2.6M21.5 12l-2.6-2.6M21.5 12l-2.6 2.6"/><path d="M12 9.2 14.8 12 12 14.8 9.2 12Z"/></symbol>
+    <symbol id="i-apps" viewBox="0 0 24 24"><path d="M7 3.5 10.5 7 7 10.5 3.5 7Z M17 3.5 20.5 7 17 10.5 13.5 7Z M7 13.5 10.5 17 7 20.5 3.5 17Z M17 13.5 20.5 17 17 20.5 13.5 17Z"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.85 1.85M16.65 16.65l1.85 1.85M5.5 18.5l1.85-1.85M16.65 7.35l1.85-1.85"/><circle cx="12" cy="12" r="6.6"/></symbol>
+    <symbol id="i-house" viewBox="0 0 24 24"><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17"/></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20c1.2-4 4-5.6 7.2-5.6s6 1.6 7.2 5.6"/></symbol>
+    <symbol id="i-scroll" viewBox="0 0 24 24"><path d="M6 4.5h11v13a2.5 2.5 0 0 1-2.5 2.5H6.5A2.5 2.5 0 0 1 4 17.5V16h10"/><path d="M8.5 8.5h6M8.5 11.5h6"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.4 5.6 6 .5-4.6 3.9 1.4 5.9L12 16.3 6.8 19.4l1.4-5.9L3.6 9.6l6-.5Z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19 14.5A7.5 7.5 0 1 1 9.5 5a6 6 0 0 0 9.5 9.5Z"/></symbol>
+    <symbol id="i-bag" viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6Z M9 8V6.5a3 3 0 0 1 6 0V8"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 21c-3.6 0-6-2.4-6-5.6 0-3.4 3-5 3.4-8.4C12 9 13 11 13 12.6c1-.6 1.6-1.8 1.6-3.2 2.4 1.8 3.4 4 3.4 6.2 0 3-2.4 5.4-6 5.4Z"/></symbol>
+  </defs>
+</svg>
+
+<header class="page">
+  <h1>Bottom area · three directions</h1>
+  <p>Each board is the real home screen from the stick with only the bottom area changed. Every option works with arrows, OK and Back alone. Gold marks where focus is in that frame.</p>
+</header>
+
+<!-- ============ A ============ -->
+<section>
+  <h2><b>A</b>Header sigils + More tile</h2>
+  <p class="why">No footer: the painting runs to the bottom edge. Search, Arrange and Settings sit as drawn sigils left of the clock (press Up from the grid); only the focused one shows its name. Amazon's own apps and both settings screens fold into one last grid tile, More, which opens a chamber panel.</p>
+  <div class="pair">
+    <figure><div class="tv"><div class="board">
+      <div class="wall"></div><div class="shot"></div>
+      <div class="a-sigils">
+        <div class="s focus"><svg class="sigil"><use href="#i-search"/></svg><span class="label">Search</span></div>
+        <div class="s"><svg class="sigil"><use href="#i-arrange"/></svg><span class="label">Arrange</span></div>
+        <div class="s"><svg class="sigil"><use href="#i-gear"/></svg><span class="label">Settings</span></div>
+      </div>
+      <div class="more-tile"><div class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="t">MORE</span></div>
+    </div></div><figcaption>Home · focus on Search after pressing Up</figcaption></figure>
+    <figure><div class="tv"><div class="board">
+      <div class="wall"></div><div class="shot"></div><div class="veil"></div>
+      <div class="chamber" style="left:300px; top:190px; width:1320px; height:700px;">
+        <div class="ribbon">More</div>
+        <div class="icons">
+          <div class="icon focus"><div class="glyph"><svg class="sigil"><use href="#i-gear"/></svg></div><span class="label">Fire TV<br>settings</span></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-flame"/></svg></div><span class="label">Hearth<br>settings</span></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-house"/></svg></div><span class="label">Amazon<br>home</span></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-bag"/></svg></div><span class="label">Appstore</span></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-globe"/></svg></div><span class="label">Silk<br>browser</span></div>
+          <div class="icon sep"></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-person"/></svg></div><span class="label">Profiles</span></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-scroll"/></svg></div><span class="label">News</span></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-star"/></svg></div><span class="label">Amazon<br>Kids</span></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-moon"/></svg></div><span class="label">Ambient</span></div>
+          <div class="icon"><div class="glyph"><svg class="sigil"><use href="#i-pulse"/></svg></div><span class="label">System<br>status</span></div>
+        </div>
+      </div>
+    </div></div><figcaption>More opened · Back closes it</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============ B ============ -->
+<section>
+  <h2><b>B</b>Command rail</h2>
+  <p class="why">A slim rail of sigils on the left edge, quiet until focus moves Left onto it; then it widens and names each one, like Google TV's navigation. The grid keeps the full height but gives up some width. Apps opens the same chamber panel as A.</p>
+  <div class="pair">
+    <figure><div class="tv"><div class="board">
+      <div class="wall"></div><div class="shot b-shot"></div>
+      <div class="rail"><div class="rule"></div><div class="items">
+        <div class="s"><svg class="sigil"><use href="#i-search"/></svg><span class="label">Search</span></div>
+        <div class="s"><svg class="sigil"><use href="#i-arrange"/></svg><span class="label">Arrange</span></div>
+        <div class="s"><svg class="sigil"><use href="#i-apps"/></svg><span class="label">Apps</span></div>
+        <div class="s"><svg class="sigil"><use href="#i-gear"/></svg><span class="label">Settings</span></div>
+      </div></div>
+    </div></div><figcaption>Home · rail at rest</figcaption></figure>
+    <figure><div class="tv"><div class="board">
+      <div class="wall"></div><div class="shot b-shot"></div>
+      <div class="rail open"><div class="items">
+        <div class="s"><svg class="sigil"><use href="#i-search"/></svg><span class="label">Search</span></div>
+        <div class="s focus"><svg class="sigil"><use href="#i-arrange"/></svg><span class="label">Arrange</span></div>
+        <div class="s"><svg class="sigil"><use href="#i-apps"/></svg><span class="label">Apps</span></div>
+        <div class="s"><svg class="sigil"><use href="#i-gear"/></svg><span class="label">Settings</span></div>
+      </div></div>
+    </div></div><figcaption>Rail opened by pressing Left · focus on Arrange</figcaption></figure>
+  </div>
+</section>
+
+<!-- ============ C ============ -->
+<section>
+  <h2><b>C</b>One-line command bar</h2>
+  <p class="why">The smallest change: one centered line of four sigil-and-word actions. Apps opens the chamber panel with Amazon's own apps and both settings screens.</p>
+  <div class="pair single">
+    <figure><div class="tv"><div class="board">
+      <div class="wall"></div><div class="shot"></div>
+      <div class="bar">
+        <div class="s focus"><svg class="sigil"><use href="#i-search"/></svg><span class="label">Search</span></div><span class="d"></span>
+        <div class="s"><svg class="sigil"><use href="#i-arrange"/></svg><span class="label">Arrange</span></div><span class="d"></span>
+        <div class="s"><svg class="sigil"><use href="#i-apps"/></svg><span class="label">Apps</span></div><span class="d"></span>
+        <div class="s"><svg class="sigil"><use href="#i-gear"/></svg><span class="label">Settings</span></div>
+      </div>
+    </div></div><figcaption>Home · focus on Search after pressing Down</figcaption></figure>
+  </div>
+</section>
+</body>
+</html>

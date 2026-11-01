@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "spring",
+  "name": "Spring",
+  "version": 1,
+  "author": "Jacob",
+  "colors": {
+    "background": "#12201A",
+    "backgroundGradient": ["#12201A", "#1C3328"],
+    "surface": "#CC1C3328",
+    "surfaceFocused": "#FF2C4D3D",
+    "onSurface": "#F2FAF2",
+    "onSurfaceMuted": "#BFDCC4",
+    "accent": "#F7B2D9",
+    "focusRing": "#BFE3C0"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.2,
+  "effect": { "type": "leaves", "density": 0.3, "color": "#F7B2D9" },
+  "tile": { "cornerRadius": 14 },
+  "greetings": {
+    "morning": "Good morning, {name}",
+    "afternoon": "Good afternoon, {name}",
+    "evening": "Good evening, {name}",
+    "night": "Good night, {name}"
+  },
+  "season": { "from": "03-20", "to": "05-31", "priority": 10 }
+}

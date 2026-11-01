@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "summer",
+  "name": "Summer",
+  "version": 1,
+  "author": "Jacob",
+  "colors": {
+    "background": "#14100A",
+    "backgroundGradient": ["#14100A", "#2E2210"],
+    "surface": "#CC2E2210",
+    "surfaceFocused": "#FF4A3714",
+    "onSurface": "#FBF2E3",
+    "onSurfaceMuted": "#DCC79F",
+    "accent": "#FFC94A",
+    "focusRing": "#FFF3B0"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.2,
+  "effect": { "type": "fireflies", "density": 0.35, "color": "#FFD76A" },
+  "tile": { "cornerRadius": 14 },
+  "greetings": {
+    "morning": "Good morning, {name}",
+    "afternoon": "Good afternoon, {name}",
+    "evening": "Good evening, {name}",
+    "night": "Warm summer night, {name}"
+  },
+  "season": { "from": "06-01", "to": "08-31", "priority": 10 }
+}

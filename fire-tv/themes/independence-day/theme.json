@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "independence-day",
+  "name": "Independence Day",
+  "version": 1,
+  "author": "Jacob",
+  "colors": {
+    "background": "#0A1428",
+    "backgroundGradient": ["#0A1428", "#14203D"],
+    "surface": "#CC14203D",
+    "surfaceFocused": "#FF1F2E55",
+    "onSurface": "#F6F8FC",
+    "onSurfaceMuted": "#B9C6E0",
+    "accent": "#E0393E",
+    "focusRing": "#FFFFFF"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.2,
+  "effect": { "type": "fireworks", "density": 0.55, "color": "#FFFFFF" },
+  "tile": { "cornerRadius": 14 },
+  "greetings": {
+    "morning": "Good morning, {name}",
+    "afternoon": "Happy 4th, {name}",
+    "evening": "Happy Independence Day, {name}",
+    "night": "Good night, {name}"
+  },
+  "season": { "from": "07-01", "to": "07-05", "priority": 50 }
+}

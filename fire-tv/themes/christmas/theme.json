@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "christmas",
+  "name": "Christmas",
+  "version": 2,
+  "author": "Jacob",
+  "colors": {
+    "background": "#06100d",
+    "backgroundGradient": ["#10241d", "#06100d"],
+    "surface": "#CC0F2019",
+    "surfaceFocused": "#FF1E4234",
+    "onSurface": "#F5EFE2",
+    "onSurfaceMuted": "#C4CEC4",
+    "accent": "#E8625A",
+    "focusRing": "#E8C170"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.12,
+  "wallpaperMotion": "none",
+  "focusLight": "#ffc77a",
+  "logo": "logo.png",
+  "fonts": { "display": "display.ttf", "body": "body.ttf" },
+  "displayCaps": true,
+  "effect": { "type": "snow", "density": 0.45, "color": "#F4F8FB" },
+  "tile": { "cornerRadius": 0, "frame": "chamber" },
+  "greetings": {
+    "morning": "Merry morning, {name}",
+    "afternoon": "Season's greetings, {name}",
+    "evening": "The fire's lit, {name}",
+    "night": "Silent night, {name}"
+  },
+  "season": { "from": "12-01", "to": "12-26", "priority": 50 }
+}

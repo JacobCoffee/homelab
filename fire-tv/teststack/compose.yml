@@ -1,0 +1,36 @@
+services:
+  adguard:
+    image: adguard/adguardhome:latest
+    container_name: hearth-teststack-adguard
+    restart: unless-stopped
+    ports:
+      - "${TESTSTACK_HOST:?set TESTSTACK_HOST in config/site.env}:3000:3000/tcp"
+      - "${TESTSTACK_HOST}:5353:53/tcp"
+      - "${TESTSTACK_HOST}:5353:53/udp"
+    volumes:
+      - adguard-work:/opt/adguardhome/work
+      - adguard-conf:/opt/adguardhome/conf
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: hearth-teststack-kuma
+    restart: unless-stopped
+    ports:
+      - "${TESTSTACK_HOST}:3001:3001/tcp"
+    volumes:
+      - kuma-data:/app/data
+
+  catalog:
+    image: caddy:2-alpine
+    container_name: hearth-teststack-catalog
+    restart: unless-stopped
+    ports:
+      - "${TESTSTACK_HOST}:8088:8088/tcp"
+    volumes:
+      - ../dist/catalog:/srv/catalog:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes:
+  adguard-work:
+  adguard-conf:
+  kuma-data:

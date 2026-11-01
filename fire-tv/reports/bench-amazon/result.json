@@ -1,0 +1,794 @@
+{
+  "launcher": "com.amazon.tv.launcher/.ui.HomeActivity_vNext",
+  "version": "7261010.1",
+  "package": "com.amazon.tv.launcher",
+  "host": "FIRETV_HOST",
+  "environment": {
+    "android_release": "11",
+    "sdk": "30",
+    "model": "AFTKRT",
+    "fingerprint": "Amazon/karat/karat:11/RS8160.3380N/0030501844100:user/amz-p,release-keys"
+  },
+  "keys": {
+    "series": 3,
+    "per_series": 36,
+    "measured": 50,
+    "lost": 58
+  },
+  "response_ms": {
+    "p50": 14,
+    "p95": 23.9,
+    "p99": 25.1,
+    "max": 25.1,
+    "n": 50
+  },
+  "movement_ms": {
+    "p50": 473,
+    "p95": 1340.3,
+    "p99": 1391.5,
+    "max": 1391.5,
+    "n": 50
+  },
+  "jank_pct": 14.73,
+  "frames": 3407,
+  "janky_frames": 502,
+  "cold_start_ms": {
+    "p50": 204,
+    "p95": 238,
+    "p99": 238,
+    "max": 238,
+    "n": 5
+  },
+  "return_to_home_ms": {
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null,
+    "n": 0
+  },
+  "idle_cpu_pct": 15.2,
+  "idle_launcher_cpu_pct": 7.2,
+  "pss_mb": 173,
+  "samples": [
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": true,
+      "response_ms": 16.1,
+      "movement_ms": 236.9,
+      "frames": 14,
+      "janky": 0
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": true,
+      "response_ms": 24.6,
+      "movement_ms": 1340.3,
+      "frames": 93,
+      "janky": 1
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": true,
+      "response_ms": 12.0,
+      "movement_ms": 396.7,
+      "frames": 24,
+      "janky": 0
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 20,
+      "measured": true,
+      "response_ms": 16.4,
+      "movement_ms": 1269.3,
+      "frames": 116,
+      "janky": 6
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 19,
+      "measured": true,
+      "response_ms": 18.7,
+      "movement_ms": 418.3,
+      "frames": 84,
+      "janky": 3
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": true,
+      "response_ms": 8.8,
+      "movement_ms": 444.7,
+      "frames": 88,
+      "janky": 44
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": true,
+      "response_ms": 13.4,
+      "movement_ms": 479.1,
+      "frames": 29,
+      "janky": 0
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": true,
+      "response_ms": 20.3,
+      "movement_ms": 1274.3,
+      "frames": 117,
+      "janky": 2
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 20,
+      "measured": true,
+      "response_ms": 21.0,
+      "movement_ms": 1318.3,
+      "frames": 119,
+      "janky": 39
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 19,
+      "measured": true,
+      "response_ms": 8.3,
+      "movement_ms": 458.5,
+      "frames": 92,
+      "janky": 34
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": true,
+      "response_ms": 11.2,
+      "movement_ms": 192.7,
+      "frames": 71,
+      "janky": 3
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": true,
+      "response_ms": 9.9,
+      "movement_ms": 443.7,
+      "frames": 27,
+      "janky": 0
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": true,
+      "response_ms": 9.4,
+      "movement_ms": 1391.5,
+      "frames": 93,
+      "janky": 42
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": true,
+      "response_ms": 9.8,
+      "movement_ms": 427.9,
+      "frames": 26,
+      "janky": 0
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 20,
+      "measured": true,
+      "response_ms": 21.8,
+      "movement_ms": 1371.5,
+      "frames": 91,
+      "janky": 6
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": true,
+      "response_ms": 17.9,
+      "movement_ms": 454.7,
+      "frames": 75,
+      "janky": 22
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": true,
+      "response_ms": 16.0,
+      "movement_ms": 433.9,
+      "frames": 26,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": true,
+      "response_ms": 18.9,
+      "movement_ms": 1287.9,
+      "frames": 86,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": true,
+      "response_ms": 16.7,
+      "movement_ms": 466.2,
+      "frames": 28,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 20,
+      "measured": true,
+      "response_ms": 11.2,
+      "movement_ms": 1327.9,
+      "frames": 117,
+      "janky": 45
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": true,
+      "response_ms": 16.8,
+      "movement_ms": 402.2,
+      "frames": 80,
+      "janky": 1
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": true,
+      "response_ms": 12.1,
+      "movement_ms": 445.5,
+      "frames": 27,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": true,
+      "response_ms": 12.1,
+      "movement_ms": 1243.8,
+      "frames": 83,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": true,
+      "response_ms": 21.3,
+      "movement_ms": 454.9,
+      "frames": 27,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 20,
+      "measured": true,
+      "response_ms": 12.5,
+      "movement_ms": 1281.9,
+      "frames": 117,
+      "janky": 38
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 19,
+      "measured": true,
+      "response_ms": 10.9,
+      "movement_ms": 244.1,
+      "frames": 75,
+      "janky": 2
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": true,
+      "response_ms": 14.0,
+      "movement_ms": 414.2,
+      "frames": 91,
+      "janky": 46
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": true,
+      "response_ms": 23.9,
+      "movement_ms": 340.3,
+      "frames": 20,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": true,
+      "response_ms": 11.3,
+      "movement_ms": 1294.3,
+      "frames": 85,
+      "janky": 40
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": true,
+      "response_ms": 22.0,
+      "movement_ms": 485.8,
+      "frames": 29,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 20,
+      "measured": true,
+      "response_ms": 25.1,
+      "movement_ms": 1276.5,
+      "frames": 86,
+      "janky": 0
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": true,
+      "response_ms": 21.1,
+      "movement_ms": 469.8,
+      "frames": 76,
+      "janky": 3
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": true,
+      "response_ms": 20.0,
+      "movement_ms": 370.4,
+      "frames": 22,
+      "janky": 0
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": true,
+      "response_ms": 10.8,
+      "movement_ms": 1277.1,
+      "frames": 85,
+      "janky": 41
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": true,
+      "response_ms": 10.6,
+      "movement_ms": 477.1,
+      "frames": 29,
+      "janky": 0
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 20,
+      "measured": true,
+      "response_ms": 23.0,
+      "movement_ms": 1291.0,
+      "frames": 118,
+      "janky": 1
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 19,
+      "measured": true,
+      "response_ms": 14.2,
+      "movement_ms": 414.1,
+      "frames": 85,
+      "janky": 33
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": true,
+      "response_ms": 15.2,
+      "movement_ms": 412.7,
+      "frames": 84,
+      "janky": 38
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": true,
+      "response_ms": 13.2,
+      "movement_ms": 410.6,
+      "frames": 25,
+      "janky": 0
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": true,
+      "response_ms": 13.2,
+      "movement_ms": 1283.5,
+      "frames": 84,
+      "janky": 1
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": true,
+      "response_ms": 13.9,
+      "movement_ms": 513.2,
+      "frames": 31,
+      "janky": 0
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 20,
+      "measured": true,
+      "response_ms": 18.5,
+      "movement_ms": 1297.4,
+      "frames": 87,
+      "janky": 1
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": true,
+      "response_ms": 8.9,
+      "movement_ms": 1274.9,
+      "frames": 76,
+      "janky": 2
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": true,
+      "response_ms": 14.3,
+      "movement_ms": 432.1,
+      "frames": 80,
+      "janky": 4
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": true,
+      "response_ms": 18.2,
+      "movement_ms": 497.9,
+      "frames": 30,
+      "janky": 0
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": true,
+      "response_ms": 12.0,
+      "movement_ms": 1260.8,
+      "frames": 85,
+      "janky": 1
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": true,
+      "response_ms": 8.7,
+      "movement_ms": 490.2,
+      "frames": 30,
+      "janky": 0
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 20,
+      "measured": true,
+      "response_ms": 9.9,
+      "movement_ms": 1277.5,
+      "frames": 86,
+      "janky": 1
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": true,
+      "response_ms": 22.1,
+      "movement_ms": 406.2,
+      "frames": 72,
+      "janky": 1
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 19,
+      "measured": true,
+      "response_ms": 7.8,
+      "movement_ms": 446.0,
+      "frames": 86,
+      "janky": 1
+    }
+  ]
+}

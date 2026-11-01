@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "sidequest",
+  "name": "SideQuest",
+  "version": 3,
+  "author": "Jacob",
+  "colors": {
+    "background": "#0a0f1a",
+    "backgroundGradient": [
+      "#18253d",
+      "#0a0f1a"
+    ],
+    "surface": "#CC18253D",
+    "surfaceFocused": "#FF2E4A85",
+    "onSurface": "#f2efe9",
+    "onSurfaceMuted": "#cfcac1",
+    "accent": "#d8ab5c",
+    "focusRing": "#d8ab5c"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.16,
+  "wallpaperMotion": "drift",
+  "focusLight": "#ffd36a",
+  "logo": "logo.png",
+  "fonts": {
+    "display": "display.ttf",
+    "body": "body.ttf"
+  },
+  "displayCaps": true,
+  "effect": {
+    "type": "embers",
+    "density": 0.3,
+    "color": "#ffd36a"
+  },
+  "tile": {
+    "cornerRadius": 0,
+    "frame": "chamber"
+  },
+  "greetings": {
+    "morning": "Well met, {name}",
+    "afternoon": "Well met, {name}",
+    "evening": "The hearths are lit, {name}",
+    "night": "Rest well, {name}"
+  },
+  "season": {
+    "from": "11-01",
+    "to": "11-10",
+    "priority": 60
+  }
+}

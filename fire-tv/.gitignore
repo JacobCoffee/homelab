@@ -1,0 +1,4 @@
+apk/
+dist/
+config/hearth.local.json
+config/site.env

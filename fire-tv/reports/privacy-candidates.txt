@@ -1,0 +1,20 @@
+# Privacy audit written by tools/privacy.py.
+# Voice, ACR and telemetry candidates this TV answered for. Everything is DISABLED, not
+# uninstalled, and the undo is the one every list uses:
+#   TV_HOST=<tv ip> tools/disable.sh privacy-candidates.txt
+#   TV_HOST=<tv ip> tools/restore.sh privacy-candidates.txt
+#
+# Each line says what the package is and why it is here. Nothing below is proven to record
+# anything: the audit reports what the firmware and the packages declare.
+
+# Voice assistants and wake word
+com.amazon.vizzini                            # the TV's own speech service (named by the TV: assistant)
+
+# Matched by name only, nothing else known
+com.amazon.alexamediaplayer.runtime.ftv       # matched by name only (appops: no RECORD_AUDIO history returned)
+com.amazon.alexa.datastore.app                # matched by name only (appops: no RECORD_AUDIO history returned)
+com.amazon.alexadirectivebrokerservice        # matched by name only (appops: no RECORD_AUDIO history returned)
+com.amazon.tv.alexanotifications              # matched by name only (appops: no RECORD_AUDIO history returned)
+com.amazon.tv.alexaalerts                     # matched by name only (appops: no RECORD_AUDIO history returned)
+com.amazon.alexa.externalmediaplayer.fireos   # matched by name only (appops: no RECORD_AUDIO history returned)
+com.amazon.privacypassservice                 # matched by name only (appops: no RECORD_AUDIO history returned)

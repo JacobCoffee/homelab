@@ -1,0 +1,61 @@
+# Packages switched off with `pm disable-user --user 0`. Nothing is uninstalled;
+# `./firetv.sh revert` (or `pm enable <pkg>`) brings any of them back.
+# Format: <package> <description>. Lines starting with # are ignored.
+# Source of the vetted entries: Homestead's Debloat.CATALOGUE (Sarg338/Homestead, v1.9.0).
+
+# --- Advertising (Homestead: SAFE)
+com.amazon.hybridadidservice          Advertising ID service
+com.amazon.tv.acr                     Automatic Content Recognition: samples the screen for ad targeting
+com.amazon.sneakpeek                  Auto-playing trailer banner on Amazon's home screen
+com.amazon.shoptv.client              Shopping row
+com.amazon.shoptv.firetv.client       Shopping row (Fire TV variant)
+com.amazon.minitv.android.app         Amazon MiniTV ad-supported channel
+com.amazon.ftv.screensaver            Amazon screensaver with sponsored images
+# com.amazon.ftvads.deeplinking       Ad deep-link handler: PROTECTED on Fire OS 8.0, refused 2026-11-01
+com.amazon.kso.blackbird              Sponsored banner/row ad sync and bidding
+com.amazon.uxnotification             Promotional pop-ups
+com.amazon.systemnotices              System notice pop-ups
+com.amazon.tv.releasenotes            "What's new" screens after updates
+com.amazon.tv.easyupgrade             "Upgrade your Fire TV" nags (not the OTA updater)
+#com.amazon.gamehub                   Games / Luna promotion hub (re-enabled 2026-11-01: Luna is kept on this stick)
+com.amazon.tv.developer.dataservice   Shares personalization data with third-party apps
+com.amazon.privacypassservice         Privacy Pass tokens for Amazon's ad requests (privacy audit 2026-11-01)
+
+# --- Telemetry (Homestead: SAFE; several usually protected by Fire OS)
+com.amazon.dp.logger                  Amazon logging framework
+com.amazon.wifilocker                 Uploads saved Wi-Fi passwords to the Amazon account
+com.amazon.client.metrics.api         Metrics reporting API
+# Protected on Fire OS 8.0 (pm refused, 2026-11-01):
+# com.amazon.client.metrics           Usage-metrics upload service
+# com.amazon.device.metrics           Device metrics collector
+# com.amazon.diode                    Diagnostics uploader
+# com.amazon.device.crashmanager      Crash-report uploader
+# com.amazon.device.logmanager        Log upload service
+com.amazon.wirelessmetrics.service    Wi-Fi/network metrics reporting
+com.amazon.perfc                      Performance collector
+com.amazon.perfcollection             Performance collector (2)
+com.amazon.device.telemetry.emitter   Telemetry emitter (NOT in Homestead's list; added for this device)
+
+# --- Tutorials and onboarding (Homestead: SAFE)
+com.amazon.tmm.tutorial               First-run tour
+com.amazon.storm.lightning.tutorial   Phone remote-app tutorial
+com.amazon.tigris                     Appstore first-run experience
+com.amazon.tv.ffsprovisioneeclient    Frustration-Free Setup of other Amazon devices
+
+# --- Unused Amazon apps (chosen 2026-11-01)
+#com.amazon.firebat                   Prime Video (re-enabled 2026-11-01: the TCL remote's Prime button opens it here)
+com.amazon.bueller.music              Amazon Music
+com.amazon.bueller.photos             Amazon Photos
+com.amazon.imdb.tv.android.app        Freevee / IMDb TV
+com.amazon.whad                       Wireless Home Audio daemon (Echo speaker pairing)
+com.amazon.whasettings                Wireless Home Audio settings
+com.amazon.ods.kindleconnect          "Show on Fire TV" casting from Echo Show / Fire tablet
+
+# --- Alexa voice (chosen 2026-11-01: no voice use; breaks the mic button and voice search)
+# Keep com.amazon.vizzini: disabling it can show "Unable to detect your remote" (reports/privacy-audit.md).
+com.amazon.alexadirectivebrokerservice      Routes parsed voice commands to the app that acts on them
+com.amazon.alexamediaplayer.runtime.ftv     Lets Alexa control playback
+com.amazon.alexa.datastore.app              Local Alexa state store
+com.amazon.tv.alexanotifications            Alexa notification banners
+com.amazon.tv.alexaalerts                   Alexa timers, alarms and reminders
+com.amazon.alexa.externalmediaplayer.fireos Hands "Alexa, play X" off to third-party apps

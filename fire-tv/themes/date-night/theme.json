@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "date-night",
+  "name": "Date Night",
+  "version": 1,
+  "author": "Jacob",
+  "colors": {
+    "background": "#0e050a",
+    "backgroundGradient": ["#260d1b", "#0e050a"],
+    "surface": "#CC200E19",
+    "surfaceFocused": "#FF461C33",
+    "onSurface": "#F8EDE6",
+    "onSurfaceMuted": "#D8C4C5",
+    "accent": "#F2A890",
+    "focusRing": "#EBBE92"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.10,
+  "wallpaperMotion": "none",
+  "focusLight": "#ff9e66",
+  "logo": "logo.png",
+  "fonts": { "display": "display.ttf", "body": "body.ttf" },
+  "displayCaps": false,
+  "effect": { "type": "fireflies", "density": 0.2, "color": "#FFB27A" },
+  "tile": { "cornerRadius": 0, "frame": "chamber" },
+  "greetings": {
+    "morning": "Morning, you two",
+    "afternoon": "Save the evening",
+    "evening": "Evening, you two",
+    "night": "Stay a little longer"
+  }
+}

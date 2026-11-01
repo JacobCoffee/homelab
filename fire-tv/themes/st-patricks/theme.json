@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "st-patricks",
+  "name": "St. Patrick's Day",
+  "version": 1,
+  "author": "Jacob",
+  "colors": {
+    "background": "#07160F",
+    "backgroundGradient": ["#07160F", "#0F2B1C"],
+    "surface": "#CC0F2B1C",
+    "surfaceFocused": "#FF1C4A30",
+    "onSurface": "#EFFBF2",
+    "onSurfaceMuted": "#B6D9C3",
+    "accent": "#2ECC71",
+    "focusRing": "#FFD700"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.2,
+  "effect": { "type": "confetti", "density": 0.5, "color": "#2ECC71" },
+  "tile": { "cornerRadius": 14 },
+  "greetings": {
+    "morning": "Top o' the morning, {name}",
+    "afternoon": "Happy St. Patrick's, {name}",
+    "evening": "Good evening, {name}",
+    "night": "Good night, {name}"
+  },
+  "season": { "from": "03-14", "to": "03-18", "priority": 50 }
+}

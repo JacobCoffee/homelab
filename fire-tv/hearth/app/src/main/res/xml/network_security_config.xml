@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The homelab (AdGuard, Uptime Kuma, the theme catalog) is plain http at whatever LAN host
+  the pushed config names, which is not known at build time. Android's network security
+  config only matches exact/suffix hostnames, not CIDR ranges, so there is no way to scope
+  cleartext to "private ranges" by domain rule alone; cleartext is allowed app wide here,
+  and in practice is only ever used for the configured homelab hosts: weather and the guild
+  API are always called over https regardless of this setting.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "new-year",
+  "name": "New Year",
+  "version": 2,
+  "author": "Jacob",
+  "colors": {
+    "background": "#06060d",
+    "backgroundGradient": ["#141428", "#06060d"],
+    "surface": "#CC121226",
+    "surfaceFocused": "#FF2A2848",
+    "onSurface": "#FAF6E8",
+    "onSurfaceMuted": "#CAC5DA",
+    "accent": "#F2CF7A",
+    "focusRing": "#F2CF7A"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.12,
+  "wallpaperMotion": "none",
+  "focusLight": "#ffe0a0",
+  "logo": "logo.png",
+  "fonts": { "display": "display.ttf", "body": "body.ttf" },
+  "displayCaps": true,
+  "effect": { "type": "fireworks", "density": 0.35 },
+  "tile": { "cornerRadius": 0, "frame": "chamber" },
+  "greetings": {
+    "morning": "Happy New Year, {name}",
+    "afternoon": "Happy New Year, {name}",
+    "evening": "Last call for the old year, {name}",
+    "night": "Here's to the new year, {name}"
+  },
+  "season": { "from": "12-31", "to": "01-02", "priority": 55 }
+}

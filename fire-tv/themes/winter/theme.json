@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "winter",
+  "name": "Winter",
+  "version": 1,
+  "author": "Jacob",
+  "colors": {
+    "background": "#0D1826",
+    "backgroundGradient": ["#0D1826", "#16263B"],
+    "surface": "#CC16263B",
+    "surfaceFocused": "#FF1F3550",
+    "onSurface": "#EAF2FB",
+    "onSurfaceMuted": "#A9BBD1",
+    "accent": "#8FD3FE",
+    "focusRing": "#D9F0FF"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.2,
+  "effect": { "type": "snow", "density": 0.25, "color": "#E8F6FF" },
+  "tile": { "cornerRadius": 14 },
+  "greetings": {
+    "morning": "Good morning, {name}",
+    "afternoon": "Stay warm, {name}",
+    "evening": "Good evening, {name}",
+    "night": "Quiet winter night, {name}"
+  },
+  "season": { "from": "12-27", "to": "02-28", "priority": 10 }
+}

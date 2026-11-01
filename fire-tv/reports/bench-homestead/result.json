@@ -1,0 +1,594 @@
+{
+  "launcher": "com.homestead.launcher/.MainActivity",
+  "version": "1.9.0",
+  "package": "com.homestead.launcher",
+  "host": "FIRETV_HOST",
+  "environment": {
+    "android_release": "11",
+    "sdk": "30",
+    "model": "AFTKRT",
+    "fingerprint": "Amazon/karat/karat:11/RS8160.3380N/0030501844100:user/amz-p,release-keys"
+  },
+  "keys": {
+    "series": 3,
+    "per_series": 36,
+    "measured": 0,
+    "lost": 108
+  },
+  "response_ms": {
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null,
+    "n": 0
+  },
+  "movement_ms": {
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null,
+    "n": 0
+  },
+  "jank_pct": null,
+  "frames": 0,
+  "janky_frames": 0,
+  "cold_start_ms": {
+    "p50": 611,
+    "p95": 664,
+    "p99": 664,
+    "max": 664,
+    "n": 5
+  },
+  "return_to_home_ms": {
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null,
+    "n": 0
+  },
+  "idle_cpu_pct": 5.5,
+  "idle_launcher_cpu_pct": 0.0,
+  "pss_mb": 48,
+  "samples": [
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 1,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 2,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 19,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 20,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 22,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 21,
+      "measured": false
+    },
+    {
+      "series": 3,
+      "key": 19,
+      "measured": false
+    }
+  ]
+}

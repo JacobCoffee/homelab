@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "id": "default",
+  "name": "Default",
+  "version": 1,
+  "author": "Jacob",
+  "colors": {
+    "background": "#0B1220",
+    "backgroundGradient": ["#0B1220", "#121B2E"],
+    "surface": "#CC16233A",
+    "surfaceFocused": "#FF1F2E47",
+    "onSurface": "#F2F4F8",
+    "onSurfaceMuted": "#A9B4C4",
+    "accent": "#5B8DEF",
+    "focusRing": "#8FB4FF"
+  },
+  "effect": { "type": "none", "density": 0, "color": "#FFFFFF" },
+  "tile": { "cornerRadius": 14 },
+  "greetings": {
+    "morning": "Good morning, {name}",
+    "afternoon": "Good afternoon, {name}",
+    "evening": "Good evening, {name}",
+    "night": "Good night, {name}"
+  }
+}

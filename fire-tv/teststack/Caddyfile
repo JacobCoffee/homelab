@@ -1,0 +1,4 @@
+:8088 {
+	root * /srv/catalog
+	file_server browse
+}

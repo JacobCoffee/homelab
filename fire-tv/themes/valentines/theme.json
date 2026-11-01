@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "valentines",
+  "name": "Valentine's Day",
+  "version": 1,
+  "author": "Jacob",
+  "colors": {
+    "background": "#22101A",
+    "backgroundGradient": ["#22101A", "#381A2E"],
+    "surface": "#CC381A2E",
+    "surfaceFocused": "#FF5A2645",
+    "onSurface": "#FBEAF1",
+    "onSurfaceMuted": "#D9AFC3",
+    "accent": "#FF4D6D",
+    "focusRing": "#FFB3C6"
+  },
+  "wallpaper": "wallpaper.webp",
+  "wallpaperDim": 0.25,
+  "effect": { "type": "hearts", "density": 0.45, "color": "#FF4D6D" },
+  "tile": { "cornerRadius": 14 },
+  "greetings": {
+    "morning": "Good morning, {name}",
+    "afternoon": "Happy Valentine's, {name}",
+    "evening": "Good evening, {name}",
+    "night": "Sweet dreams, {name}"
+  },
+  "season": { "from": "02-07", "to": "02-15", "priority": 50 }
+}

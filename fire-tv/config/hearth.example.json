@@ -1,0 +1,45 @@
+{
+  "greetingName": "friend",
+  "timezone": "America/New_York",
+  "weather": {
+    "lat": 40.7128,
+    "lon": -74.006,
+    "label": "New York",
+    "units": "fahrenheit"
+  },
+  "guild": {
+    "baseUrl": "https://sidequest-guild.com",
+    "maxEvents": 3
+  },
+  "uptimeKuma": {
+    "baseUrl": "http://192.168.1.10:3001",
+    "statusPageSlug": "home"
+  },
+  "adguard": {
+    "baseUrl": "http://192.168.1.10:3000",
+    "username": "admin",
+    "password": "CHANGE_ME"
+  },
+  "themeCatalogUrl": "http://192.168.1.10:8088/index.json",
+  "apps": {
+    "order": [
+      "org.jellyfin.androidtv",
+      "com.hbo.hbonow",
+      "com.disney.disneyplus",
+      "com.amazon.firetv.youtube",
+      "com.hulu.plus",
+      "com.amazon.firebat",
+      "com.nvidia.geforcenow",
+      "gamepass.fire.tv",
+      "com.amazon.spiderpork",
+      "com.spotify.tv.android"
+    ],
+    "hidden": [
+      "com.amazon.smarthomemapviewapp"
+    ]
+  },
+  "tv": {
+    "host": "192.168.1.51",
+    "port": 47801
+  }
+}
