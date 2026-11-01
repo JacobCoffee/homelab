@@ -10,7 +10,8 @@ sequenceDiagram
   participant Router as Spectrum router (DHCP)
   participant Mac as Mac (dnsmasq proxyDHCP + TFTP, server.py HTTP)
   PC->>Router: DHCP → IP address
-  PC->>Mac: proxyDHCP → boot file; TFTP ipxe.efi / undionly.kpxe
+  PC->>Mac: proxyDHCP → boot file name
+  PC->>Mac: TFTP ipxe.efi / undionly.kpxe
   PC->>Mac: GET /boot.ipxe?mac=…
   Mac-->>PC: installer (new MAC) or "exit" (already installed → boots USB)
   PC->>Mac: kernel + initrd + ISO (~1.7 GB)
