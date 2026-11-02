@@ -163,11 +163,10 @@ HelmRelease here.
   tunnel, DNS, and the cluster's pod/service subnets get through) and qBittorrent rides inside
   with no network config of its own. AirVPN, static port forwarding: gluetun's
   `FIREWALL_VPN_INPUT_PORTS` and qBittorrent's `--torrenting-port` both read the same
-  `FORWARDED_PORT` secret key, so they can't drift apart. `secret.sops.yaml` has placeholder
-  values until `vault_vpn_wireguard_private_key`, `vault_vpn_wireguard_preshared_key`,
-  `vault_vpn_wireguard_addresses` and `vault_vpn_forwarded_port` exist in the Ansible vault (the
-  AirVPN account doesn't exist yet) -- this is the only Kustomization under `media/` waiting on a
-  secret; everything else applies and runs without it.
+  `FORWARDED_PORT` secret key, so they can't drift apart. The WireGuard key, preshared key,
+  address and port come from `vault_vpn_*` in the Ansible vault (the forwarded port is AirVPN
+  Client Area → Ports; the rest is the Config Generator's Linux/WireGuard `.conf`). Rotating them
+  means updating the vault and `sops kubernetes/apps/media/gluetun-qbittorrent/app/secret.sops.yaml`.
 - **Node pinning:** config PVCs use `proxmox-vmdata` (RWO, `WaitForFirstConsumer`). The first pod
   for each app picks a node, Proxmox CSI provisions the volume on that node's local ZFS pool, and
   the resulting PV's node affinity pins every future pod for that app to the same node -- there's

@@ -1,10 +1,7 @@
 # qBittorrent behind a gluetun VPN sidecar (same Pod, so they share a network namespace --
 # gluetun owns it and firewalls it; qBittorrent rides inside with no network config of its own).
-# This is the only Kustomization waiting on a vault secret: vault_vpn_wireguard_private_key,
-# vault_vpn_wireguard_preshared_key, vault_vpn_wireguard_addresses and vault_vpn_forwarded_port
-# don't exist yet (AirVPN account not created). Until secret.sops.yaml is updated with real
-# values, the gluetun container CrashLoopBackOffs on bad WireGuard config; everything else in
-# this Kustomization (the qBittorrent container, PVC, Service, Route) still applies cleanly.
+# The AirVPN WireGuard credentials live in app/secret.sops.yaml; the Ansible vault
+# (vault_vpn_*) is the source of truth for them.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

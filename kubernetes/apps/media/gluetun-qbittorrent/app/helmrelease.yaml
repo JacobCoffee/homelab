@@ -4,8 +4,9 @@
 # through), and qBittorrent rides inside with no network settings of its own.
 #
 # AirVPN, static port forwarding: FIREWALL_VPN_INPUT_PORTS and qBittorrent's --torrenting-port
-# both come from the same FORWARDED_PORT secret key, so the two always agree (see secret.sops.yaml
-# for where the real values come from once the AirVPN account exists).
+# both come from the same FORWARDED_PORT secret key, so the two always agree. FIREWALL_INPUT_PORTS
+# opens the web UI on the pod interface (eth0) for kubelet probes and the Service; gluetun drops
+# all other inbound traffic there.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -30,6 +31,7 @@ spec:
               VPN_TYPE: wireguard
               SERVER_COUNTRIES: United States
               FIREWALL_OUTBOUND_SUBNETS: 10.244.0.0/16,10.96.0.0/12
+              FIREWALL_INPUT_PORTS: "8080"
               WIREGUARD_PRIVATE_KEY:
                 valueFrom:
                   secretKeyRef:
