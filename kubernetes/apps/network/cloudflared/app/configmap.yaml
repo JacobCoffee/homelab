@@ -1,0 +1,17 @@
+# originServerName must match the wildcard cert's CN so Envoy's HTTPS listener presents a cert
+# cloudflared trusts without disabling verification.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+  namespace: network
+data:
+  config.yaml: |
+    tunnel: ${CLOUDFLARE_TUNNEL_ID}
+    credentials-file: /etc/cloudflared/creds/credentials.json
+    ingress:
+      - hostname: "*.z7x.org"
+        service: https://envoy-external.network.svc.cluster.local:443
+        originRequest:
+          originServerName: z7x.org
+      - service: http_status:404

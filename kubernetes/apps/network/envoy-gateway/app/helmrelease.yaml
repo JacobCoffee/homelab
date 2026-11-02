@@ -1,0 +1,16 @@
+# crds.enabled (chart default) installs both the Envoy Gateway CRDs and the upstream Gateway API CRDs,
+# so no separate Gateway API CRD install is needed.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: envoy-gateway
+  namespace: envoy-gateway-system
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: envoy-gateway
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace

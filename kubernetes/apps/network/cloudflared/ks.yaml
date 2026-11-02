@@ -1,0 +1,34 @@
+# Isolated: needs a `cloudflared-tunnel` Secret (key credentials.json) added later by the cluster
+# operator once they've run `cloudflared tunnel create`. Nothing dependsOn this Kustomization.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cloudflared
+  namespace: flux-system
+spec:
+  targetNamespace: network
+  path: ./kubernetes/apps/network/cloudflared/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    # Routes tunnel traffic to the external Gateway's (stable-named) Service.
+    - name: envoy-gateway-config
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: cloudflared
+      namespace: network

@@ -1,0 +1,29 @@
+# Isolated from the cert-manager Kustomization above so the controller itself reconciles green even
+# before the cloudflare-api-token Secret exists; only this Kustomization (and anything that explicitly
+# dependsOn it) is blocked while the secret is missing.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cert-manager-issuers
+  namespace: flux-system
+spec:
+  targetNamespace: cert-manager
+  path: ./kubernetes/apps/cert-manager/cert-manager-issuers/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: cert-manager
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings

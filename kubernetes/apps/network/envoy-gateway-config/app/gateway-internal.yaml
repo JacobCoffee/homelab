@@ -1,0 +1,36 @@
+# Routed to by external-dns-adguard; stays off the public internet.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: internal
+  namespace: network
+spec:
+  gatewayClassName: envoy
+  infrastructure:
+    annotations:
+      # Pin the LoadBalancer IP via Cilium LB-IPAM instead of letting it pick the next free one.
+      lbipam.cilium.io/ips: "10.10.30.200"
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-internal
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: "*.z7x.org"
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.z7x.org"
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: z7x-org-tls

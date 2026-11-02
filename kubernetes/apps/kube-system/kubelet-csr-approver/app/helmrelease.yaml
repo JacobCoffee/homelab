@@ -1,0 +1,17 @@
+# Auto-approves kubelet-serving CSRs now that Talos has `rotate-server-certificates: true` set, so
+# metrics-server (and anything else) gets a trusted kubelet TLS cert instead of needing --kubelet-insecure-tls.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kubelet-csr-approver
+  namespace: kube-system
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: kubelet-csr-approver
+  values:
+    # Only approve CSRs whose SAN matches one of our three node names or their lab-zone IPs.
+    providerRegex: '^(hnk8s0[1-3]|10\.10\.30\.1[1-3])$'
+    allowedDnsNames: 1
+    bypassDnsResolution: false

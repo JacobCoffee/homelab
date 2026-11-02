@@ -1,0 +1,22 @@
+# Needs a `cloudflare-api-token` Secret (key `api-token`) in the cert-manager namespace -- cert-manager's
+# cluster resource namespace -- added later by the cluster operator. Not referenced by anything until
+# that secret exists, so the rest of the cluster stays green in the meantime.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-production
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: "${ACME_EMAIL}"
+    privateKeySecretRef:
+      name: letsencrypt-production-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+        selector:
+          dnsZones:
+            - z7x.org

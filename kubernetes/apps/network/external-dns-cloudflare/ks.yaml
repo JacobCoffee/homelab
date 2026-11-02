@@ -1,0 +1,34 @@
+# Isolated from external-dns-adguard: needs its own cloudflare-api-token secret, added by the cluster
+# operator after this lands, without blocking anything else (nothing dependsOn this).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: external-dns-cloudflare
+  namespace: flux-system
+spec:
+  targetNamespace: network
+  path: ./kubernetes/apps/network/external-dns-cloudflare/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    # Needs the Gateway API CRDs + controller to watch Gateways/HTTPRoutes.
+    - name: envoy-gateway
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: external-dns-cloudflare
+      namespace: network

@@ -1,0 +1,35 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: envoy-gateway-config
+  namespace: flux-system
+spec:
+  targetNamespace: network
+  path: ./kubernetes/apps/network/envoy-gateway-config/app
+  prune: true
+  # Not wait: the wildcard Certificate stays pending until the Cloudflare token exists, and that
+  # must not hold back the Gateways (HTTP works before the cert; HTTPS listeners resolve once the
+  # z7x-org-tls Secret appears).
+  wait: false
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: envoy-gateway
+    - name: cert-manager   # Certificate CRD
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+  healthChecks:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      name: internal
+      namespace: network
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      name: external
+      namespace: network

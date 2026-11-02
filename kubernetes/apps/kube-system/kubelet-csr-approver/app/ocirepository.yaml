@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: kubelet-csr-approver
+  namespace: kube-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/postfinance/charts/kubelet-csr-approver
+  ref:
+    tag: "1.2.15"

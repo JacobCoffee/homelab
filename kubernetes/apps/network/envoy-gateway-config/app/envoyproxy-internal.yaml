@@ -1,0 +1,16 @@
+# Pins the managed Service/Deployment name (Envoy Gateway otherwise appends a random hash), so other
+# manifests (e.g. cloudflared) can reference a stable in-cluster hostname.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-internal
+  namespace: network
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        name: envoy-internal
+        replicas: 2
+      envoyService:
+        name: envoy-internal

@@ -1,0 +1,11 @@
+# Announces LoadBalancer IPs over ARP across the 10.10.30.0/24 lab zone (no BGP peer available).
+# Talos names the virtio NIC ens18 (aliased net0 in machine config).
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: default
+spec:
+  loadBalancerIPs: true
+  interfaces:
+    - ^ens[0-9]+$
+  nodeSelector: {}

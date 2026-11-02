@@ -1,0 +1,23 @@
+# Chart 3.14.0 is the latest published as of 2026-11-01 but still defaults to appVersion v0.9.0;
+# image.tag pins the actual v0.9.1 release (security fix only, same API).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: metrics-server
+  namespace: kube-system
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: metrics-server
+      version: "3.14.0"
+      sourceRef:
+        kind: HelmRepository
+        name: metrics-server
+        namespace: kube-system
+  values:
+    image:
+      tag: v0.9.1
+    # Real kubelet-serving certs are approved by kubelet-csr-approver, so the default secure TLS
+    # verification against the kubelet API can stay on (no --kubelet-insecure-tls needed).
+    replicas: 2

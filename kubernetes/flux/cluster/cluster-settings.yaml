@@ -1,0 +1,14 @@
+# Non-secret postBuild.substituteFrom variables. Referenced by cluster-apps and by every per-app
+# Kustomization that needs a variable, since Flux does not inherit postBuild between parent/child
+# Kustomizations -- each ks.yaml that uses ${...} must list this ConfigMap itself.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-settings
+  namespace: flux-system
+data:
+  # Set once `cloudflared tunnel create` has run; consumed by the cloudflared ConfigMap and by the
+  # external Gateway's external-dns.alpha.kubernetes.io/target annotation.
+  CLOUDFLARE_TUNNEL_ID: "REPLACE_ME"
+  # Contact address for Let's Encrypt expiry/revocation notices (cert-manager ClusterIssuer).
+  ACME_EMAIL: "admin@z7x.org"

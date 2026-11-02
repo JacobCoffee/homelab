@@ -1,0 +1,9 @@
+# kube-system already exists on every cluster; no Namespace resource needed here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./cilium/ks.yaml
+  - ./cilium-config/ks.yaml
+  - ./kubelet-csr-approver/ks.yaml
+  - ./metrics-server/ks.yaml
+  - ./spegel/ks.yaml

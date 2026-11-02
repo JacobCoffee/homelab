@@ -1,0 +1,27 @@
+# Adopts the Cilium release installed by hand (same release/chart/namespace) immediately before
+# `flux bootstrap` ran. helm-controller takes ownership on first reconcile instead of reinstalling,
+# as long as `values` below actually match what was passed to that first `helm install`.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  interval: 1h
+  releaseName: cilium
+  chart:
+    spec:
+      chart: cilium
+      version: "1.20.4"
+      sourceRef:
+        kind: HelmRepository
+        name: cilium
+        namespace: kube-system
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
+  valuesFrom:
+    - kind: ConfigMap
+      name: cilium-helm-values
+      valuesKey: values.yaml

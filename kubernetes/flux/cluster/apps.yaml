@@ -1,0 +1,26 @@
+# Top-level Flux Kustomization that reconciles everything under kubernetes/apps. Lives next to the
+# flux-system/ directory that `flux bootstrap` writes, but is hand-authored (bootstrap only writes
+# flux-system/, it does not create this object).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-apps
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 2m
+  timeout: 5m
+  path: ./kubernetes/apps
+  prune: true
+  wait: false
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings

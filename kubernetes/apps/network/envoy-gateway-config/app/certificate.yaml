@@ -1,0 +1,15 @@
+# Single wildcard cert, shared by both Gateways' HTTPS listeners (same Secret name, same namespace).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: z7x-org-tls
+  namespace: network
+spec:
+  secretName: z7x-org-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  commonName: z7x.org
+  dnsNames:
+    - z7x.org
+    - "*.z7x.org"

@@ -1,0 +1,41 @@
+# Routed to by external-dns-cloudflare (which publishes the hostnames of HTTPRoutes attached here as
+# proxied CNAMEs to the Cloudflare tunnel) and by cloudflared (which forwards tunnel traffic to this
+# Gateway's Service over HTTPS).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: external
+  namespace: network
+  annotations:
+    # Read by external-dns' gateway-httproute source: publish a CNAME to the tunnel instead of an A
+    # record to this Gateway's (LAN-only) LoadBalancer IP.
+    external-dns.alpha.kubernetes.io/target: "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com"
+spec:
+  gatewayClassName: envoy
+  infrastructure:
+    annotations:
+      lbipam.cilium.io/ips: "10.10.30.201"
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: envoy-external
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: "*.z7x.org"
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.z7x.org"
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: z7x-org-tls

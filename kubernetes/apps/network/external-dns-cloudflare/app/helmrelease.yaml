@@ -1,0 +1,43 @@
+# Chart 1.23.0 is the latest published as of 2026-11-01; its appVersion (image) is still v0.23.0 even
+# though upstream cut the v0.24.0 external-dns release on GitHub -- the chart bump for it
+# (kubernetes-sigs/external-dns#6840) had not shipped yet. No image.tag override exists in this chart,
+# so this tracks v0.23.0 until the chart catches up.
+#
+# Needs a `cloudflare-api-token` Secret (key `api-token`) in this namespace, added later by the cluster
+# operator (see FluxApps' report) -- the Deployment will crash-loop until it exists, but nothing else
+# depends on this Kustomization.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns-cloudflare
+  namespace: network
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: external-dns
+      version: "1.23.0"
+      sourceRef:
+        kind: HelmRepository
+        name: external-dns-cloudflare
+        namespace: network
+  values:
+    fullnameOverride: external-dns-cloudflare
+    provider:
+      name: cloudflare
+    sources:
+      - gateway-httproute
+    extraArgs:
+      gateway-name: external
+      cloudflare-proxied: true
+    policy: sync
+    registry: txt
+    txtOwnerId: homelab
+    domainFilters:
+      - z7x.org
+    env:
+      - name: CF_API_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: cloudflare-api-token
+            key: api-token
