@@ -129,10 +129,11 @@ HelmRelease here.
   no cross-node migration for these volumes.
 - **Cloudflare cache bypass:** `media.z7x.org` streams video through the Cloudflare tunnel, and
   Cloudflare caches `.mp4`/`.mkv` etc. by default, which risks violating its ToS for video
-  delivery. `cloudflare_api_token` only has DNS + Tunnel edit, not Cache Rules, so the bypass rule
-  for `media.z7x.org` is not yet created -- add `Zone > Cache Rules > Edit` to that token (or
-  create the rule by hand in the dashboard: Caching → Cache Rules → bypass cache when hostname
-  equals `media.z7x.org`).
+  delivery. `cloudflare_api_token` was granted `Zone > Cache Rules > Edit`, and
+  `ansible/roles/cloudflare_cache_rules` (`ansible-playbook playbooks/site.yml --tags cloudflare`)
+  idempotently manages a bypass-cache rule for `media.z7x.org` in the zone's
+  `http_request_cache_settings` phase, matched by description so a second run changes nothing and
+  any other rules in that phase are left alone.
 
 ## Backups and restore
 
