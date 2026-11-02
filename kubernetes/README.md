@@ -51,6 +51,13 @@ Add an HTTPRoute with a `z7x.org` hostname and pick the gateway:
 
 DNS records and the certificate are handled for you.
 
+Always set `hostnames`. A route without one inherits the listener's `*.z7x.org`, and
+external-dns would publish that wildcard. In AdGuard that breaks the whole cluster: lab DHCP
+hands out the `k8s.z7x.org` search domain, so `github.com` is first tried as
+`github.com.k8s.z7x.org`, matches the wildcard, and resolves to the gateway. Routes that
+really have no hostname (the HTTP→HTTPS redirects) carry `dns.z7x.org/publish: "false"`,
+which both external-dns instances skip.
+
 ## Secrets
 
 Put them in `*.sops.yaml` files next to the app and list them in its `kustomization.yaml`;

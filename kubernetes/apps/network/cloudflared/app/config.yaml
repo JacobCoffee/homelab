@@ -2,6 +2,7 @@
 # each request's hostname as SNI, so it matches the *.z7x.org listener and the wildcard cert.
 tunnel: ${CLOUDFLARE_TUNNEL_ID}
 credentials-file: /etc/cloudflared/creds/credentials.json
+metrics: 0.0.0.0:2000   # /ready for the liveness probe
 ingress:
   - hostname: "*.z7x.org"
     service: https://envoy-external.envoy-gateway-system.svc.cluster.local:443
