@@ -75,3 +75,18 @@ Flux decrypts with the `flux-system/sops-age` secret (the same age key as
 `~/.config/sops/age/keys.txt` and `vault_sops_age_key` in the Ansible vault). The Cloudflare
 token in `cert-manager-issuers` and `external-dns-cloudflare` is the vault's
 `cloudflare_api_token`; if you rotate it, update both files.
+
+## Updates
+
+Renovate ([`../.github/renovate.json5`](../.github/renovate.json5)) opens PRs on weekends for
+chart versions, images, `mise.toml` tools and the annotated pins in the Ansible defaults
+(Talos, Kubernetes, Cilium bootstrap). Merging a chart/image PR is the deploy: Flux applies it.
+Majors, and Talos/Kubernetes, wait for approval on the Dependency Dashboard issue.
+
+A merged Talos or Kubernetes bump only changes config for new installs; upgrade the running
+nodes one at a time, then Kubernetes:
+
+```sh
+talosctl -n 10.10.30.11 upgrade --image factory.talos.dev/installer/<schematic>:<version>   # then .12, .13
+talosctl -n 10.10.30.11 upgrade-k8s --to <version>
+```

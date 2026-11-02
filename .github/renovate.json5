@@ -1,0 +1,43 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":timezone(America/Chicago)",
+  ],
+  // One batch of PRs a week instead of a trickle.
+  schedule: ["every weekend"],
+  // Flux HelmReleases/OCIRepositories, chart values images and plain manifests.
+  flux: { managerFilePatterns: ["/^kubernetes/.+\\.ya?ml$/"] },
+  "helm-values": { managerFilePatterns: ["/^kubernetes/.+\\.ya?ml$/"] },
+  kubernetes: { managerFilePatterns: ["/^kubernetes/.+\\.ya?ml$/"] },
+  // Ansible pins annotated with `# renovate: datasource=… depName=…` on the line above.
+  customManagers: [
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^ansible/.+\\.ya?ml$/"],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( registryUrl=(?<registryUrl>\\S+))?( extractVersion=(?<extractVersion>\\S+))?\\n[a-z0-9_]+: \"?(?<currentValue>[^\"\\s]+)\"?",
+      ],
+    },
+  ],
+  packageRules: [
+    {
+      // Talos image, talosctl and the cluster's Kubernetes move together; Talos decides
+      // which Kubernetes versions are supported, so these wait for approval.
+      groupName: "talos and kubernetes",
+      matchDepNames: ["siderolabs/talos", "talosctl", "/siderolabs\\/talosctl/", "kubernetes/kubernetes", "kubectl", "/kubectl/"],
+      dependencyDashboardApproval: true,
+    },
+    {
+      // Bootstrap pin in the talos role and the Flux HelmRelease must stay equal.
+      groupName: "cilium",
+      matchDepNames: ["cilium"],
+    },
+    {
+      matchUpdateTypes: ["major"],
+      dependencyDashboardApproval: true,
+    },
+  ],
+}

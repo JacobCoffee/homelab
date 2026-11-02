@@ -1,7 +1,11 @@
 # Talos release and Image Factory schematic (kubernetes/talos/schematic.yaml: adds
 # qemu-guest-agent). Re-post the schematic to factory.talos.dev after editing it.
+# Renovate bumps the annotated pins; changing them here doesn't upgrade running nodes
+# (talosctl upgrade / upgrade-k8s does, see kubernetes/README.md).
+# renovate: datasource=github-releases depName=siderolabs/talos
 talos_version: v1.14.5
 talos_schematic_id: ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515
+# renovate: datasource=github-releases depName=kubernetes/kubernetes extractVersion=^v(?<version>.+)$
 k8s_version: 1.37.1
 
 talos_iso: talos-{{ talos_version }}-{{ talos_schematic_id[:8] }}-metal-amd64.iso
@@ -17,6 +21,7 @@ talos_repo: "{{ playbook_dir }}/../.."
 talos_mise: "mise -C {{ talos_repo }} exec --"   # tool versions pinned in the repo's mise.toml
 
 # Bootstrap only; afterwards Flux owns Cilium (kubernetes/apps/kube-system/cilium).
+# renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io
 cilium_version: 1.20.4
 flux_github_owner: JacobCoffee
 flux_github_repo: homelab
