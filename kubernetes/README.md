@@ -133,6 +133,34 @@ set -x BW_SESSION (bw unlock --raw)    # per shell
 scripts/bw-sync.py
 ```
 
+## Jellyfin SSO
+
+`apps/media/jellyfin/app` installs
+[K0lin/jellyfin-plugin-sso](https://github.com/K0lin/jellyfin-plugin-sso) (the maintained fork of
+the archived `9p4/jellyfin-plugin-sso`; its `>= 5.1` releases target Jellyfin `>= 12.0`, matching
+the server here) and configures a `pocket-id` OpenID provider: endpoint `https://id.z7x.org`,
+client id `jellyfin` (secret `vault_pocket_id_jellyfin_secret`, provisioned by
+`scripts/pocket-id.py`), scopes `openid profile email groups`, RBAC on with group `lab-admins`
+both allowed to sign in and mapped to Jellyfin admin (`RoleClaim: groups`). The `jellyfin-sso`
+Secret and `jellyfin-sso-install` Job do the work: add the plugin repository, install the plugin,
+restart Jellyfin to load it, PUT its configuration, and add a "Sign in with Pocket ID" button to
+the login page (`Settings > General > Branding`'s `LoginDisclaimer`/`CustomCss`, merged in rather
+than overwritten). Local accounts and Quick Connect (the only sign-in path for apps/TVs; the
+plugin is web-browser only) keep working untouched.
+
+The Job needs a Jellyfin admin API key, which has no default -- create one in Jellyfin's
+**Dashboard > API Keys**, then:
+
+```sh
+scripts/vault-set.py vault_jellyfin_api_key   # hidden prompt
+scripts/jellyfin-sso-key.py                   # pushes it into secret.sops.yaml, commit the result
+```
+
+Flux re-applies the (otherwise immutable) Job on every script or Secret change because
+`jellyfin`'s `ks.yaml` sets `force: true`. Re-run the Job manually with `kubectl -n media delete
+job jellyfin-sso-install` if you change the provider config and want it reconciled sooner than the
+next Flux apply.
+
 ## Storage
 
 `apps/storage/`: [proxmox-csi-plugin](https://github.com/sergelogvinov/proxmox-csi-plugin)
