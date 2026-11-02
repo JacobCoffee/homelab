@@ -27,6 +27,12 @@ adguard_password: "{{ vault_adguard_password }}"
 adguard_tailnet_tags: ["tag:pve", "tag:router"]
 adguard_tailscale_api: https://api.tailscale.com/api/v2
 
+# Static hostname rewrites independent of Tailscale (tasks/apps_rewrite.yml). Wildcards point
+# tenant/app domains at an in-cluster LoadBalancer IP instead of a per-host Tailscale address.
+adguard_static_rewrites:
+  - domain: "*.apps.z7x.org"
+    answer: "10.10.30.202"
+
 # Derived from the zone; no need to change.
 adguard_zone_cfg: "{{ lab_zones | selectattr('name', 'equalto', adguard_zone) | first }}"
 adguard_upstream: "{{ adguard_zone_cfg.gateway }}"

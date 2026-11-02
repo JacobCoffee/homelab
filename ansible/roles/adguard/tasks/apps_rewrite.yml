@@ -1,0 +1,31 @@
+# Static rewrites from adguard_static_rewrites (defaults/main.yml): independent of Tailscale,
+# so no removal pass is needed (nothing dynamic to prune) — just add whatever's missing.
+- name: Current rewrites
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -H, "{{ adguard_auth }}", "http://127.0.0.1/control/rewrite/list"]
+  register: adguard_static_rewrites_list
+  changed_when: false
+  no_log: true
+
+- name: Static rewrites present
+  vars:
+    wanted_domains: "{{ adguard_static_rewrites | map(attribute='domain') | list }}"
+    present_json: >-
+      {%- set out = [] -%}
+      {%- for r in adguard_static_rewrites_list.stdout | from_json if r.domain in wanted_domains -%}
+      {%-   set _ = out.append({'domain': r.domain, 'answer': r.answer}) -%}
+      {%- endfor -%}
+      {{- out | to_json -}}
+  ansible.builtin.set_fact:
+    adguard_static_rewrites_present: "{{ present_json | from_json }}"
+
+- name: Add missing static rewrites
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}",
+           -H, "Content-Type: application/json", --data-binary, "@-", "http://127.0.0.1/control/rewrite/add"]
+    stdin: "{{ item | combine({'enabled': true}) | to_json }}"
+  loop: "{{ adguard_static_rewrites | difference(adguard_static_rewrites_present) }}"
+  loop_control:
+    label: "{{ item.domain }}"
+  changed_when: true
+  no_log: true
