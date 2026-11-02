@@ -8,6 +8,11 @@
 #   - enable_letsencrypt_issuer  (false here: the homelab's own Flux-managed ClusterIssuer named
 #                                  "letsencrypt" is used instead, see kubernetes/apps/cert-manager/)
 #   - traefik_service_annotations (used to pin Traefik's LoadBalancer IP via Cilium LB-IPAM)
+# Also includes a fifth commit on the same branch fixing a real upstream bug: the intermediate-CA
+# signing scripts omitted subjectKeyIdentifier/authorityKeyIdentifier extensions, which modern
+# OpenSSL (Python 3.14's ssl module) rejects with CERTIFICATE_VERIFY_FAILED: Missing Authority Key
+# Identifier, and which breaks Vault PKI CRL building. Discovered live when cabotage-app couldn't
+# TLS-connect to Vault.
 #
 # Once PR #21 merges to cabotage/terraform main, re-pin this `ref` to the merge commit on main.
 
@@ -17,7 +22,7 @@ resource "kubernetes_namespace_v1" "traefik" {
   }
 }
 module "cabotage" {
-  source = "git::https://github.com/cabotage/terraform.git//modules/cabotage?ref=9d9e4869b50d803c5ee187ca6f4107187a4e3364"
+  source = "git::https://github.com/cabotage/terraform.git//modules/cabotage?ref=19f312ce028b6faca7e3e0e601a2827d11b8d96e"
 
   cluster_identifier       = "homelab"
   kube_context             = local.kube_context
@@ -37,6 +42,12 @@ module "cabotage" {
   loki_standalone      = true
   mimir_standalone     = true
   cabotage_postgres_instances = 1
+
+  # kopf (Python) OOMKilled at the upstream default 128Mi limit on this cluster; give it room.
+  enrollment_operator_resources = {
+    requests = { cpu = "25m", memory = "128Mi" }
+    limits   = { cpu = "250m", memory = "320Mi" }
+  }
   registry_replicas    = 1
   loki_backend_replicas  = 1
   loki_read_replicas    = 1
