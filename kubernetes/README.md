@@ -24,7 +24,7 @@ flux get kustomizations
 | `flux/cluster/flux-system/` | written by `flux bootstrap`; don't edit |
 | `flux/cluster/apps.yaml` | `cluster-apps`: applies `apps/` with SOPS decryption and `${VAR}` substitution |
 | `flux/cluster/cluster-settings.yaml` | non-secret variables (`CLOUDFLARE_TUNNEL_ID`, `ACME_EMAIL`, `R2_ENDPOINT`, `R2_BUCKET`, ...) |
-| `flux/cluster/cluster-secrets.sops.yaml` | secret counterpart to `cluster-settings.yaml`, same `substituteFrom` mechanism (R2 keys, shared VolSync restic password) |
+| `apps/backup/cluster-secrets.sops.yaml` | secret counterpart to `cluster-settings.yaml`, same `substituteFrom` mechanism (R2 keys, shared VolSync restic password) -- lives under `apps/` (not `flux/cluster/`) so `cluster-apps`'s SOPS decryption applies to it |
 | `components/volsync/` | reusable kustomize Component: restic-to-R2 `ReplicationSource` for an app's config PVC, see "Backups and restore" |
 | `apps/<namespace>/<app>/ks.yaml` | one Flux Kustomization per app, with `dependsOn` ordering |
 | `apps/<namespace>/<app>/app/` | the app's manifests / HelmRelease |
