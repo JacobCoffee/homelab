@@ -13,6 +13,12 @@
   roles:
     - pve_sdn
 
+- name: Proxmox certificates (trusted pveproxy cert per node via Let's Encrypt DNS-01)
+  hosts: pve
+  tags: [acme]
+  roles:
+    - pve_acme
+
 - name: Tailnet policy (tags, route approval, access) from the repo
   hosts: localhost
   connection: local

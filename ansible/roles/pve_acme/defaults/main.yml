@@ -1,0 +1,3 @@
+pve_acme_email: admin@z7x.org
+pve_acme_domain_suffix: "{{ domain_tailnet }}"
+pve_acme_directory: https://acme-v02.api.letsencrypt.org/directory

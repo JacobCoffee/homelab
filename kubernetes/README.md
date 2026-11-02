@@ -40,6 +40,7 @@ flux get kustomizations
 | metrics-server, kubelet-csr-approver | `kubectl top`; approves kubelet serving certificates |
 | Spegel | nodes share pulled images with each other |
 | echo | smoke test at `echo.z7x.org` on the internal gateway |
+| home-assistant | `home.z7x.org` on both gateways, backed by the HA VM (selector-less Service + EndpointSlice to 10.10.10.20:80) |
 
 ## Publishing an app
 
@@ -48,13 +49,16 @@ Add an HTTPRoute with a `z7x.org` hostname and pick the gateway:
 - `parentRefs: [{name: internal, namespace: network, sectionName: https}]` for lab/tailnet only.
 - `parentRefs: [{name: external, namespace: network, sectionName: https}]` for the internet,
   through Cloudflare.
+- Both (two routes, same hostname, like `home-assistant`): public through Cloudflare, while
+  tailnet devices resolve the name through AdGuard (Tailscale split DNS for `z7x.org`) and go
+  straight to the internal gateway.
 
 DNS records and the certificate are handled for you.
 
 Always set `hostnames`. A route without one inherits the listener's `*.z7x.org`, and
 external-dns would publish that wildcard. In AdGuard that breaks the whole cluster: lab DHCP
-hands out the `k8s.z7x.org` search domain, so `github.com` is first tried as
-`github.com.k8s.z7x.org`, matches the wildcard, and resolves to the gateway. Routes that
+hands out search domains such as `k8s.int.z7x.org`, so `github.com` is first tried as
+`github.com.k8s.int.z7x.org`, matches the wildcard, and resolves to the gateway. Routes that
 really have no hostname (the HTTP→HTTPS redirects) carry `dns.z7x.org/publish: "false"`,
 which both external-dns instances skip.
 

@@ -1,0 +1,126 @@
+# Trusted pveproxy certs via ACME: an account and a Cloudflare DNS-01 plugin are cluster-wide
+# (live in /etc/pve, so they're only created/updated once); each node then gets its own
+# acmedomain0 and, when its current cert doesn't already cover that name, a fresh order.
+# Proxmox renews automatically afterwards (pve-daily-update checks for <30 days left).
+- name: ACME | existing accounts
+  ansible.builtin.command: pvesh get /cluster/acme/account --output-format json
+  register: pve_acme_accounts
+  changed_when: false
+  run_once: true
+
+- name: ACME | Let's Encrypt Terms of Service URL
+  ansible.builtin.command: pvesh get /cluster/acme/tos --directory {{ pve_acme_directory }} --output-format json
+  register: pve_acme_tos
+  changed_when: false
+  run_once: true
+  when: "'default' not in (pve_acme_accounts.stdout | from_json | map(attribute='name') | list)"
+
+- name: ACME | register account default
+  ansible.builtin.command: >-
+    pvesh create /cluster/acme/account --name default --contact {{ pve_acme_email }}
+    --directory {{ pve_acme_directory }} --tos_url {{ pve_acme_tos.stdout | from_json }}
+  when: "'default' not in (pve_acme_accounts.stdout | from_json | map(attribute='name') | list)"
+  changed_when: true
+  run_once: true
+
+- name: ACME | existing DNS plugins
+  ansible.builtin.command: pvesh get /cluster/acme/plugins --output-format json
+  register: pve_acme_plugins
+  changed_when: false
+  run_once: true
+  no_log: true
+
+- name: "ACME | index the cloudflare plugin (no_log: the comparison touches the token)"
+  ansible.builtin.set_fact:
+    pve_acme_cf_plugin_exists: "{{ 'cloudflare' in (pve_acme_plugins.stdout | from_json | map(attribute='plugin') | list) }}"
+    pve_acme_cf_data_current: "{{ pve_acme_plugins.stdout | from_json | selectattr('plugin', 'equalto', 'cloudflare') | map(attribute='data') | list | first | default('') }}"
+    pve_acme_cf_data_wanted: "CF_Token={{ cloudflare_api_token }}\n"
+  run_once: true
+  no_log: true
+
+- name: "ACME | has the Cloudflare token changed? (no_log: compares the token)"
+  ansible.builtin.set_fact:
+    pve_acme_cf_data_stale: "{{ pve_acme_cf_data_current != pve_acme_cf_data_wanted }}"
+  run_once: true
+  no_log: true
+
+- name: ACME | Cloudflare token file (only when the plugin needs creating or updating)
+  ansible.builtin.tempfile:
+    state: file
+    suffix: pve-acme-cf
+  register: pve_acme_cf_tokenfile
+  run_once: true
+  changed_when: false
+  when: not pve_acme_cf_plugin_exists or pve_acme_cf_data_stale
+
+- name: ACME | write the Cloudflare token file
+  ansible.builtin.copy:
+    dest: "{{ pve_acme_cf_tokenfile.path }}"
+    content: "CF_Token={{ cloudflare_api_token }}\n"
+    mode: "0600"
+  run_once: true
+  changed_when: false
+  no_log: true
+  when: not pve_acme_cf_plugin_exists or pve_acme_cf_data_stale
+
+- name: ACME | create the cloudflare DNS plugin
+  ansible.builtin.command: pvenode acme plugin add dns cloudflare --api cf --data {{ pve_acme_cf_tokenfile.path }}
+  when: not pve_acme_cf_plugin_exists
+  changed_when: true
+  run_once: true
+  no_log: true
+
+- name: ACME | update the cloudflare DNS plugin's token
+  ansible.builtin.command: pvenode acme plugin set cloudflare --data {{ pve_acme_cf_tokenfile.path }}
+  when: pve_acme_cf_plugin_exists and pve_acme_cf_data_stale
+  changed_when: true
+  run_once: true
+  no_log: true
+
+- name: ACME | remove the Cloudflare token file
+  ansible.builtin.file:
+    path: "{{ pve_acme_cf_tokenfile.path }}"
+    state: absent
+  run_once: true
+  changed_when: false
+  when: pve_acme_cf_tokenfile.path is defined
+
+- name: ACME | this node's domain
+  ansible.builtin.set_fact:
+    pve_acme_node_domain: "{{ inventory_hostname }}.{{ pve_acme_domain_suffix }}"
+
+- name: ACME | current node config
+  ansible.builtin.command: pvesh get /nodes/{{ inventory_hostname }}/config --output-format json
+  register: pve_acme_node_config
+  changed_when: false
+
+- name: ACME | point acmedomain0 at {{ pve_acme_node_domain }}
+  ansible.builtin.command: >-
+    pvesh set /nodes/{{ inventory_hostname }}/config
+    --acmedomain0 {{ pve_acme_node_domain }},plugin=cloudflare
+  when: >-
+    (pve_acme_node_config.stdout | from_json).acmedomain0 | default('') !=
+    pve_acme_node_domain ~ ',plugin=cloudflare'
+  changed_when: true
+
+# pve-daily-update renews automatically, but order here if there's no cert yet, it isn't a
+# Let's Encrypt cert, it doesn't cover this node's name, or it's within 30 days of expiring.
+- name: ACME | does the current pveproxy cert need a fresh order?
+  ansible.builtin.shell: |
+    set -o pipefail
+    cert=/etc/pve/nodes/{{ inventory_hostname }}/pveproxy-ssl.pem
+    [ -f "$cert" ] || exit 0
+    openssl x509 -in "$cert" -noout -issuer | grep -q "Let's Encrypt" || exit 0
+    openssl x509 -in "$cert" -noout -ext subjectAltName | grep -qE "DNS:{{ pve_acme_node_domain }}(,|$)" || exit 0
+    openssl x509 -in "$cert" -noout -checkend 2592000 || exit 0
+    exit 1
+  args:
+    executable: /bin/bash
+  register: pve_acme_cert_stale
+  changed_when: false
+  failed_when: false
+
+- name: ACME | order a certificate for {{ pve_acme_node_domain }}
+  ansible.builtin.command: pvenode acme cert order
+  when: pve_acme_cert_stale.rc == 0
+  changed_when: true

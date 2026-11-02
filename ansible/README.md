@@ -9,6 +9,7 @@ which every node trusts from install.
 |---|---|---|
 | `pve_cluster` | all nodes | one cluster `homelab`: the first node creates it, every other node joins over node-to-node SSH (no password); a node with guests is refused; joined nodes get their ZFS pools registered and HA turned on |
 | `pve_sdn` | all nodes | SDN VXLAN zone `lab` over the house LAN with one vnet per lab zone, so lab guests can run on any node |
+| `pve_acme` | all nodes | trusted pveproxy cert per node via Let's Encrypt DNS-01 (Cloudflare): account `default` and the `cloudflare` challenge plugin live cluster-wide in `/etc/pve`, each node gets `acmedomain0=<node>.internal.z7x.org,plugin=cloudflare` and a cert ordered once it's missing, self-signed, wrong name, or <30 days from expiry |
 | `tailscale_tailnet` | the Mac (API) | tailnet policy pushed from [`roles/tailscale_tailnet/templates/policy.hujson.j2`](roles/tailscale_tailnet/templates/policy.hujson.j2): tags `tag:pve`/`tag:router`, lab routes auto-approved, members reach everything |
 | `tailscale` | all nodes | node joined to your tailnet as `tag:pve` (`--accept-dns=false`), reachable even when OPNsense is down |
 | `opnsense` | `core` | VM 100 `hnfw01`: OPNsense 26.7 nano, bootstrapped unattended, kept patched, sharing the lab subnets on Tailscale (see below) |
@@ -60,6 +61,14 @@ single-use, pre-approved, tagged auth key minted on the spot. No auth keys to ma
 OPNsense advertises 10.10.10/20/30.0/24; the policy approves those routes for `tag:router`.
 To reach the lab from a Mac or laptop, accept routes once on that device:
 `tailscale set --accept-routes=true` (the macOS app: **Use Tailscale subnets**).
+
+Names: the tailnet sends `z7x.org` lookups to AdGuard (split DNS, set by the same role), so
+on any tailnet device `hnhv01.internal.z7x.org`, `hnhv02…` and `hnfw01…` resolve to their
+Tailscale addresses (records generated from the device list for `tag:pve`/`tag:router`), and
+internal-gateway services like `echo.z7x.org` resolve to the lab. At home, Tailscale connects
+peer-to-peer over the LAN, so these names are as fast as local IPs. Off the tailnet they don't
+exist. While `hnhv01` (OPNsense, AdGuard) is down, `z7x.org` names don't resolve on tailnet
+devices.
 
 Already-connected devices are left alone, so to move the nodes to another tailnet: run
 `tailscale logout` on each, swap the token, re-run `site.yml`. (Moving OPNsense this way is
@@ -126,8 +135,16 @@ client names in the query log); lists are AdGuard DNS filter plus AdAway (`adgua
 `hnha01` is Home Assistant OS, imported from the official qcow2 the first time only (later
 updates happen inside HA). It sits on INT with a DHCP reservation, and its radio stick is passed
 through by USB ID (`home_assistant.usb`), so the VM must live on the node the stick is plugged
-into. Open `http://10.10.10.20/` over Tailscale to create the owner account (this HA release
-serves on port 80, not the classic 8123).
+into.
+
+- `https://home.z7x.org`: public through the Cloudflare tunnel; on the tailnet the same name
+  goes straight to the lab gateway. **Turn on multi-factor authentication for every user**
+  (profile → Security), since the login page is on the internet.
+- `http://10.10.10.20/` directly over Tailscale (this HA release serves on port 80).
+
+This HA release keeps its HTTP settings in `.storage/http`, not `configuration.yaml` (a YAML
+`http:` block is ignored after the first start). The role merges the reverse-proxy trust
+(`ha_trusted_proxies`, the K8S zone and pod ranges) into it with Core stopped.
 
 ## Kubernetes (Talos)
 
@@ -149,6 +166,20 @@ because the IP is built into the boot files (if it changes, re-run the play and 
 - Reinstalling `hnhv01` itself needs the Mac (hnpxe01 lives on it): stop hnpxe01 first so only
   one PXE server answers (`ssh root@<hnhv01> pct stop 102`), then `../proxmox-pxe/run.sh`.
 - The inventory reads installed nodes from hnpxe01 and the Mac's `state/hosts.json` together.
+
+## Proxmox certificates
+
+Each node presents a trusted Let's Encrypt certificate on `pveproxy` (the web UI/API,
+`:8006`) for `<inventory_hostname>.internal.z7x.org`, instead of the cluster's self-signed
+`pve-ssl.pem`. Validation is DNS-01 against `z7x.org` through Cloudflare, so no port 80
+exposure is needed. The ACME account (`default`) and the `cloudflare` challenge plugin are
+cluster-wide config in `/etc/pve`, so they're set up once; each node then gets its own
+`acmedomain0` and an initial cert order.
+
+Renewal is automatic: once a node has an ACME-issued cert, `pve-daily-update.service`
+renews it whenever it's within 30 days of expiring, using the same Cloudflare plugin — no
+timer of ours needed. The Cloudflare API token lives in `/etc/pve/priv/acme/plugins.cfg`
+on the cluster (same vault secret as everywhere else, `cloudflare_api_token`).
 
 ## Secrets
 
