@@ -126,7 +126,8 @@ client names in the query log); lists are AdGuard DNS filter plus AdAway (`adgua
 `hnha01` is Home Assistant OS, imported from the official qcow2 the first time only (later
 updates happen inside HA). It sits on INT with a DHCP reservation, and its radio stick is passed
 through by USB ID (`home_assistant.usb`), so the VM must live on the node the stick is plugged
-into. Open `http://10.10.10.20:8123/` over Tailscale to create the owner account.
+into. Open `http://10.10.10.20/` over Tailscale to create the owner account (this HA release
+serves on port 80, not the classic 8123).
 
 ## Kubernetes (Talos)
 
