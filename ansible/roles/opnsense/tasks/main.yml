@@ -105,5 +105,10 @@
     msg: >-
       {{ opnsense_hostname }} is up: https://{{ opnsense_wan_ip }}/ (OPNsense
       {{ opnsense_api.json.product.CORE_VERSION | default('?') }}).
-      Reserve {{ opnsense_wan_ip }} for MAC {{ opnsense_wan_mac }} in the My Spectrum app, and keep
-      {{ firewall_wan_vip }} (WAN CARP address) out of its DHCP pool.
+      Reserve {{ opnsense_wan_ip }} for MAC {{ opnsense_wan_mac }} in the My Spectrum app, and
+      {{ firewall_wan_vip }} for "hnfw-vip" ({{ firewall_wan_vip_mac }}).
+
+# Last: the WAN CARP address can only move once no rule points at the old one, and the
+# placeholder lease check stops the run until the router has given it that address.
+- name: WAN CARP address and its placeholder DHCP lease
+  ansible.builtin.include_tasks: wan_vip.yml

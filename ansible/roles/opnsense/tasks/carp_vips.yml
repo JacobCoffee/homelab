@@ -1,0 +1,57 @@
+# Add or update CARP VIPs, matched by description. Input: opnsense_vips_wanted, a list of
+# {interface, network: "<ip>/<bits>", vhid, descr}. Used by ha.yml (lab zones) and wan_vip.yml.
+- name: CARP | current virtual IPs
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/vip_settings/search_item"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_vips
+
+- name: CARP | address per interface
+  vars:
+    existing: "{{ opnsense_vips.json.rows | selectattr('descr', 'equalto', item.descr) | list }}"
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/vip_settings/{{ 'set_item/' ~ existing[0].uuid if existing else 'add_item' }}"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      vip:
+        mode: carp
+        interface: "{{ item.interface }}"
+        network: "{{ item.network }}"
+        vhid: "{{ item.vhid }}"
+        advbase: "1"
+        advskew: "{{ opnsense_node.advskew | string }}"
+        password: "{{ opnsense_carp_password }}"
+        descr: "{{ item.descr }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_vips_wanted }}"
+  loop_control:
+    label: "{{ item.descr }} {{ item.network }} (VHID {{ item.vhid }})"
+  when: >-
+    not existing or existing[0].mode != 'carp' or existing[0].interface != item.interface or
+    existing[0].subnet ~ '/' ~ existing[0].subnet_bits != item.network or
+    existing[0].vhid != item.vhid or existing[0].advskew != opnsense_node.advskew | string
+  register: opnsense_vip_set
+  changed_when: opnsense_vip_set.json.result == "saved"
+  failed_when: opnsense_vip_set.json.result is not defined or opnsense_vip_set.json.result == "failed"
+  no_log: true   # body carries the CARP password
+
+- name: CARP | apply virtual IPs
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/vip_settings/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_vip_set is changed
+  changed_when: true

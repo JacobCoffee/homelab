@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# Placeholder DHCP client for the firewalls' WAN CARP address ({{ firewall_wan_vip }}): keeps a
+# lease (and the My Spectrum reservation) on MAC {{ firewall_wan_vip_mac }} so the router never
+# hands the address to another device. The script is /bin/true, so the address is never
+# configured here; the CARP master answers for it. arp_ignore=1: this interface answers no ARP.
+# busybox udhcpc, not dhclient: Debian's AppArmor profile for dhclient only allows its own
+# script, lease and pid paths.
+[Unit]
+Description=Spectrum DHCP lease holder for the firewalls' WAN CARP address
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=-/usr/sbin/ip link del wanvip0
+ExecStartPre=/usr/sbin/ip link add wanvip0 link {{ opnsense_wan_bridge }} address {{ firewall_wan_vip_mac }} type macvlan mode bridge
+ExecStartPre=/usr/sbin/sysctl -q -w net.ipv4.conf.wanvip0.arp_ignore=1 net.ipv4.conf.wanvip0.arp_announce=2 net.ipv6.conf.wanvip0.disable_ipv6=1
+ExecStartPre=/usr/sbin/ip link set wanvip0 up
+ExecStart=/usr/bin/busybox udhcpc -f -i wanvip0 -s /bin/true -r {{ firewall_wan_vip }} -x hostname:hnfw-vip -t 10 -A 30
+ExecStopPost=-/usr/sbin/ip link del wanvip0
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

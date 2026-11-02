@@ -392,11 +392,19 @@ Model fields read from `opnsense/core` `stable/26.7` and the live `get`/`get_ite
 - **Outbound NAT:** `GET/POST firewall/source_nat/get|set` `{"filter": {"general":
   {"snat_mode": "hybrid"}}}`; rules via `source_nat/add_rule` `{"rule": {"interface": "wan",
   "source_net": "<cidr>", "target": "<WAN VIP>", ...}}`. `pfctl -s nat` then lists
-  `nat on vtnet0 inet from 10.10.10.0/24 to any -> 192.168.1.250` ahead of the automatic rules.
+  `nat on vtnet0 inet from 10.10.10.0/24 to any -> <WAN VIP>` ahead of the automatic rules.
 - **Dnsmasq split pools:** `dnsmasq.dhcp.reply_delay` (seconds, global) on the second box.
 - **WAN forwards on the VIP:** `d_nat` `destination.network` accepts a plain address
-  (`192.168.1.250`); a syslog line from `hnhv01` showed up as
-  `10.10.30.210:514 (192.168.1.250:514) <- 192.168.1.220`.
+  (the WAN VIP); a syslog line from `hnhv01` showed up as
+  `10.10.30.210:514 (<WAN VIP>:514) <- 192.168.1.220`.
+- **Moving a VIP:** `vip_settings/set_item` refuses a new address while any rule still names
+  the old one (`whereUsed`), so `wan_vip.yml` runs after the outbound NAT rules and every WAN
+  forward have been pointed at the new address; one run moved 192.168.1.250 -> .189.
+- **Spectrum WAN address:** the router can't exclude addresses from its pool, and a static
+  `.250` never showed up in the app's device list. A placeholder DHCP client with its own MAC
+  (requested `.250`, offered `.189`; lease 43200 s) does show up and holds the address.
+  `dhclient` failed there: Debian's AppArmor profile blocked its `-sf /bin/true` script and its
+  lease/pid paths; busybox `udhcpc -s /bin/true` is unconfined and needs no state files.
 - **CARP over the SDN vnets works:** the VXLAN head-end replication carries the multicast
   advertisements; `hnfw02` sat in `BACKUP` on all four VHIDs.
 - **Failover, measured** (`qm suspend 100`, ping every 0.5 s from `hndns02` to 1.1.1.1): `hnfw02`

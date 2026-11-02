@@ -38,9 +38,13 @@ observability_syslog_port: 514
 firewalls:
   - { name: hnfw01, host: hnhv01, vmid: 100, lan_host: 2, advskew: 0 }
   - { name: hnfw02, host: hnhv02, vmid: 110, lan_host: 3, advskew: 100, memory: 2048 }
-# Outbound NAT source and the WAN forwards (lab DNS, syslog). Static: keep it out of the
-# Spectrum router's DHCP pool (reserve it in the My Spectrum app).
-firewall_wan_vip: 192.168.1.250
+# Outbound NAT source and the WAN forwards (lab DNS, Fire TV DoT, syslog). The Spectrum router
+# can't exclude addresses from its pool, so a placeholder DHCP client with its own MAC
+# (opnsense role, wan_vip.yml, on the first firewall's node) holds this address: it shows up in
+# the My Spectrum app as "hnfw-vip", where the address is reserved for it. The placeholder
+# never configures the address; the CARP master answers for it.
+firewall_wan_vip: 192.168.1.189
+firewall_wan_vip_mac: "02:fa:00:00:01:fa"
 # pfsync link between the firewalls: its own vnet, not a lab zone (no DHCP, routes or DNS).
 firewall_sync: { name: sync, vlan: 99, vnet: vxsync, cidr: 10.10.99.0/24 }
 

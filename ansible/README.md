@@ -26,7 +26,7 @@ which every node trusts from install.
 
 | Zone | VNI | Subnet | Proxmox bridge | OPNsense |
 |---|---|---|---|---|
-| WAN (house LAN, Spectrum) | – | 192.168.1.0/24 (DHCP; CARP 192.168.1.250) | `vmbr0` | `vtnet0` |
+| WAN (house LAN, Spectrum) | – | 192.168.1.0/24 (DHCP; CARP 192.168.1.189) | `vmbr0` | `vtnet0` |
 | INT | 10 | 10.10.10.0/24 | `vxint` | `vtnet1` .2 / .3, CARP .1 |
 | DMZ | 20 | 10.10.20.0/24 | `vxdmz` | `vtnet2` .2 / .3, CARP .1 |
 | K8S | 30 | 10.10.30.0/24 | `vxk8s` | `vtnet3` .2 / .3, CARP .1 |
@@ -84,8 +84,14 @@ untested; the plugin only passes the auth key when tailscaled has no logged-in p
 
 Two firewalls (`firewalls` in `group_vars/all/main.yml`): `hnfw01` on `hnhv01` and `hnfw02` on
 `hnhv02`. Each play run ends by printing the firewall's WAN IP and MAC: **reserve both in the My
-Spectrum app**, and keep the WAN CARP address `192.168.1.250` (`firewall_wan_vip`) out of its
-DHCP pool.
+Spectrum app**, plus the WAN CARP address `192.168.1.189` (`firewall_wan_vip`) for the device
+`hnfw-vip` (MAC `02:fa:00:00:01:fa`).
+
+The Spectrum router can't keep an address out of its DHCP pool, so `hnhv01` runs a placeholder
+DHCP client for the CARP address (`wan-vip-lease.service`: busybox `udhcpc` on a macvlan
+`wanvip0` with that MAC, script `/bin/true`, no ARP). It holds the lease and makes the address
+show up as a device the app can reserve; the address itself is only ever configured as the CARP
+VIP. The play stops (`wan_vip.yml`) if the router hands the placeholder anything else.
 
 - WebGUI: `https://<wan-ip>/`, user `root`, password `vault_opnsense_root_password`
   (`ansible-vault view inventory/group_vars/all/vault.yml`).
@@ -97,17 +103,17 @@ DHCP pool.
 ### High availability (CARP)
 
 - **Addresses:** each firewall has its own `.2`/`.3` in every zone; `.1` (every zone's gateway)
-  and `192.168.1.250` on the WAN are CARP addresses held by the master. `hnfw01` (advskew 0)
+  and `192.168.1.189` on the WAN are CARP addresses held by the master. `hnfw01` (advskew 0)
   is master whenever it is up; preemption moves every CARP address together.
 - **State sync:** pfsync over its own vnet (`vxsync`, 10.10.99.0/24), so connections survive a
   failover. No config sync: Ansible configures both firewalls.
-- **Outbound NAT** is hybrid: the lab zones leave through `192.168.1.250`, which moves with the
+- **Outbound NAT** is hybrid: the lab zones leave through `192.168.1.189`, which moves with the
   master, so synced states stay valid.
 - **DHCP:** Dnsmasq can't share leases, so each firewall serves half of every zone's pool
   (`hnfw01` `.100`–`.149`, `hnfw02` `.150`–`.199`, answering after a 3 s delay) and both hold
   the same reservations. A dynamic client's name resolves only through the firewall that gave
   it the lease.
-- **WAN forwards** (lab DNS, syslog) are bound to `192.168.1.250`, so house devices and the
+- **WAN forwards** (lab DNS, Fire TV DoT, syslog) are bound to `192.168.1.189`, so house devices and the
   Proxmox hosts follow the master.
 - Check who is master: **Interfaces → Virtual IPs → Status** on either firewall.
 
@@ -143,7 +149,7 @@ Every run then applies these settings through the REST API (`roles/opnsense/task
 - **DMZ isolation:** DMZ → INT and DMZ → K8S are blocked, ahead of the DMZ allow-any rule.
 - **Tailscale** (`os-tailscale` plugin) as `tag:router`, advertising the lab subnets.
 - **Port-forward** WAN CARP address 53 → AdGuard, so house devices can use it: set a device's
-  DNS to `192.168.1.250`.
+  DNS to `192.168.1.189`.
 
 The `oxlorg.opnsense` collection is pinned to OPNsense versions (latest supports 26.1), so it
 isn't used. Endpoint and field details: [`roles/opnsense/NOTES.md`](roles/opnsense/NOTES.md).
@@ -164,7 +170,7 @@ records to both.
 
 - Web UI: `http://10.10.10.54/` and `http://10.10.10.55/` over Tailscale, user `admin`,
   password `vault_adguard_password`.
-- Clients: INT and K8S via DHCP; house devices by pointing their DNS at `192.168.1.250`.
+- Clients: INT and K8S via DHCP; house devices by pointing their DNS at `192.168.1.189`.
 
 ## Home Assistant
 

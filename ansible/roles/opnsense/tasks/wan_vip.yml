@@ -1,0 +1,53 @@
+# The WAN CARP address (firewall_wan_vip). Runs after every rule that points at it (outbound NAT
+# in ha.yml, the forwards in lab_dns.yml, syslog.yml, firetv_dot.yml): OPNsense refuses to move
+# a VIP that rules still reference.
+- name: WAN VIP | CARP address on the WAN
+  vars:
+    opnsense_vips_wanted:
+      - interface: wan
+        network: "{{ firewall_wan_vip }}/{{ house_lan_cidr.split('/')[1] }}"
+        vhid: "{{ opnsense_wan_vhid | string }}"
+        descr: CARP WAN
+  ansible.builtin.include_tasks: carp_vips.yml
+
+# The Spectrum router can't exclude addresses from its pool, so a placeholder DHCP client with
+# its own MAC holds the address (templates/wan-vip-lease.service.j2), on the first firewall's
+# node only (one MAC, one place). It appears in the My Spectrum app as "hnfw-vip", where the
+# address is reserved for it.
+- name: WAN VIP | placeholder DHCP lease
+  when: inventory_hostname == firewalls[0].host
+  block:
+    - name: WAN VIP | placeholder unit
+      ansible.builtin.template:
+        src: wan-vip-lease.service.j2
+        dest: /etc/systemd/system/wan-vip-lease.service
+        mode: "0644"
+      register: opnsense_vip_lease_unit
+
+    - name: WAN VIP | placeholder running
+      ansible.builtin.systemd_service:
+        name: wan-vip-lease
+        enabled: true
+        state: "{{ 'restarted' if opnsense_vip_lease_unit is changed else 'started' }}"
+        daemon_reload: "{{ opnsense_vip_lease_unit is changed }}"
+
+    - name: WAN VIP | address the router gave the placeholder
+      ansible.builtin.shell: >-
+        set -o pipefail;
+        journalctl -u wan-vip-lease -o cat --no-pager | grep -o 'lease of [0-9.]* obtained' | tail -1 | cut -d' ' -f3
+      args:
+        executable: /bin/bash
+      register: opnsense_vip_lease_addr
+      until: opnsense_vip_lease_addr.stdout | length > 0
+      retries: 12
+      delay: 5
+      changed_when: false
+
+    - name: WAN VIP | the router must have given it {{ firewall_wan_vip }}
+      ansible.builtin.assert:
+        that: opnsense_vip_lease_addr.stdout == firewall_wan_vip
+        fail_msg: >-
+          The placeholder (MAC {{ firewall_wan_vip_mac }}, "hnfw-vip") got {{ opnsense_vip_lease_addr.stdout }},
+          not {{ firewall_wan_vip }}. Set firewall_wan_vip to {{ opnsense_vip_lease_addr.stdout }} (or reserve
+          {{ firewall_wan_vip }} for it in the My Spectrum app) and re-run.
+        quiet: true

@@ -1,77 +1,21 @@
 # OPNsense HA (docs.opnsense.org/manual/hacarp.html), set on both firewalls through the API:
-# - CARP addresses: .1 in every lab zone (VHID = zone VLAN) and firewall_wan_vip on the WAN.
-#   The firewall with the lowest advskew is master; preemption keeps every VIP on one box.
+# - CARP addresses: .1 in every lab zone (VHID = zone VLAN); the WAN one (firewall_wan_vip) comes
+#   last, from wan_vip.yml, after every rule that points at it. The firewall with the lowest
+#   advskew is master; preemption keeps every VIP on one box.
 # - pfsync over its own interface, so connection states survive a failover.
 # - Outbound NAT (hybrid) from the lab zones to the WAN CARP address, so the states stay valid
 #   on the other firewall.
 # No XMLRPC config sync: Ansible configures both firewalls, each with its own addresses.
-- name: HA | wanted CARP addresses
-  ansible.builtin.set_fact:
+- name: HA | CARP address per lab zone
+  vars:
     opnsense_vips_wanted: >-
       {%- set out = [] -%}
       {%- for z in opnsense_zones -%}
       {%- set _ = out.append({'interface': z.name, 'network': z.vip ~ '/' ~ z.prefix, 'vhid': z.vhid | string,
                                'descr': 'CARP ' ~ z.descr}) -%}
       {%- endfor -%}
-      {%- set _ = out.append({'interface': 'wan', 'network': firewall_wan_vip ~ '/' ~ house_lan_cidr.split('/')[1],
-                               'vhid': opnsense_wan_vhid | string, 'descr': 'CARP WAN'}) -%}
       {{ out }}
-
-- name: HA | current virtual IPs
-  ansible.builtin.uri:
-    url: "https://{{ opnsense_wan_ip }}/api/interfaces/vip_settings/search_item"
-    url_username: "{{ opnsense_api_key }}"
-    url_password: "{{ opnsense_api_secret }}"
-    force_basic_auth: true
-    validate_certs: false
-  delegate_to: localhost
-  register: opnsense_vips
-
-- name: HA | CARP address per zone and on the WAN
-  vars:
-    existing: "{{ opnsense_vips.json.rows | selectattr('descr', 'equalto', item.descr) | list }}"
-  ansible.builtin.uri:
-    url: "https://{{ opnsense_wan_ip }}/api/interfaces/vip_settings/{{ 'set_item/' ~ existing[0].uuid if existing else 'add_item' }}"
-    url_username: "{{ opnsense_api_key }}"
-    url_password: "{{ opnsense_api_secret }}"
-    force_basic_auth: true
-    validate_certs: false
-    method: POST
-    body_format: json
-    body:
-      vip:
-        mode: carp
-        interface: "{{ item.interface }}"
-        network: "{{ item.network }}"
-        vhid: "{{ item.vhid }}"
-        advbase: "1"
-        advskew: "{{ opnsense_node.advskew | string }}"
-        password: "{{ opnsense_carp_password }}"
-        descr: "{{ item.descr }}"
-  delegate_to: localhost
-  loop: "{{ opnsense_vips_wanted }}"
-  loop_control:
-    label: "{{ item.descr }} {{ item.network }} (VHID {{ item.vhid }})"
-  when: >-
-    not existing or existing[0].mode != 'carp' or existing[0].interface != item.interface or
-    existing[0].subnet ~ '/' ~ existing[0].subnet_bits != item.network or
-    existing[0].vhid != item.vhid or existing[0].advskew != opnsense_node.advskew | string
-  register: opnsense_vip_set
-  changed_when: opnsense_vip_set.json.result == "saved"
-  failed_when: opnsense_vip_set.json.result is not defined or opnsense_vip_set.json.result == "failed"
-  no_log: true   # body carries the CARP password
-
-- name: HA | apply virtual IPs
-  ansible.builtin.uri:
-    url: "https://{{ opnsense_wan_ip }}/api/interfaces/vip_settings/reconfigure"
-    url_username: "{{ opnsense_api_key }}"
-    url_password: "{{ opnsense_api_secret }}"
-    force_basic_auth: true
-    validate_certs: false
-    method: POST
-  delegate_to: localhost
-  when: opnsense_vip_set is changed
-  changed_when: true
+  ansible.builtin.include_tasks: carp_vips.yml
 
 - name: HA | current sync settings
   ansible.builtin.uri:
