@@ -74,6 +74,10 @@ spec:
                   secretKeyRef:
                     name: gluetun-secret
                     key: FORWARDED_PORT
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
             args:
               - "--webui-port=8080"
               - "--torrenting-port=$(FORWARDED_PORT)"
