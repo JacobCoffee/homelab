@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_DIR="${FT_ROOT}/config"
-source "${FT_ROOT}/tools/site.sh" TESTSTACK_HOST
+source "${FT_ROOT}/tools/site.sh" && site_require TESTSTACK_HOST
 export TESTSTACK_HOST
 
 HOST="${TESTSTACK_HOST}"

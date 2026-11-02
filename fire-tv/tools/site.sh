@@ -1,6 +1,8 @@
 # Source me. Loads config/site.env (or $SITE_ENV) into the environment without overriding
-# variables that are already set to a non-empty value, then checks the ones the caller names:
-#   source "$(dirname "$0")/tools/site.sh" FIRETV_HOST FIRETV_ADB_PORT
+# variables that are already set to a non-empty value; site_require then checks names:
+#   source "$(dirname "$0")/tools/site.sh" && site_require FIRETV_HOST FIRETV_ADB_PORT
+# The check is a function, not source arguments: a bare `source` passes on the caller's
+# own arguments, which would be checked as variable names.
 # shellcheck shell=bash
 
 _site_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,10 +18,14 @@ if [[ -f "$SITE_ENV" ]]; then
   done <"$SITE_ENV"
 fi
 
-for _key in "$@"; do
-  if [[ -z "${!_key:-}" ]]; then
-    echo "error: $_key is not set. Copy config/site.env.example to config/site.env and fill it in." >&2
-    exit 1
-  fi
-done
 unset _site_root _line _key _val
+
+site_require() {
+  local key
+  for key in "$@"; do
+    if [[ -z "${!key:-}" ]]; then
+      echo "error: $key is not set. Copy config/site.env.example to config/site.env and fill it in." >&2
+      exit 1
+    fi
+  done
+}

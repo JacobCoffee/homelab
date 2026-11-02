@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 
 # Device addresses come from config/site.env (see config/site.env.example).
-SITE := source tools/site.sh
+SITE := source tools/site.sh && site_require
 STICK = "$$FIRETV_HOST:$${FIRETV_ADB_PORT:-5555}"
 BRIDGE_PORT := 47800
 THEME ?=
