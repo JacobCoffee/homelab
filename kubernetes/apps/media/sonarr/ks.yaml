@@ -13,7 +13,7 @@ spec:
   timeout: 5m
   dependsOn:
     - name: media-app-template
-    - name: media-secrets
+    - name: arr-api-keys
     - name: envoy-gateway-config
   sourceRef:
     kind: GitRepository

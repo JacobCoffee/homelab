@@ -3,7 +3,7 @@ kind: Kustomization
 resources:
   - ./namespace.yaml
   - ./app-template/ks.yaml
-  - ./secrets/ks.yaml
+  - ./arr-api-keys/ks.yaml
   - ./flaresolverr/ks.yaml
   - ./sonarr/ks.yaml
   - ./radarr/ks.yaml
