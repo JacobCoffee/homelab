@@ -1,0 +1,31 @@
+# Create the LXC (only when it doesn't exist yet) and start it. Unprivileged, like the
+# other LXCs here: dnsmasq binds UDP 67/69/4011 as root inside the container's own network
+# namespace without the privileged flag (same precedent as AdGuard's 53/80 in roles/adguard).
+- name: Debian template present
+  ansible.builtin.command: pveam download local {{ netboot_template }}
+  args:
+    creates: /var/lib/vz/template/cache/{{ netboot_template }}
+
+- name: Create {{ netboot_hostname }} (CT {{ netboot_ctid }})
+  ansible.builtin.command: >-
+    pct create {{ netboot_ctid }} local:vztmpl/{{ netboot_template }}
+    --hostname {{ netboot_hostname }}
+    --unprivileged 1 --features nesting=1
+    --cores {{ netboot_cores }} --memory {{ netboot_memory }} --swap {{ netboot_swap }}
+    --rootfs {{ netboot_storage }}:{{ netboot_disk_gb }}
+    --net0 name=eth0,bridge={{ netboot_bridge }},ip=dhcp
+    --ssh-public-keys /root/.ssh/authorized_keys
+    --onboot 1 --startup order=3
+  changed_when: true
+
+- name: Start it
+  ansible.builtin.command: pct start {{ netboot_ctid }}
+  changed_when: true
+
+- name: Wait for its network (reach the gateway, resolve a name)
+  ansible.builtin.command: pct exec {{ netboot_ctid }} -- sh -c 'ping -c1 -W2 {{ house_gateway }} && getent hosts deb.debian.org'
+  register: netboot_net
+  until: netboot_net.rc == 0
+  retries: 20
+  delay: 3
+  changed_when: false

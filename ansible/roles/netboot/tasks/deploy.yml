@@ -1,0 +1,122 @@
+# Build the boot files for this container's current IP (skip if already built for it), then
+# copy everything run.sh's flow needs plus the app itself in, and run it as a systemd
+# service. File transfer talks to the container directly over its own SSH — it's on the
+# house LAN, reachable from the Mac — rather than relaying through hnhv01's pct push.
+
+- name: Cached build for this IP?
+  ansible.builtin.stat:
+    path: "{{ netboot_source }}/{{ netboot_build_dir }}/build.env"
+  delegate_to: localhost
+  register: netboot_build_env_stat
+
+- name: Read it
+  ansible.builtin.slurp:
+    src: "{{ netboot_source }}/{{ netboot_build_dir }}/build.env"
+  delegate_to: localhost
+  register: netboot_build_env
+  when: netboot_build_env_stat.stat.exists
+
+- name: Artifacts need (re)building for {{ netboot_ip }}
+  ansible.builtin.set_fact:
+    netboot_need_build: >-
+      {{ not netboot_build_env_stat.stat.exists
+         or ('SERVER_IP=' ~ netboot_ip) not in (netboot_build_env.content | b64decode) }}
+
+- name: Build iPXE + installer artifacts for {{ netboot_ip }} (Docker on the Mac; ~1 min once cached)
+  ansible.builtin.command: ./build.sh
+  args:
+    chdir: "{{ netboot_source }}"
+  environment:
+    SERVER_IP_OVERRIDE: "{{ netboot_ip }}"
+    OUT_DIR: "{{ netboot_build_dir }}"
+  delegate_to: localhost
+  when: netboot_need_build
+  changed_when: true
+
+- name: Existing node state on the Mac, if any
+  ansible.builtin.stat:
+    path: "{{ netboot_source }}/state/hosts.json"
+  delegate_to: localhost
+  register: netboot_local_state
+
+- name: Deploy to the container
+  delegate_to: "{{ netboot_hostname }}_direct"
+  block:
+    - name: App directories
+      ansible.builtin.file:
+        path: "{{ netboot_root }}/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: [server, secrets, state, out]
+
+    - name: Server code (app.py, core.py, templates, static, first-boot.sh)
+      ansible.builtin.copy:
+        src: "{{ netboot_source }}/server/"
+        dest: "{{ netboot_root }}/server/"
+        mode: preserve
+
+    - name: config.env
+      ansible.builtin.copy:
+        src: "{{ netboot_source }}/config.env"
+        dest: "{{ netboot_root }}/config.env"
+        mode: "0644"
+
+    - name: Boot files built for {{ netboot_ip }} (iPXE binaries, installer kernel/initrd/ISO)
+      ansible.builtin.copy:
+        src: "{{ netboot_source }}/{{ netboot_build_dir }}/{{ item }}/"
+        dest: "{{ netboot_root }}/out/{{ item }}/"
+        mode: preserve
+      loop:
+        - http
+        - tftp
+
+    - name: build.env (the IP baked into the boot files above)
+      ansible.builtin.copy:
+        src: "{{ netboot_source }}/{{ netboot_build_dir }}/build.env"
+        dest: "{{ netboot_root }}/out/build.env"
+        mode: preserve
+
+    - name: Secrets (0600) — root password, its hash, authorized_keys, the automation key
+      ansible.builtin.copy:
+        src: "{{ netboot_source }}/secrets/{{ item }}"
+        dest: "{{ netboot_root }}/secrets/{{ item }}"
+        mode: "0600"
+      loop:
+        - root-password
+        - root-password.hash
+        - authorized_keys
+        - automation_ed25519
+        - automation_ed25519.pub
+
+    - name: Seed node state from the Mac, if it has installs recorded already
+      ansible.builtin.copy:
+        src: "{{ netboot_source }}/state/hosts.json"
+        dest: "{{ netboot_root }}/state/hosts.json"
+        mode: "0644"
+        force: false  # the container's own state (new installs) wins once it has any
+      when: netboot_local_state.stat.exists
+
+    - name: dnsmasq config (proxyDHCP + TFTP on eth0)
+      ansible.builtin.template:
+        src: dnsmasq.conf.j2
+        dest: "{{ netboot_root }}/out/dnsmasq.conf"
+        mode: "0644"
+      register: netboot_dnsmasq_conf
+
+    - name: systemd unit
+      ansible.builtin.template:
+        src: netboot.service.j2
+        dest: /etc/systemd/system/netboot.service
+        mode: "0644"
+      register: netboot_unit
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: netboot_unit.changed
+
+    - name: Enable and (re)start it
+      ansible.builtin.systemd:
+        name: netboot
+        enabled: true
+        state: "{{ 'restarted' if (netboot_unit.changed or netboot_dnsmasq_conf.changed or netboot_need_build) else 'started' }}"

@@ -1,0 +1,39 @@
+# dnsmasq (our own systemd unit runs the binary directly, not its stock service), sshd
+# (ssh-public-keys at create time seeded the key, but the template doesn't install sshd),
+# curl, and python3 (for the Ansible modules used in deploy.yml: the Mac reaches this
+# container directly over SSH, since it's on the house LAN — unlike the VLAN-isolated CTs
+# elsewhere in this repo, which only go through pct exec).
+- name: dnsmasq, sshd, curl, python3 in the container
+  ansible.builtin.command: >-
+    pct exec {{ netboot_ctid }} -- sh -c
+    'command -v dnsmasq >/dev/null && command -v sshd >/dev/null && command -v curl >/dev/null && command -v python3 >/dev/null
+    || (apt-get update -q && apt-get install -yq dnsmasq openssh-server curl ca-certificates python3)'
+  register: netboot_pkgs
+  changed_when: "'Setting up' in netboot_pkgs.stdout"
+
+- name: sshd enabled and running
+  ansible.builtin.command: pct exec {{ netboot_ctid }} -- systemctl enable --now ssh
+  register: netboot_sshd
+  changed_when: "'Created symlink' in netboot_sshd.stderr"
+
+- name: Stock dnsmasq service state
+  ansible.builtin.command: pct exec {{ netboot_ctid }} -- systemctl is-enabled dnsmasq
+  register: netboot_dnsmasq_enabled
+  changed_when: false
+  failed_when: false
+
+- name: Disable the stock dnsmasq service (our own systemd unit runs the dnsmasq binary directly)
+  ansible.builtin.command: pct exec {{ netboot_ctid }} -- systemctl disable --now dnsmasq
+  when: netboot_dnsmasq_enabled.stdout != 'disabled'
+  changed_when: true
+
+- name: uv present?
+  ansible.builtin.command: pct exec {{ netboot_ctid }} -- test -x {{ netboot_uv_bin }}
+  register: netboot_uv_present
+  changed_when: false
+  failed_when: false
+
+- name: Install uv (runs server/app.py's inline-script dependencies)
+  ansible.builtin.command: pct exec {{ netboot_ctid }} -- sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+  when: netboot_uv_present.rc != 0
+  changed_when: true

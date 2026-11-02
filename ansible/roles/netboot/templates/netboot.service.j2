@@ -1,0 +1,17 @@
+[Unit]
+Description=Proxmox netboot server ({{ netboot_hostname }}): installer endpoints, dashboard, proxyDHCP+TFTP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ netboot_root }}
+ExecStart={{ netboot_uv_bin }} run --quiet server/app.py
+Environment=PXE_DNSMASQ=/usr/sbin/dnsmasq
+Environment=PXE_SUDO=
+Restart=on-failure
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

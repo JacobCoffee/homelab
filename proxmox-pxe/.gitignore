@@ -6,3 +6,5 @@ state/
 cache/
 # Build output: installer image, iPXE binaries, dnsmasq.conf (~1.6 GB)
 out/
+# Scratch OUT_DIR builds for other netboot hosts (e.g. ansible/roles/netboot's hnpxe01)
+out-*/

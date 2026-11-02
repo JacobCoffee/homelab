@@ -13,6 +13,9 @@ which every node trusts from install.
 | `tailscale` | all nodes | node joined to your tailnet as `tag:pve` (`--accept-dns=false`), reachable even when OPNsense is down |
 | `opnsense` | `core` | VM 100 `hnfw01`: OPNsense 26.7 nano, bootstrapped unattended, kept patched, sharing the lab subnets on Tailscale (see below) |
 | `adguard` | `core` | CT 101 `hndns01` (10.10.10.53): AdGuard Home, the DNS server for INT and K8S |
+| `homeassistant` | node in `home_assistant.host` (`hnhv02`) | VM 301 `hnha01` (10.10.10.20): Home Assistant OS on INT with the Aeotec Z-Wave/Zigbee stick passed through |
+| `talos` | nodes in `k8s_nodes`, then the Mac | VMs 201–203 `hnk8s01`–`03` (10.10.30.11–13, VIP .10): Talos Kubernetes, Cilium, then Flux takes over from [`../kubernetes`](../kubernetes) |
+| `netboot` | `hnhv01` | CT 102 `hnpxe01` (house LAN): the [`../proxmox-pxe`](../proxmox-pxe) installer, always on, so new PCs install without the Mac |
 
 ## Network
 
@@ -118,9 +121,41 @@ client names in the query log); lists are AdGuard DNS filter plus AdAway (`adgua
 - Web UI: `http://10.10.10.53/` over Tailscale, user `admin`, password `vault_adguard_password`.
 - Clients: INT and K8S via DHCP; house devices by pointing their DNS at OPNsense's WAN IP.
 
+## Home Assistant
+
+`hnha01` is Home Assistant OS, imported from the official qcow2 the first time only (later
+updates happen inside HA). It sits on INT with a DHCP reservation, and its radio stick is passed
+through by USB ID (`home_assistant.usb`), so the VM must live on the node the stick is plugged
+into. Open `http://10.10.10.20:8123/` over Tailscale to create the owner account.
+
+## Kubernetes (Talos)
+
+Three Talos VMs (`k8s_nodes` in `group_vars/all/main.yml`), each running the control plane and
+workloads: two on `hnhv01`, one on `hnhv02`. Losing `hnhv01` takes etcd down until it returns;
+a third host fixes that. The role creates the VMs from the Image Factory ISO, renders each
+node's config from `kubernetes/talos` plus `roles/talos/templates/machine.yaml.j2`, bootstraps
+etcd, installs Cilium and runs `flux bootstrap`; after that, the cluster is whatever is in
+[`../kubernetes`](../kubernetes). `talosctl` and `kubectl` work from the repo root (paths come
+from `mise.toml`).
+
+## Netboot (hnpxe01)
+
+`hnpxe01` runs the same installer and dashboard as `../proxmox-pxe/run.sh`, permanently, in an
+unprivileged LXC on the house LAN. It gets its IP by DHCP; reserve it in the My Spectrum app,
+because the IP is built into the boot files (if it changes, re-run the play and it rebuilds).
+
+- Dashboard: `ssh -L 8070:127.0.0.1:8070 root@<hnpxe01 IP>`, then `http://localhost:8070/`.
+- Reinstalling `hnhv01` itself needs the Mac (hnpxe01 lives on it): stop hnpxe01 first so only
+  one PXE server answers (`ssh root@<hnhv01> pct stop 102`), then `../proxmox-pxe/run.sh`.
+- The inventory reads installed nodes from hnpxe01 and the Mac's `state/hosts.json` together.
+
 ## Secrets
 
 `inventory/group_vars/all/vault.yml` is ansible-vault encrypted; the vault password lives in
 the macOS Keychain (`security find-generic-password -a homelab -s ansible-vault -w`), read by
 `scripts/vault-pass.sh`. Back that password up (e.g. in your password manager): without it the
 vault can't be decrypted.
+
+Also in the vault: `cloudflare_api_token` (z7x.org DNS edit + tunnel edit) and
+`vault_sops_age_key`, the age key that decrypts every `*.sops.yaml` under `../kubernetes`
+(the Mac's copy is `~/.config/sops/age/keys.txt`).

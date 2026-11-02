@@ -1,0 +1,63 @@
+# hnpxe01 (CT {{ netboot_ctid }} on this Proxmox node): PXE for new nodes without the Mac.
+- name: Does the container exist?
+  ansible.builtin.command: pct status {{ netboot_ctid }}
+  register: netboot_ct_status
+  changed_when: false
+  failed_when: false
+
+- name: Create the container
+  ansible.builtin.include_tasks: container.yml
+  when: netboot_ct_status.rc != 0
+
+- name: Start it if stopped
+  ansible.builtin.command: pct start {{ netboot_ctid }}
+  when: netboot_ct_status.rc == 0 and 'running' not in netboot_ct_status.stdout
+  changed_when: true
+
+- name: Base packages and services
+  ansible.builtin.include_tasks: packages.yml
+
+- name: Current eth0 address (DHCP; reserve it in the My Spectrum app)
+  ansible.builtin.command: >-
+    pct exec {{ netboot_ctid }} -- sh -c
+    "ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1"
+  register: netboot_ip_cmd
+  until: netboot_ip_cmd.stdout | trim | length > 0
+  retries: 20
+  delay: 3
+  changed_when: false
+
+- name: Remember it
+  ansible.builtin.set_fact:
+    netboot_ip: "{{ netboot_ip_cmd.stdout | trim }}"
+
+- name: Container reachable directly for file transfer (house LAN, routable from the Mac)
+  ansible.builtin.add_host:
+    name: "{{ netboot_hostname }}_direct"
+    groups: netboot_direct
+    ansible_host: "{{ netboot_ip }}"
+    ansible_user: root
+  changed_when: false
+
+- name: Wait for its SSH
+  ansible.builtin.wait_for:
+    host: "{{ netboot_ip }}"
+    port: 22
+    timeout: 60
+  delegate_to: localhost
+
+- name: Build and deploy the netboot app + boot files
+  ansible.builtin.include_tasks: deploy.yml
+
+- name: Report
+  ansible.builtin.debug:
+    msg: >-
+      {{ netboot_hostname }} is up: http://{{ netboot_ip }}:{{ netboot_http_port }}/boot.ipxe .
+      Reserve {{ netboot_ip }} for CT {{ netboot_ctid }} in the My Spectrum app now
+      — build.sh bakes it into the boot files, so a change means re-running this playbook.
+      Dashboard (loopback-only, like on the Mac):
+      ssh -L {{ netboot_http_port }}:127.0.0.1:{{ netboot_http_port }} root@{{ netboot_ip }}
+      then open http://localhost:{{ netboot_http_port }}/ .
+      Before reinstalling hnhv01 itself from the Mac (../proxmox-pxe/run.sh):
+      ssh -i ../proxmox-pxe/secrets/automation_ed25519 root@{{ ansible_host }} pct stop {{ netboot_ctid }}
+      — only one proxyDHCP may answer PXE broadcasts at a time.

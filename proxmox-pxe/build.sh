@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
-# Builds everything the PXE server needs into out/. Re-run whenever the Mac's
-# LAN IP, config.env, or the Proxmox ISO version changes.
+# Builds everything the PXE server needs into $OUT_DIR (default out/). Re-run whenever the
+# Mac's LAN IP, config.env, or the Proxmox ISO version changes.
+#
+# SERVER_IP_OVERRIDE=<ip> skips the ipconfig lookup and bakes that IP in instead (e.g. to
+# build boot files for a different netboot host, such as the hnpxe01 LXC: see ../ansible/roles/netboot).
+# OUT_DIR=<dir> writes build output there instead of out/, so such a build doesn't clobber
+# this Mac's own out/ (used by run.sh for the hnhv01-reinstall fallback).
 set -euo pipefail
 cd "$(dirname "$0")"
 source ./config.env
 
-SERVER_IP=$(ipconfig getifaddr "$LAN_IFACE") || { echo "No IPv4 address on $LAN_IFACE" >&2; exit 1; }
+if [ -n "${SERVER_IP_OVERRIDE:-}" ]; then
+  SERVER_IP="$SERVER_IP_OVERRIDE"
+else
+  SERVER_IP=$(ipconfig getifaddr "$LAN_IFACE") || { echo "No IPv4 address on $LAN_IFACE" >&2; exit 1; }
+fi
+OUT_DIR="${OUT_DIR:-out}"
 ISO="cache/$PVE_ISO_NAME"
-mkdir -p cache out secrets state
+mkdir -p cache "$OUT_DIR" secrets state
 
 if [ ! -f "$ISO" ]; then
   echo "==> Downloading $PVE_ISO_NAME"
@@ -37,13 +47,17 @@ echo "==> root SSH keys: $(wc -l < secrets/authorized_keys | tr -d ' ') ($(cut -
 echo "==> Building builder image"
 docker build -q -t pve-pxe-builder builder/ >/dev/null
 
-docker run --rm -v "$PWD":/work -e SERVER_IP="$SERVER_IP" -e HTTP_PORT="$HTTP_PORT" -e ISO="$ISO" \
+docker run --rm -v "$PWD":/work -e SERVER_IP="$SERVER_IP" -e HTTP_PORT="$HTTP_PORT" -e ISO="$ISO" -e OUT_DIR="$OUT_DIR" \
   pve-pxe-builder bash /work/builder/build-inside.sh
 
-printf 'SERVER_IP=%s\n' "$SERVER_IP" > out/build.env
+printf 'SERVER_IP=%s\n' "$SERVER_IP" > "$OUT_DIR/build.env"
 
 echo "==> Validating answer file"
 python3 server/core.py render-sample \
   | docker run --rm -i pve-pxe-builder sh -c 'cat > /tmp/answer.toml && proxmox-auto-install-assistant validate-answer /tmp/answer.toml'
 
-echo "==> Done. Server IP baked in: $SERVER_IP. Start with ./run.sh"
+if [ "$OUT_DIR" = out ]; then
+  echo "==> Done. Server IP baked in: $SERVER_IP. Start with ./run.sh"
+else
+  echo "==> Done. Server IP baked in: $SERVER_IP ($OUT_DIR/)."
+fi

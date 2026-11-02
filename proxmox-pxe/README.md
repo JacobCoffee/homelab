@@ -4,6 +4,11 @@ PXE-boot each PC, install Proxmox VE 9.2 unattended onto its USB stick, and turn
 internal drive into VM/container storage. Runs entirely from the Mac; the Spectrum
 router is left untouched.
 
+Day to day, this same server runs on `hnpxe01`, an always-on LXC on `hnhv01` deployed by
+[`../ansible`](../ansible/README.md#netboot-hnpxe01), so new PCs install without the Mac. Use
+the Mac for reinstalling `hnhv01` itself, after stopping hnpxe01 (`pct stop 102` on
+`hnhv01`) so only one PXE server answers.
+
 ![Netboot dashboard: six nodes at different stages, two ISO downloads in flight, live activity log](docs/dashboard-dark.png)
 
 ```mermaid
@@ -151,7 +156,7 @@ uv run pxe-responder.py --ip <that machine's IP> --root <folder>   # needs admin
 | Path | Purpose |
 |---|---|
 | `config.env` | site settings (interface, hostname prefix, timezone, ISO) |
-| `build.sh`, `builder/` | builds `out/` in a Debian container: prepared PXE installer, iPXE, password hash |
+| `build.sh`, `builder/` | builds `out/` in a Debian container: prepared PXE installer, iPXE, password hash. `SERVER_IP_OVERRIDE` / `OUT_DIR` build for another host (hnpxe01 uses `out-hnpxe01/`) |
 | `make-usb.sh` | writes iPXE to a USB stick, for PCs whose firmware PXE fails |
 | `responder/pxe-responder.py` | optional proxyDHCP + TFTP responder for a wired machine |
 | `run.sh` | writes `out/dnsmasq.conf`, starts `server/app.py` (which runs dnsmasq) |

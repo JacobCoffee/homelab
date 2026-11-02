@@ -1,0 +1,25 @@
+# Netboot server (hnpxe01): PXE-installs new Proxmox nodes without the Mac. Built on the
+# Mac (proxmox-pxe/build.sh needs Docker) and deployed into this unprivileged LXC, which
+# then runs the same app.py + dnsmasq that proxmox-pxe/run.sh runs on the Mac.
+netboot_ctid: 102
+netboot_hostname: "{{ site_code }}pxe01"
+
+netboot_template: debian-13-standard_13.6-1_amd64.tar.zst
+netboot_storage: vmdata
+netboot_cores: 2
+netboot_memory: 1024
+netboot_swap: 512
+netboot_disk_gb: 10
+netboot_bridge: vmbr0
+
+# proxmox-pxe on the Mac (the Ansible control node): source of the app, secrets and the
+# build pipeline. Rebuilt once per container IP into a scratch out dir so the Mac's own
+# out/ (used by run.sh for the hnhv01-reinstall fallback) is untouched.
+netboot_source: "{{ playbook_dir }}/../../proxmox-pxe"
+netboot_build_dir: out-hnpxe01
+
+netboot_root: /opt/netboot
+netboot_uv_bin: /root/.local/bin/uv
+
+netboot_cfg_raw: "{{ lookup('ansible.builtin.file', netboot_source ~ '/config.env') }}"
+netboot_http_port: "{{ netboot_cfg_raw | regex_search('HTTP_PORT=(\\S+)', '\\1') | first }}"

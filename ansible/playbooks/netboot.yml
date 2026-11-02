@@ -1,0 +1,10 @@
+# Proxmox netboot server (hnpxe01): PXE-installs new Proxmox nodes without the Mac.
+#   ansible-playbook playbooks/netboot.yml
+# ../proxmox-pxe/run.sh on the Mac remains the only way to PXE-install hnhv01 itself (the
+# LXC lives on it); stop hnpxe01 first so only one proxyDHCP answers PXE broadcasts at a
+# time (the play's final report prints the exact command).
+- name: Proxmox netboot server
+  hosts: hnhv01
+  tags: [netboot]
+  roles:
+    - netboot

@@ -68,3 +68,5 @@
         name: talos
         tasks_from: bootstrap
 
+# hnpxe01 netboot CT (also runnable alone: playbooks/netboot.yml, tag netboot)
+- import_playbook: netboot.yml
