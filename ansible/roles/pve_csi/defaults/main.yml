@@ -1,0 +1,24 @@
+# Proxmox user + API token for sergelogvinov/proxmox-csi-plugin (kubernetes/apps/storage).
+# The token secret is only ever shown once, so it's captured straight into a SOPS-encrypted
+# Kubernetes Secret in the repo. If that file is ever missing (lost, or never committed), the
+# role rotates the token (delete + recreate) rather than failing with a secret it can't recover.
+pve_csi_role: CSI
+pve_csi_user: kubernetes-csi@pve
+pve_csi_token_name: csi
+# Standard privileges (no ZFS replication): docs/install.md in the plugin repo.
+pve_csi_privs: "VM.Audit VM.Config.Disk Datastore.Allocate Datastore.AllocateSpace Datastore.Audit"
+
+# "Region" must match the node label the talos role sets (topology.kubernetes.io/region) and
+# is purely a plugin-config name; the Proxmox cluster is also named this, so reuse it.
+pve_csi_region: "{{ k8s_cluster_name }}"
+# Any pve node answers cluster-wide API calls. Connect by IP (not <node>.internal.z7x.org):
+# that name only resolves over Tailscale/AdGuard split DNS, not necessarily from cluster pods,
+# so skip TLS verification instead of depending on it.
+pve_csi_api_host: hnhv01
+pve_csi_api_insecure: true
+
+pve_csi_namespace: csi-proxmox
+pve_csi_secret_name: proxmox-csi-plugin
+pve_csi_repo: "{{ playbook_dir }}/../.."
+pve_csi_secret_path: "{{ pve_csi_repo }}/kubernetes/apps/storage/proxmox-csi-plugin/app/secret.sops.yaml"
+pve_csi_mise: "mise -C {{ pve_csi_repo }} exec --"

@@ -1,0 +1,76 @@
+# Debian 13 (genericcloud, cloud-init) VM, created once. root SSH gets the repo's automation
+# key plus whatever keys this Proxmox node's own root already trusts, so both Ansible and a
+# human can reach it.
+- name: Scratch directory
+  ansible.builtin.file:
+    path: "{{ media_nfs_scratch }}"
+    state: directory
+    mode: "0700"
+
+- name: "Download Debian 13 cloud image"
+  ansible.builtin.get_url:
+    url: "{{ media_nfs_image_url }}"
+    dest: "{{ media_nfs_scratch }}/debian-13-genericcloud-amd64.qcow2"
+    mode: "0644"
+
+- name: This node's trusted root keys
+  ansible.builtin.command: cat /root/.ssh/authorized_keys
+  register: media_nfs_node_keys
+  changed_when: false
+  failed_when: false
+
+- name: SSH keys file for cloud-init (automation key + this node's own trusted keys)
+  ansible.builtin.copy:
+    dest: "{{ media_nfs_scratch }}/authorized_keys"
+    mode: "0600"
+    content: >-
+      {{ ([automation_ssh_pubkey] +
+          (media_nfs_node_keys.stdout_lines if media_nfs_node_keys.rc == 0 else []))
+         | unique | join('\n') }}
+
+- name: "Create VM {{ media_nfs.name }}"
+  ansible.builtin.command: >-
+    qm create {{ media_nfs.vmid }} --name {{ media_nfs.name }} --ostype l26
+    --machine q35 --bios seabios --cpu host
+    --cores {{ media_nfs_cores }} --memory {{ media_nfs_memory }} --balloon 0
+    --scsihw virtio-scsi-single
+    --net0 virtio={{ media_nfs.mac }},bridge={{ media_nfs_zone.vnet }},mtu=1
+    --agent enabled=1 --onboot 1 --startup order=5 --tags media-nfs
+  changed_when: true
+
+- name: Import the root disk
+  ansible.builtin.command: qm disk import {{ media_nfs.vmid }} {{ media_nfs_scratch }}/debian-13-genericcloud-amd64.qcow2 {{ media_nfs_storage }}
+  changed_when: true
+
+- name: Attach, grow and boot from the root disk
+  ansible.builtin.shell: |
+    set -euo pipefail
+    vol=$(qm config {{ media_nfs.vmid }} | sed -n 's/^unused0: //p')
+    qm set {{ media_nfs.vmid }} --scsi0 "$vol,discard=on,ssd=1,iothread=1" --boot order=scsi0
+    qm disk resize {{ media_nfs.vmid }} scsi0 {{ media_nfs_root_disk }}
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: "Data disk ({{ media_nfs_data_disk_gb }} GB, excluded from vzdump)"
+  ansible.builtin.command: >-
+    qm set {{ media_nfs.vmid }} --scsi1
+    {{ media_nfs_storage }}:{{ media_nfs_data_disk_gb }},discard=on,ssd=1,iothread=1,backup=0
+  changed_when: true
+
+- name: "Cloud-init drive + settings (DHCP: OPNsense reserves {{ media_nfs.ip }} for this MAC)"
+  ansible.builtin.command: >-
+    qm set {{ media_nfs.vmid }} --ide2 {{ media_nfs_storage }}:cloudinit
+    --ciuser root --sshkeys {{ media_nfs_scratch }}/authorized_keys
+    --ipconfig0 ip=dhcp --nameserver {{ lab_dns }} --searchdomain {{ media_nfs_zone.domain }}
+    --serial0 socket --vga serial0
+  changed_when: true
+
+- name: Start it
+  ansible.builtin.command: qm start {{ media_nfs.vmid }}
+  changed_when: true
+
+- name: Remove the scratch directory
+  ansible.builtin.file:
+    path: "{{ media_nfs_scratch }}"
+    state: absent

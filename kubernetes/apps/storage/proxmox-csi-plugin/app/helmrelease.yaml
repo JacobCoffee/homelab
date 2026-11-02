@@ -1,0 +1,30 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: proxmox-csi-plugin
+  namespace: csi-proxmox
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: proxmox-csi-plugin
+  values:
+    config:
+      # Written by ansible/roles/pve_csi (SOPS-encrypted secret.sops.yaml next to this file).
+      existingConfigSecret: proxmox-csi-plugin
+      existingConfigSecretKey: config.yaml
+    # RWO, WaitForFirstConsumer (the chart's default for non-shared/local storage). Volumes are
+    # pinned to the Proxmox node they live on, via the node's topology.kubernetes.io/zone label.
+    storageClass:
+      - name: proxmox-vmdata
+        storage: vmdata
+        reclaimPolicy: Delete
+        fstype: ext4
+        ssd: true
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "true"
+      - name: proxmox-fast
+        storage: fast
+        reclaimPolicy: Delete
+        fstype: ext4
+        ssd: true

@@ -1,0 +1,32 @@
+# Temporary media NFS server (contract: owner Storage, until a NAS exports the same layout).
+# Debian 13 cloud image + cloud-init, on the K8S zone so pods reach it directly; a small root
+# disk (backed up by pve_backup) plus a 100 GB data disk excluded from vzdump (backup=0, since
+# its contents are media, not config — nothing worth restoring from a Proxmox snapshot).
+media_nfs: { name: hnnfs01, host: hnhv01, vmid: 401, ip: 10.10.30.20, mac: "02:10:10:30:00:20" }
+media_nfs_cores: 1
+media_nfs_memory: 1024
+media_nfs_root_disk: 8G
+media_nfs_data_disk_gb: 100
+media_nfs_storage: vmdata
+media_nfs_zone: "{{ lab_zones | selectattr('name', 'equalto', 'k8s') | first }}"
+
+media_nfs_image_url: https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2
+media_nfs_scratch: /vmdata/.hnnfs01-import
+
+media_nfs_export: /srv/media
+# TRaSH-style single tree so downloads and the library can be hardlinked instead of copied.
+media_nfs_subdirs:
+  - downloads/torrents/movies
+  - downloads/torrents/tv
+  - downloads/torrents/music
+  - downloads/torrents/books
+  - downloads/usenet/movies
+  - downloads/usenet/tv
+  - downloads/usenet/music
+  - downloads/usenet/books
+  - library/movies
+  - library/tv
+  - library/music
+  - library/books
+media_nfs_uid: 1000
+media_nfs_gid: 1000

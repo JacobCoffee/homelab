@@ -34,6 +34,10 @@ nodeIP:
     - {{ talos_zone.cidr }}
 labels:
   node-role.kubernetes.io/control-plane: ""
+  # Proxmox CSI plugin (ansible/roles/pve_csi): region = Proxmox cluster name, zone = the
+  # Proxmox node this VM runs on (node.host), so disks land next to the VM that uses them.
+  topology.kubernetes.io/region: {{ k8s_cluster_name }}
+  topology.kubernetes.io/zone: {{ node.host }}
 ---
 apiVersion: v1alpha1
 kind: UnattendedInstallConfig

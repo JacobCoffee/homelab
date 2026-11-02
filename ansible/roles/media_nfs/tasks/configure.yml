@@ -1,0 +1,104 @@
+# Idempotent NFS setup, run over SSH directly against the VM (reachable on the K8S zone;
+# the Mac reaches 10.10.30.0/24 over Tailscale). Safe to re-run: every step checks first.
+- name: Wait for its SSH
+  ansible.builtin.wait_for:
+    host: "{{ media_nfs.ip }}"
+    port: 22
+    timeout: 300
+  delegate_to: localhost
+
+- name: "{{ media_nfs.name }} reachable directly"
+  ansible.builtin.add_host:
+    name: "{{ media_nfs.name }}_direct"
+    groups: media_nfs_direct
+    ansible_host: "{{ media_nfs.ip }}"
+    ansible_user: root
+  changed_when: false
+
+- name: Configure {{ media_nfs.name }}
+  delegate_to: "{{ media_nfs.name }}_direct"
+  block:
+    - name: Wait for cloud-init to finish (first boot only)
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+      failed_when: false
+
+    - name: qemu-guest-agent + nfs-kernel-server
+      ansible.builtin.apt:
+        name: [qemu-guest-agent, nfs-kernel-server]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: qemu-guest-agent enabled and running
+      ansible.builtin.systemd:
+        name: qemu-guest-agent
+        enabled: true
+        state: started
+
+    - name: Data disk device (the one Proxmox attached as scsi1)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        lsblk -dnpo NAME,SERIAL | awk '$2 ~ /scsi1/ {print $1}'
+      register: media_nfs_data_dev
+      changed_when: false
+
+    - name: Data disk has a filesystem?
+      ansible.builtin.command: blkid -o value -s TYPE {{ media_nfs_data_dev.stdout }}
+      register: media_nfs_data_fstype
+      changed_when: false
+      failed_when: false
+
+    - name: Format the data disk (ext4)
+      ansible.builtin.command: mkfs.ext4 -L media {{ media_nfs_data_dev.stdout }}
+      when: media_nfs_data_fstype.stdout == ""
+      changed_when: true
+
+    - name: Mount point
+      ansible.builtin.file:
+        path: "{{ media_nfs_export }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mounted by label (survives disk reordering)
+      ansible.builtin.mount:
+        path: "{{ media_nfs_export }}"
+        src: LABEL=media
+        fstype: ext4
+        opts: defaults
+        state: mounted
+
+    - name: "Layout: {{ media_nfs_subdirs | join(', ') }}"
+      ansible.builtin.file:
+        path: "{{ media_nfs_export }}/{{ item }}"
+        state: directory
+        owner: "{{ media_nfs_uid }}"
+        group: "{{ media_nfs_gid }}"
+        mode: "2775"
+      loop: "{{ media_nfs_subdirs }}"
+
+    - name: Export root ownership (setgid, so new top-level entries inherit the group too)
+      ansible.builtin.file:
+        path: "{{ media_nfs_export }}"
+        owner: "{{ media_nfs_uid }}"
+        group: "{{ media_nfs_gid }}"
+        mode: "2775"
+
+    - name: /etc/exports
+      ansible.builtin.copy:
+        dest: /etc/exports
+        mode: "0644"
+        content: |
+          {{ media_nfs_export }} {{ media_nfs_zone.cidr }}(rw,sync,no_subtree_check,no_root_squash)
+      register: media_nfs_exports_file
+
+    - name: nfs-kernel-server enabled and running
+      ansible.builtin.systemd:
+        name: nfs-kernel-server
+        enabled: true
+        state: started
+
+    - name: Re-export (exports file changed)
+      ansible.builtin.command: exportfs -ra
+      when: media_nfs_exports_file is changed
+      changed_when: true

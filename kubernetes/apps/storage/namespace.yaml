@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: csi-proxmox
+  labels:
+    # The CSI node plugin needs host mounts/devices to attach disks.
+    pod-security.kubernetes.io/enforce: privileged

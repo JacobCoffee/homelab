@@ -36,10 +36,15 @@ k8s_nodes:
 # Home Assistant OS on the node with the Aeotec Z-Wave/Zigbee stick (USB passthrough).
 home_assistant: { name: hnha01, host: hnhv02, vmid: 301, ip: 10.10.10.20, mac: "02:10:10:10:00:20", usb: ["10c4:ea60"] }
 
+# Temporary media NFS server on the K8S zone (ansible/roles/media_nfs); exports /srv/media to
+# pods until a NAS takes over (see kubernetes/flux/cluster/cluster-settings.yaml).
+media_nfs: { name: hnnfs01, host: hnhv01, vmid: 401, ip: 10.10.30.20, mac: "02:10:10:30:00:20" }
+
 # Fixed-address DHCP leases OPNsense hands out (name, mac, ip, zone).
 lab_dhcp_hosts: >-
   {{ k8s_nodes | map('combine', {'zone': 'k8s'}) | list
-     + [home_assistant | combine({'zone': 'int'})] }}
+     + [home_assistant | combine({'zone': 'int'})]
+     + [media_nfs | combine({'zone': 'k8s'})] }}
 
 # Shared SSH material produced by proxmox-pxe/build.sh
 automation_ssh_pubkey: "{{ lookup('file', playbook_dir ~ '/../../proxmox-pxe/secrets/automation_ed25519.pub') }}"

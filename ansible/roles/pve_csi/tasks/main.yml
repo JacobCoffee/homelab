@@ -1,0 +1,97 @@
+# Proxmox role, user and API token for the CSI plugin, plus the SOPS-encrypted Kubernetes
+# Secret it reads. Skipped entirely once that secret file exists in the repo (idempotent:
+# nothing here touches Proxmox on a normal second run).
+- name: CSI | does the encrypted secret already exist?
+  ansible.builtin.stat:
+    path: "{{ pve_csi_secret_path }}"
+  register: pve_csi_secret_stat
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+
+- name: CSI | Proxmox role, user, token and SOPS secret
+  when: not pve_csi_secret_stat.stat.exists
+  run_once: true
+  block:
+    - name: CSI | existing roles
+      ansible.builtin.command: pveum role list --output-format json
+      register: pve_csi_roles
+      changed_when: false
+
+    - name: "CSI | create role {{ pve_csi_role }}"
+      ansible.builtin.command: pveum role add {{ pve_csi_role }} -privs "{{ pve_csi_privs }}"
+      when: pve_csi_role not in (pve_csi_roles.stdout | from_json | map(attribute='roleid') | list)
+      changed_when: true
+
+    - name: CSI | existing users
+      ansible.builtin.command: pveum user list --output-format json
+      register: pve_csi_users
+      changed_when: false
+
+    - name: "CSI | create user {{ pve_csi_user }}"
+      ansible.builtin.command: pveum user add {{ pve_csi_user }}
+      when: pve_csi_user not in (pve_csi_users.stdout | from_json | map(attribute='userid') | list)
+      changed_when: true
+
+    - name: CSI | existing ACLs
+      ansible.builtin.command: pveum acl list --output-format json
+      register: pve_csi_acls
+      changed_when: false
+
+    - name: "CSI | grant {{ pve_csi_role }} to {{ pve_csi_user }} on /"
+      ansible.builtin.command: pveum aclmod / -user {{ pve_csi_user }} -role {{ pve_csi_role }}
+      when: >-
+        pve_csi_acls.stdout | from_json
+        | selectattr('ugid', 'equalto', pve_csi_user)
+        | selectattr('roleid', 'equalto', pve_csi_role)
+        | selectattr('path', 'equalto', '/') | list | length == 0
+      changed_when: true
+
+    - name: "CSI | existing tokens for {{ pve_csi_user }} (no_log: lists token ids)"
+      ansible.builtin.command: pveum user token list {{ pve_csi_user }} --output-format json
+      register: pve_csi_tokens
+      changed_when: false
+      no_log: true
+
+    - name: "CSI | drop a stale token (secret file is missing, so its secret is unrecoverable)"
+      ansible.builtin.command: pveum user token remove {{ pve_csi_user }} {{ pve_csi_token_name }}
+      when: pve_csi_token_name in (pve_csi_tokens.stdout | from_json | map(attribute='tokenid') | list)
+      changed_when: true
+
+    - name: "CSI | create token {{ pve_csi_user }}!{{ pve_csi_token_name }} (no_log: captures the secret)"
+      ansible.builtin.command: pveum user token add {{ pve_csi_user }} {{ pve_csi_token_name }} -privsep 1 --output-format json
+      register: pve_csi_token
+      changed_when: true
+      no_log: true
+
+    - name: "CSI | scope the token's own ACL (privsep)"
+      ansible.builtin.command: pveum aclmod / -tokens '{{ pve_csi_user }}!{{ pve_csi_token_name }}' -role {{ pve_csi_role }}
+      changed_when: true
+
+    - name: CSI | write the SOPS-encrypted secret
+      delegate_to: localhost
+      no_log: true
+      block:
+        - name: CSI | write the plaintext Secret manifest (sops matches creation_rules on this path)
+          ansible.builtin.copy:
+            dest: "{{ pve_csi_secret_path }}"
+            mode: "0644"
+            content: |
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: {{ pve_csi_secret_name }}
+                namespace: {{ pve_csi_namespace }}
+              type: Opaque
+              stringData:
+                config.yaml: |
+                  clusters:
+                    - url: https://{{ hostvars[pve_csi_api_host].ansible_host }}:8006/api2/json
+                      insecure: {{ pve_csi_api_insecure | lower }}
+                      token_id: "{{ pve_csi_user }}!{{ pve_csi_token_name }}"
+                      token_secret: "{{ (pve_csi_token.stdout | from_json).value }}"
+                      region: {{ pve_csi_region }}
+
+        - name: CSI | encrypt it in place with SOPS
+          ansible.builtin.command: "{{ pve_csi_mise }} sops -e -i {{ pve_csi_secret_path }}"
+          changed_when: true
