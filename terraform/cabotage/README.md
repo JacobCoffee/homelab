@@ -112,45 +112,28 @@ ansible-playbook playbooks/site.yml --tags core -e opnsense_update=false
 
 Re-run any time; the AdGuard rewrite task is idempotent (`changed=0` on repeat runs).
 
-## GitHub App — manual step
+## GitHub App
 
-Cabotage needs **one GitHub App** for webhook-driven builds and OAuth login. Creating it requires
-your GitHub account, so this is a manual step:
+Cabotage needs **one GitHub App** for webhook-driven builds and GitHub login. GitHub has no API
+that creates apps, so `scripts/github-app.py` uses GitHub's manifest flow: it opens a page that
+submits the app definition, you click **Create GitHub App**, and `gh api` trades the one-time code
+for the app id, client id/secret, private key and webhook secret, written straight into the vault
+(nothing pasted or printed):
 
-1. GitHub → Settings → Developer settings → GitHub Apps → New GitHub App.
-2. **Name**: `Cabotage - homelab` (or similar; must be globally unique).
-3. **Homepage URL**: `https://cabotage.apps.z7x.org`
-4. **Callback URL**: `https://cabotage.apps.z7x.org/auth/github/callback` (also works as the Setup
-   URL — Cabotage branches on `state`). Internal/tailnet-only, fine for a browser OAuth redirect.
-5. **Webhook URL**: `https://cabotage.z7x.org/github/hooks` (the one public path, see above).
-6. **Webhook secret**: already generated and stored in the vault as
-   `vault_cabotage_github_webhook_secret` — run
-   `ansible-vault view ansible/inventory/group_vars/all/vault.yml | yq '.vault_cabotage_github_webhook_secret'`
-   and paste it into GitHub's "Webhook secret" field (don't generate a new one).
-7. **Permissions**: Repository — Contents (read), Metadata (read), Commit statuses (read/write),
-   Checks (read/write), Pull requests (read), Webhooks (read); Account — Email addresses (read, if
-   using GitHub OAuth login).
-8. **Subscribe to events**: Push, Pull request, Release, Check run, Check suite, Status.
-9. **Where can this GitHub App be installed?**: Only on this account (or your org), unless you
-   want it public.
-10. Create the app. Generate a **private key** (downloads a `.pem`). Note the **App ID** and
-    generate a **client secret** (OAuth tab).
-11. Store the four values in the vault (never print them back out; this prompts interactively
-    and writes directly -- avoids `ansible-vault edit`, which opens `$EDITOR` and can silently
-    fail to save). Works from any shell, including fish:
-    ```sh
-    bash terraform/cabotage/set-github-app-secrets.sh
-    # prompts for: App ID, OAuth Client ID, OAuth Client secret (hidden), then paste the full
-    # .pem private key and press Ctrl-D on its own line.
-    ```
-    Tell the integrator once this is done -- re-apply and the admin SQL step are handled from
-    here.
-12. Re-apply so the module picks up `github_app_id` and `tf.sh` materializes the new secret files:
-    ```sh
-    cd terraform/cabotage
-    ./tf.sh apply
-    ```
-13. Install the GitHub App on the org/account whose repos you want to deploy from.
+```sh
+scripts/github-app.py cabotage
+cd terraform/cabotage && ./tf.sh apply   # module picks up github_app_id + the new secret files
+```
+
+The definition lives in the script (`APPS["cabotage"]`): app `cabotage-z7x`, private to your
+account, homepage `https://cabotage.apps.z7x.org`, callback and setup URL
+`https://cabotage.apps.z7x.org/auth/github/callback` (Cabotage branches on `state`), webhook
+`https://cabotage.z7x.org/github/hooks` (the one public path, see above). Permissions and events
+match what cabotage-app calls and handles: Contents read, Deployments write, Checks write, Pull
+requests write, Commit statuses read, Administration read, Metadata read, Email addresses read;
+events Push, Pull request, Deployment, Check suite, Repository (installation events always
+arrive). Don't install it from GitHub; Cabotage's UI starts the install so it links to your
+account.
 
 ## First login / first admin
 

@@ -12,7 +12,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOMELAB_ROOT="$(cd "$ROOT/../.." && pwd)"
 VAULT_FILE="$HOMELAB_ROOT/ansible/inventory/group_vars/all/vault.yml"
-SECRETS_DIR="$ROOT/.secrets"
+# The module reads ${secrets_dir}/<workspace>/ (certificate-authority.tf `local.secrets_dir`), so
+# the GitHub App files must land there, not in .secrets/ itself.
+SECRETS_DIR="$ROOT/.secrets/${TF_WORKSPACE:-default}"
 
 cd "$ROOT"
 
@@ -21,7 +23,7 @@ vault_get() {
 }
 
 mkdir -p "$SECRETS_DIR"
-chmod 700 "$SECRETS_DIR"
+chmod 700 "$ROOT/.secrets" "$SECRETS_DIR"
 
 WEBHOOK_SECRET="$(vault_get vault_cabotage_github_webhook_secret)"
 if [ -n "$WEBHOOK_SECRET" ]; then
