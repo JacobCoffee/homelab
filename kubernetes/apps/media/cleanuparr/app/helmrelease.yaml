@@ -19,6 +19,25 @@ spec:
               tag: "2.10.2"
             env:
               TZ: America/Chicago
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: &port 11011
+                  initialDelaySeconds: 10
+                  periodSeconds: 10
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /health
+                    port: *port
+                  initialDelaySeconds: 10
+                  periodSeconds: 10
             resources:
               requests:
                 cpu: 50m
@@ -37,7 +56,7 @@ spec:
         controller: cleanuparr
         ports:
           http:
-            port: &port 11011
+            port: *port
     persistence:
       config:
         type: persistentVolumeClaim
