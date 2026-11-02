@@ -41,12 +41,14 @@ data:
                      url="https://media.z7x.org", interval=60),
                 dict(type=MonitorType.HTTP, name="seerr",
                      url="https://requests.z7x.org", interval=60),
+                # By IP from the cluster (their *.internal.z7x.org names are tailnet IPs pods can't
+                # reach), so their certs don't match: these check "is the UI up", not TLS.
                 dict(type=MonitorType.HTTP, name="proxmox hnhv01",
-                     url="https://192.168.1.220:8006", interval=60),
+                     url="https://192.168.1.220:8006", interval=60, ignore_tls=True),
                 dict(type=MonitorType.HTTP, name="proxmox hnhv02",
-                     url="https://192.168.1.192:8006", interval=60),
+                     url="https://192.168.1.192:8006", interval=60, ignore_tls=True),
                 dict(type=MonitorType.HTTP, name="opnsense",
-                     url="https://10.10.10.1", interval=60),
+                     url="https://10.10.10.1", interval=60, ignore_tls=True),
                 dict(type=MonitorType.DNS, name="adguard dns",
                      hostname="cloudflare.com", dns_resolve_server=ADGUARD_DNS_RESOLVER,
                      port=53, interval=60),
@@ -59,7 +61,10 @@ data:
             created_ids = []
             for mon in monitors:
                 if mon["name"] in existing:
-                    created_ids.append(existing[mon["name"]]["id"])
+                    # Re-apply the definition so edits here reach monitors created earlier.
+                    mid = existing[mon["name"]]["id"]
+                    api.edit_monitor(mid, **{k: v for k, v in mon.items() if k != "type"})
+                    created_ids.append(mid)
                     continue
                 resp = api.add_monitor(**mon)
                 created_ids.append(resp["monitorID"])
