@@ -2,3 +2,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: media
+  labels:
+    # gluetun (qBittorrent's VPN sidecar) needs NET_ADMIN, which the cluster default
+    # "baseline" PodSecurity level forbids.
+    pod-security.kubernetes.io/enforce: privileged
