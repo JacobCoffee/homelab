@@ -21,6 +21,13 @@ lab_zones:
 # VXLAN adds 50 bytes to a 1500-byte house LAN; every lab NIC uses this (DHCP option 26).
 lab_mtu: 1450
 
+# Alloy's syslog listener (kubernetes/apps/observability/alloy, LoadBalancer Service pinned via
+# Cilium LB-IPAM in the K8S zone's 10.10.30.200-250 range -- .200/.201 are the two Envoy
+# Gateways). Proxmox (pve_syslog role) and OPNsense (roles/opnsense/tasks/syslog.yml) both
+# forward here.
+observability_syslog_target: 10.10.30.210
+observability_syslog_port: 514
+
 # Lab DNS (AdGuard Home, hndns01): INT and K8S DHCP hand it out; it asks OPNsense's Unbound.
 lab_dns: 10.10.10.53
 

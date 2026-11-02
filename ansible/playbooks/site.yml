@@ -58,6 +58,12 @@
   roles:
     - monitoring_pve
 
+- name: "Proxmox host syslog -> Alloy (kubernetes/apps/observability/alloy)"
+  hosts: pve
+  tags: [syslog]
+  roles:
+    - pve_syslog
+
 - name: "Proxmox notifications (Discord webhook target + matcher)"
   hosts: pve
   tags: [notify]

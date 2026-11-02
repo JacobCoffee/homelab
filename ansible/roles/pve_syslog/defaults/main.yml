@@ -1,0 +1,3 @@
+# Target: observability_syslog_target/observability_syslog_port (inventory/group_vars/all/main.yml),
+# Alloy's syslog listener.
+pve_syslog_conf_path: /etc/rsyslog.d/60-observability-forward.conf

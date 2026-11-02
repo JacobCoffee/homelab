@@ -1,0 +1,106 @@
+# Remote syslog destination -> Alloy's syslog listener (kubernetes/apps/observability/alloy,
+# LoadBalancer Service at observability_syslog_target). Endpoint/field names: OPNsense.Syslog.*
+# model (github.com/opnsense/core, module syslog, controller settings) -- `transport`/`hostname`/
+# `port`/`facility`/`level`/`rfc5424` match Syslog.xml exactly. No firewall rule needed: this is
+# OPNsense itself originating an outbound connection, which the default "allow all from the
+# firewall host" policy already covers (unlike node_exporter's inbound scrape, see node_exporter.yml).
+- name: Syslog | list existing destinations
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/syslog/settings/search_destinations"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_syslog_destinations
+
+- name: Syslog | add destination for Alloy
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/syslog/settings/add_destination"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      destination:
+        enabled: "1"
+        transport: tcp4
+        hostname: "{{ observability_syslog_target }}"
+        port: "{{ observability_syslog_port }}"
+        rfc5424: "1"
+        description: "ansible-managed: Alloy (observability)"
+  delegate_to: localhost
+  register: opnsense_syslog_destination_add
+  when: >-
+    opnsense_syslog_destinations.json.rows
+    | selectattr('description', 'equalto', 'ansible-managed: Alloy (observability)')
+    | list | length == 0
+  changed_when: opnsense_syslog_destination_add.json.result == "saved"
+  failed_when: opnsense_syslog_destination_add.json.result is not defined or opnsense_syslog_destination_add.json.result == "failed"
+
+- name: Syslog | reconfigure service
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/syslog/service/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_syslog_destination_add is changed
+  changed_when: true
+
+# The Proxmox hosts sit on the house LAN, whose router (Spectrum) has no route into the lab, so
+# they send syslog to OPNsense's WAN address and this forward hands it to Alloy (pve_syslog role).
+# Same pattern as the lab DNS forward in lab_dns.yml. Anything on the house LAN can reach it,
+# so treat syslog content from 192.168.1.0/24 as unauthenticated.
+- name: Syslog | existing port forwards
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/d_nat/search_rule"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_syslog_dnat_rules
+
+- name: Syslog | forward WAN port {{ observability_syslog_port }} to Alloy
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/d_nat/add_rule"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      rule:
+        interface: wan
+        ipprotocol: inet
+        protocol: TCP/UDP
+        destination: {network: wanip, port: "{{ observability_syslog_port | string }}"}
+        target: "{{ observability_syslog_target }}"
+        local-port: "{{ observability_syslog_port | string }}"
+        descr: "Syslog: WAN to Alloy"
+        pass: pass
+  delegate_to: localhost
+  register: opnsense_syslog_dnat_add
+  when: >-
+    opnsense_syslog_dnat_rules.json.rows | selectattr('descr', 'equalto', 'Syslog: WAN to Alloy')
+    | list | length == 0
+  changed_when: opnsense_syslog_dnat_add.json.result == "saved"
+  failed_when: opnsense_syslog_dnat_add.json.result is not defined or opnsense_syslog_dnat_add.json.result == "failed"
+
+- name: Syslog | apply firewall/NAT changes
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/filter/apply"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_syslog_dnat_add is changed
+  changed_when: true

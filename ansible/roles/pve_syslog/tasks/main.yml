@@ -1,0 +1,44 @@
+# Debian 13 (trixie, what Proxmox ships on) is journald-only out of the box -- no rsyslog
+# package, no syslog.service. Install it: its default config already pulls from journald
+# (imjournal), so the only thing this role adds is the forward rule below.
+- name: Syslog | rsyslog installed
+  ansible.builtin.apt:
+    name: rsyslog
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Syslog | rsyslog enabled and running
+  ansible.builtin.systemd:
+    name: rsyslog
+    enabled: true
+    state: started
+
+# The hosts can't reach the lab directly (the house router has no route to 10.10.30.0/24), so
+# they send to OPNsense's WAN address, which forwards to Alloy (opnsense role, syslog.yml). The
+# address is discovered the same way the opnsense role does it, on the node that runs OPNsense.
+- name: Syslog | OPNsense WAN address
+  ansible.builtin.include_role:
+    name: opnsense
+    tasks_from: wan_ip
+    apply:
+      delegate_to: "{{ groups['core'][0] }}"
+
+- name: Syslog | forward target
+  ansible.builtin.set_fact:
+    pve_syslog_target: "{{ opnsense_wan_ip }}"
+
+- name: Syslog | rsyslog forwarder config
+  ansible.builtin.template:
+    src: 60-observability-forward.conf.j2
+    dest: "{{ pve_syslog_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_syslog_conf
+
+- name: Syslog | restart rsyslog
+  ansible.builtin.systemd:
+    name: rsyslog
+    state: restarted
+  when: pve_syslog_conf is changed

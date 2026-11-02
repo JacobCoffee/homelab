@@ -34,8 +34,14 @@
   when: opnsense_nic_moved is changed
   changed_when: true
 
+# Tagged like the tagged includes below, so `--tags monitoring` / `--tags syslog` still learn the
+# WAN address and wait for the API they need (the core play's own tag doesn't match those runs).
 - name: Locate the WAN address
-  ansible.builtin.include_tasks: wan_ip.yml
+  ansible.builtin.include_tasks:
+    file: wan_ip.yml
+    apply:
+      tags: [monitoring, syslog]
+  tags: [monitoring, syslog]
 
 - name: Wait for the OPNsense API
   ansible.builtin.uri:
@@ -51,6 +57,7 @@
   retries: 36
   delay: 5
   no_log: true
+  tags: [monitoring, syslog]
 
 - name: Patch OPNsense (reboots if the update needs it)
   ansible.builtin.include_tasks: firmware.yml
@@ -66,8 +73,20 @@
   ansible.builtin.include_tasks: tailscale.yml
 
 - name: Prometheus node_exporter plugin + firewall rule for the K8S zone
-  ansible.builtin.include_tasks: node_exporter.yml
+  ansible.builtin.include_tasks:
+    file: node_exporter.yml
+    apply:
+      tags: [monitoring]
   tags: [monitoring]
+
+# apply.tags (not just the outer tags:) is required for a dynamic include_tasks' inner tasks to
+# actually run under `--tags syslog` -- the outer tags: only gates the include step itself.
+- name: Remote syslog to Alloy
+  ansible.builtin.include_tasks:
+    file: syslog.yml
+    apply:
+      tags: [syslog]
+  tags: [syslog]
 
 - name: DHCP options (MTU, AdGuard) and the WAN DNS port-forward
   ansible.builtin.include_tasks: lab_dns.yml

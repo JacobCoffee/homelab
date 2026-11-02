@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+# Forward every local log message to Alloy (kubernetes/apps/observability/alloy) over TCP, via
+# OPNsense's WAN port forward ({{ pve_syslog_target }}:{{ observability_syslog_port }} ->
+# {{ observability_syslog_target }}): the house router can't route into the lab.
+# RFC5424 with octet-counted framing is what Alloy's loki.source.syslog parses by default. The
+# queue buffers (memory, spilling to disk) while Alloy restarts instead of dropping messages.
+action(type="omfwd" target="{{ pve_syslog_target }}" port="{{ observability_syslog_port }}"
+       protocol="tcp" TCP_Framing="octet-counted" template="RSYSLOG_SyslogProtocol23Format"
+       queue.type="LinkedList" queue.filename="observability-fwd" queue.size="50000"
+       queue.maxDiskSpace="256m" queue.saveOnShutdown="on" action.resumeRetryCount="-1")
