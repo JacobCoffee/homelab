@@ -1,4 +1,8 @@
+# pod-security enforce=privileged: cert-manager-csi-driver (terraform/cabotage's internal mTLS
+# material) runs a hostPath+privileged DaemonSet here; the cluster PodSecurity default is baseline.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: cert-manager
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
