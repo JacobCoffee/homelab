@@ -31,7 +31,9 @@ spec:
           restartPolicy: Never
           containers:
             - name: reapply
-              image: debian:12.11-slim
+              # adb baked in (Debian stable-slim + adb), pinned by digest: installing it with apt on
+              # every 5-minute run turned any DNS/network blip into a failed Job (and a page).
+              image: backplane/adb:20261030@sha256:688a06b749e3d2abd4c9b9c8a5a078eddf33a32956d602435ab95eea0542293e
               env:
                 - name: FIRETV_HOST
                   value: "192.168.1.28"
@@ -44,8 +46,6 @@ spec:
                 - |
                   set -euo pipefail
 
-                  apt-get update -qq
-                  apt-get install -y -qq --no-install-recommends android-sdk-platform-tools-common android-tools-adb >/dev/null
 
                   mkdir -p "$HOME/.android"
                   cp /secrets/adbkey "$HOME/.android/adbkey"
