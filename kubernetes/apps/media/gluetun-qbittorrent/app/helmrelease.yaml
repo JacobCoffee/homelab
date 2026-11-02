@@ -20,6 +20,54 @@ spec:
   values:
     controllers:
       qbittorrent:
+        initContainers:
+          # The image's default config skips web UI auth for every RFC1918 client
+          # (AuthSubnetWhitelist), and all traffic arrives from Envoy's pod IPs, so anyone on the
+          # tailnet/lab was logged in automatically. qBittorrent can't take these settings as flags,
+          # so this rewrites [WebUI] on every start: no subnet bypass, localhost auth and CSRF
+          # protection on, and the login from gluetun-secret. It also drops the image's legacy
+          # [Preferences] WebUI\* defaults so a fresh PVC can't migrate the bypass back in.
+          # (No ${...} in the script: Flux postBuild substitution would rewrite it.)
+          harden-webui:
+            image:
+              repository: ghcr.io/home-operations/qbittorrent
+              tag: "5.3.0"
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                set -eu
+                f=/config/qBittorrent/qBittorrent.conf
+                mkdir -p /config/qBittorrent
+                [ -f "$f" ] || cp /defaults/qBittorrent.conf "$f"
+                WANT="AuthSubnetWhitelistEnabled=false
+                LocalHostAuth=true
+                CSRFProtection=true
+                Username=admin
+                Password_PBKDF2=\"$QBT_WEBUI_PASSWORD_PBKDF2\""
+                export WANT
+                awk '
+                  BEGIN { n = split(ENVIRON["WANT"], L, "\n")
+                          for (i = 1; i <= n; i++) { sub(/^[ \t]+/, "", L[i]); k = substr(L[i], 1, index(L[i], "=") - 1); v[k] = substr(L[i], index(L[i], "=") + 1); ord[i] = k } }
+                  function flush(j) { for (j = 1; j <= n; j++) if (!(ord[j] in seen)) print ord[j] "=" v[ord[j]]; flushed = 1 }
+                  /^\[.*\]$/ { if (sec == "WebUI") flush(); sec = substr($0, 2, length($0) - 2); if (sec == "WebUI") web = 1; print; next }
+                  /^WebUI\\/ { next }
+                  sec == "WebUI" { k = substr($0, 1, index($0, "=") - 1); if (k in v) { print k "=" v[k]; seen[k] = 1; next } }
+                  { print }
+                  END { if (sec == "WebUI" && !flushed) flush()
+                        if (!web) { print ""; print "[WebUI]"; for (j = 1; j <= n; j++) print ord[j] "=" v[ord[j]] } }
+                ' "$f" > "$f.new"
+                mv "$f.new" "$f"
+                grep -E '^(AuthSubnetWhitelistEnabled|LocalHostAuth|CSRFProtection|Username)=' "$f"
+            env:
+              QBT_WEBUI_PASSWORD_PBKDF2:
+                valueFrom:
+                  secretKeyRef:
+                    name: gluetun-secret
+                    key: QBT_WEBUI_PASSWORD_PBKDF2
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
         containers:
           gluetun:
             image:
@@ -126,6 +174,8 @@ spec:
         size: 2Gi
         advancedMounts:
           qbittorrent:
+            harden-webui:
+              - path: /config
             app:
               - path: /config
       media:
