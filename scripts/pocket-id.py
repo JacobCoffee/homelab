@@ -1,0 +1,180 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["requests>=2.32", "pyyaml>=6"]
+# ///
+"""Keep Pocket ID (https://id.z7x.org) in step with this file: the lab-admins group, the owner
+account in it, and one OIDC client per app, each only open to lab-admins.
+
+    scripts/pocket-id.py            # apply
+    scripts/pocket-id.py --check    # only report what would change
+    scripts/pocket-id.py --link     # also print a fresh one-time sign-in link for the owner
+
+Talks to the REST API with STATIC_API_KEY (vault_pocket_id_static_api_key). Client secrets are
+generated into the vault as vault_pocket_id_<client>_secret and handed to Pocket ID, so the vault
+is the source of truth: deleting a vault key rotates that client's secret on the next run. After
+a rotation, re-run whatever reads the key (the sops Secrets, ansible --tags pocket_id, ...).
+
+While the owner has no passkey yet, it prints a one-time link (15 minutes) that signs in once so
+a passkey can be added under My Account.
+"""
+
+from __future__ import annotations
+
+import argparse
+import secrets
+import sys
+from pathlib import Path
+
+import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vault import vault_get, vault_set  # noqa: E402
+
+BASE = "https://id.z7x.org"
+GROUP = {"name": "lab-admins", "friendlyName": "Lab admins"}
+OWNER = {
+    "username": "jacob",
+    "email": "jacob@z7x.org",
+    "emailVerified": True,
+    "firstName": "Jacob",
+    "lastName": "Coffee",
+    "displayName": "Jacob Coffee",
+    "isAdmin": True,
+}
+# id -> client settings. Callback URLs must match exactly (single-label * allowed).
+CLIENTS: dict[str, dict] = {
+    # Envoy Gateway's OIDC filter in front of the apps without their own SSO (SecurityPolicy
+    # lab-sso in media/status); Envoy's callback is /oauth2/callback on each app's own host.
+    "lab-gateway": {
+        "name": "Lab apps",
+        "callbackURLs": ["https://*.z7x.org/oauth2/callback"],
+        "launchURL": "https://start.z7x.org",
+    },
+    "grafana": {
+        "name": "Grafana",
+        "callbackURLs": ["https://grafana.z7x.org/login/generic_oauth"],
+        "launchURL": "https://grafana.z7x.org",
+        "pkceEnabled": True,
+    },
+    "proxmox": {
+        "name": "Proxmox",
+        "callbackURLs": ["https://*.internal.z7x.org:8006"],
+        "launchURL": "https://hnhv01.internal.z7x.org:8006",
+    },
+    "jellyfin": {
+        "name": "Jellyfin",
+        "callbackURLs": ["https://media.z7x.org/sso/OID/redirect/pocket-id"],
+        "launchURL": "https://media.z7x.org",
+    },
+}
+COMPARED = ("name", "callbackURLs", "launchURL", "pkceEnabled", "isPublic", "isGroupRestricted")
+
+
+class Api:
+    def __init__(self, key: str, check: bool):
+        self.s = requests.Session()
+        self.s.headers["X-API-Key"] = key
+        self.check = check
+        self.changes: list[str] = []
+
+    def req(self, method: str, path: str, **kw) -> dict | list | None:
+        r = self.s.request(method, f"{BASE}/api{path}", timeout=20, **kw)
+        if r.status_code >= 400:
+            sys.exit(f"{method} {path}: {r.status_code} {r.text[:300]}")
+        return r.json() if r.content else None
+
+    def get_all(self, path: str) -> list[dict]:
+        return self.req("GET", path, params={"pagination[limit]": 100})["data"]
+
+    def change(self, what: str, method: str, path: str, **kw) -> dict | list | None:
+        self.changes.append(what)
+        print(f"{'would ' if self.check else ''}{what}")
+        return None if self.check else self.req(method, path, **kw)
+
+
+def ensure_group(api: Api) -> str | None:
+    for g in api.get_all("/user-groups"):
+        if g["name"] == GROUP["name"]:
+            return g["id"]
+    made = api.change(f"create group {GROUP['name']}", "POST", "/user-groups", json=GROUP)
+    return made["id"] if made else None
+
+
+def ensure_owner(api: Api, gid: str | None) -> str | None:
+    user = next((u for u in api.get_all("/users") if u["username"] == OWNER["username"]), None)
+    if user is None:
+        made = api.change(f"create user {OWNER['username']}", "POST", "/users",
+                          json={**OWNER, "userGroupIds": [gid] if gid else []})
+        return made["id"] if made else None
+    if any(user.get(k) != v for k, v in OWNER.items()):
+        api.change(f"update user {OWNER['username']}", "PUT", f"/users/{user['id']}",
+                   json={**user, **OWNER})
+    groups = {g["id"] for g in api.req("GET", f"/users/{user['id']}/groups")}
+    if gid and gid not in groups:
+        api.change(f"add {OWNER['username']} to {GROUP['name']}", "PUT",
+                   f"/users/{user['id']}/user-groups", json={"userGroupIds": sorted(groups | {gid})})
+    return user["id"]
+
+
+def ensure_client(api: Api, cid: str, spec: dict, gid: str | None, vault: dict) -> None:
+    want = {"name": spec["name"], "callbackURLs": spec["callbackURLs"],
+            "launchURL": spec.get("launchURL"), "pkceEnabled": spec.get("pkceEnabled", False),
+            "isPublic": False, "isGroupRestricted": True, "skipConsent": True}
+    have = next((c for c in api.get_all("/oidc/clients") if c["id"] == cid), None)
+    if have is None:
+        api.change(f"create client {cid}", "POST", "/oidc/clients", json={**want, "id": cid})
+    elif any(have.get(k) != want[k] for k in COMPARED):
+        api.change(f"update client {cid}", "PUT", f"/oidc/clients/{cid}", json={**have, **want})
+
+    if api.check and have is None:
+        return
+    full = api.req("GET", f"/oidc/clients/{cid}")
+    allowed = {g["id"] for g in full.get("allowedUserGroups", [])}
+    if gid and allowed != {gid}:
+        api.change(f"limit client {cid} to {GROUP['name']}", "PUT",
+                   f"/oidc/clients/{cid}/allowed-user-groups", json={"userGroupIds": [gid]})
+
+    key = f"vault_pocket_id_{cid.replace('-', '_')}_secret"
+    secret = vault.get(key)
+    if not secret:
+        secret = secrets.token_urlsafe(32)
+        if api.check:
+            print(f"would generate {key}")
+        else:
+            vault_set({key: secret})
+            vault[key] = secret
+    current = api.req("GET", f"/oidc/clients/{cid}/secrets") or []
+    if isinstance(current, dict):
+        current = current.get("data", [])
+    if any(s["isActive"] and s["prefix"] and secret.startswith(s["prefix"]) for s in current):
+        return
+    for s in current:
+        api.change(f"drop old secret of {cid}", "DELETE", f"/oidc/clients/{cid}/secrets/{s['id']}")
+    api.change(f"set secret of {cid} from {key}", "POST", f"/oidc/clients/{cid}/secrets",
+               json={"secret": secret})
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--link", action="store_true")
+    args = ap.parse_args()
+
+    vault = vault_get()
+    api = Api(vault["vault_pocket_id_static_api_key"], args.check)
+    gid = ensure_group(api)
+    uid = ensure_owner(api, gid)
+    for cid, spec in CLIENTS.items():
+        ensure_client(api, cid, spec, gid, vault)
+
+    if uid and not args.check:
+        passkeys = api.req("GET", f"/users/{uid}/webauthn-credentials") or []
+        if args.link or not passkeys:
+            token = api.req("POST", f"/users/{uid}/one-time-access-token", json={"ttl": "15m"})["token"]
+            print(f"{'no passkey yet; ' if not passkeys else ''}sign in once (15 min): {BASE}/lc/{token}")
+    print("ok, no changes" if not api.changes else f"{len(api.changes)} change(s)")
+
+
+if __name__ == "__main__":
+    main()
