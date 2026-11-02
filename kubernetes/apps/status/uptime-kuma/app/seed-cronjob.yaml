@@ -11,7 +11,7 @@ data:
   seed-kuma.py: |
     #!/usr/bin/env python3
     """Seed Uptime Kuma with an admin user, monitors, and a public status page slug 'home'.
-    Idempotent: skips setup if already configured and skips monitors that already exist by name.
+    Idempotent: skips setup if already configured and re-applies monitors that already exist by name.
     """
     import os
     import sys
@@ -20,6 +20,7 @@ data:
 
     BASE_URL = "http://uptime-kuma.status.svc.cluster.local:3001"
     ADGUARD_DNS_RESOLVER = "10.10.10.53"
+    EDIT_FIELD = {"ignore_tls": "ignoreTls"}
 
 
     def main() -> int:
@@ -62,8 +63,11 @@ data:
             for mon in monitors:
                 if mon["name"] in existing:
                     # Re-apply the definition so edits here reach monitors created earlier.
+                    # edit_monitor merges kwargs straight into Kuma's own field names (unlike
+                    # add_monitor, which translates), and Kuma spells this one ignoreTls.
                     mid = existing[mon["name"]]["id"]
-                    api.edit_monitor(mid, **{k: v for k, v in mon.items() if k != "type"})
+                    fields = {EDIT_FIELD.get(k, k): v for k, v in mon.items() if k != "type"}
+                    api.edit_monitor(mid, **fields)
                     created_ids.append(mid)
                     continue
                 resp = api.add_monitor(**mon)
