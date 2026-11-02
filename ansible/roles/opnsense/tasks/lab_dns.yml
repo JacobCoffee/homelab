@@ -115,3 +115,57 @@
   delegate_to: localhost
   when: opnsense_dnat_add is changed
   changed_when: true
+
+# Fixed leases (lab_dhcp_hosts), e.g. Talos nodes that must come up on their final IP even
+# from the installer ISO. Keyed on MAC.
+- name: DHCP | existing host reservations
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/search_host"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_dhcp_hosts
+
+- name: DHCP | reserve {{ lab_dhcp_hosts | map(attribute='name') | join(', ') }}
+  vars:
+    zone: "{{ lab_zones | selectattr('name', 'equalto', item.zone) | first }}"
+    existing: "{{ opnsense_dhcp_hosts.json.rows | selectattr('hwaddr', 'equalto', item.mac | lower) | list }}"
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/{{ 'set_host/' ~ existing[0].uuid if existing else 'add_host' }}"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      host:
+        host: "{{ item.name }}"
+        domain: "{{ zone.domain }}"
+        ip: "{{ item.ip }}"
+        hwaddr: "{{ item.mac | lower }}"
+        descr: ansible-managed
+  delegate_to: localhost
+  loop: "{{ lab_dhcp_hosts }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.mac }} -> {{ item.ip }}"
+  register: opnsense_dhcp_host_set
+  when: >-
+    not existing or existing[0].host != item.name or existing[0].ip != item.ip or
+    existing[0].domain != zone.domain
+  changed_when: opnsense_dhcp_host_set.json.result == "saved"
+  failed_when: opnsense_dhcp_host_set.json.result is not defined or opnsense_dhcp_host_set.json.result == "failed"
+
+- name: DHCP | reconfigure Dnsmasq for the reservations
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/service/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_dhcp_host_set is changed
+  changed_when: true

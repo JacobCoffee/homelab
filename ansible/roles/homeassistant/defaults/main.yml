@@ -1,0 +1,10 @@
+# Home Assistant OS (the official appliance image) as a UEFI VM on home_assistant.host,
+# on the INT zone with a reserved IP and the radio stick passed through.
+ha_version: "18.4"
+ha_url: https://github.com/home-assistant/operating-system/releases/download/{{ ha_version }}/haos_ova-{{ ha_version }}.qcow2.xz
+ha_storage: vmdata
+ha_scratch: /vmdata/.haos-import   # the image unpacks to ~1.5 GB; keep it off the USB root
+ha_cores: 2
+ha_memory: 4096
+ha_disk_size: 64G
+ha_zone: "{{ lab_zones | selectattr('name', 'equalto', 'int') | first }}"

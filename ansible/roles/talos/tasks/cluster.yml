@@ -1,0 +1,163 @@
+# Configure the Talos nodes from the controller: render each node's config from the SOPS
+# secrets + patches, install nodes waiting in maintenance mode, push config changes to
+# installed ones (only when the dry run shows a diff), bootstrap etcd once, write the
+# talosconfig and kubeconfig (git-ignored). Talos API is reached over Tailscale.
+- name: Work directory for rendered configs (holds secrets; removed at the end)
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: talos
+  register: talos_tmp
+
+- name: Render and apply
+  block:
+    - name: Decrypt cluster secrets
+      ansible.builtin.shell: >-
+        {{ talos_mise }} sops -d {{ talos_dir }}/secrets.sops.yaml > {{ talos_tmp.path }}/secrets.yaml
+        && chmod 600 {{ talos_tmp.path }}/secrets.yaml
+      changed_when: false
+      no_log: true
+
+    - name: Per-node patch
+      ansible.builtin.template:
+        src: machine.yaml.j2
+        dest: "{{ talos_tmp.path }}/{{ node.name }}.patch.yaml"
+        mode: "0600"
+      loop: "{{ k8s_nodes }}"
+      loop_control:
+        loop_var: node
+        label: "{{ node.name }}"
+
+    - name: Per-node machine config
+      ansible.builtin.command: >-
+        {{ talos_mise }} talosctl gen config {{ k8s_cluster_name }} https://{{ k8s_vip }}:6443
+        --with-secrets {{ talos_tmp.path }}/secrets.yaml --kubernetes-version {{ k8s_version }}
+        --config-patch @{{ talos_dir }}/patches/cluster.yaml
+        --config-patch @{{ talos_tmp.path }}/{{ node.name }}.patch.yaml
+        --output-types controlplane --output {{ talos_tmp.path }}/{{ node.name }}.yaml --force
+      loop: "{{ k8s_nodes }}"
+      loop_control:
+        loop_var: node
+        label: "{{ node.name }}"
+      changed_when: false
+
+    - name: talosconfig (endpoints = every node; never the VIP, which needs etcd)
+      ansible.builtin.shell: >-
+        {{ talos_mise }} talosctl gen config {{ k8s_cluster_name }} https://{{ k8s_vip }}:6443
+        --with-secrets {{ talos_tmp.path }}/secrets.yaml --output-types talosconfig
+        --output {{ talos_tmp.path }}/talosconfig --force &&
+        {{ talos_mise }} talosctl --talosconfig {{ talos_tmp.path }}/talosconfig config endpoint
+        {{ k8s_nodes | map(attribute='ip') | join(' ') }} &&
+        {{ talos_mise }} talosctl --talosconfig {{ talos_tmp.path }}/talosconfig config node
+        {{ k8s_nodes[0].ip }}
+      changed_when: false
+
+    - name: Keep talosconfig in the repo (git-ignored)
+      ansible.builtin.copy:
+        src: "{{ talos_tmp.path }}/talosconfig"
+        dest: "{{ talos_config }}"
+        mode: "0600"
+
+    - name: Node state (installed = answers the authenticated API)
+      ansible.builtin.command: >-
+        {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ node.ip }} -e {{ node.ip }}
+        version --short
+      loop: "{{ k8s_nodes }}"
+      loop_control:
+        loop_var: node
+        label: "{{ node.name }}"
+      register: talos_state
+      changed_when: false
+      failed_when: false
+
+    - name: Install nodes waiting in maintenance mode
+      ansible.builtin.command: >-
+        {{ talos_mise }} talosctl apply-config --insecure -n {{ item.node.ip }} -e {{ item.node.ip }}
+        --file {{ talos_tmp.path }}/{{ item.node.name }}.yaml
+      loop: "{{ talos_state.results }}"
+      loop_control:
+        label: "{{ item.node.name }}"
+      when: item.rc != 0
+      register: talos_installed
+      until: talos_installed.rc == 0
+      retries: 30   # the VM may still be booting the ISO
+      delay: 10
+      changed_when: true
+
+    - name: Config drift on installed nodes
+      ansible.builtin.command: >-
+        {{ talos_mise }} talosctl --talosconfig {{ talos_config }} apply-config --dry-run
+        -n {{ item.node.ip }} -e {{ item.node.ip }} --file {{ talos_tmp.path }}/{{ item.node.name }}.yaml
+      loop: "{{ talos_state.results }}"
+      loop_control:
+        label: "{{ item.node.name }}"
+      when: item.rc == 0
+      register: talos_drift
+      changed_when: false
+
+    - name: Apply changed config (Talos decides whether a reboot is needed)
+      ansible.builtin.command: >-
+        {{ talos_mise }} talosctl --talosconfig {{ talos_config }} apply-config
+        -n {{ item.item.node.ip }} -e {{ item.item.node.ip }} --file {{ talos_tmp.path }}/{{ item.item.node.name }}.yaml
+      loop: "{{ talos_drift.results }}"
+      loop_control:
+        label: "{{ item.item.node.name }}"
+      when: item is not skipped and 'No changes' not in item.stdout
+      changed_when: true
+
+  always:
+    - name: Remove rendered configs
+      ansible.builtin.file:
+        path: "{{ talos_tmp.path }}"
+        state: absent
+
+- name: Wait for every node to come up installed
+  ansible.builtin.command: >-
+    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ node.ip }} -e {{ node.ip }}
+    version --short
+  loop: "{{ k8s_nodes }}"
+  loop_control:
+    loop_var: node
+    label: "{{ node.name }}"
+  register: talos_up
+  until: talos_up.rc == 0
+  retries: 60
+  delay: 10
+  changed_when: false
+
+- name: etcd members (fails until bootstrapped)
+  ansible.builtin.command: >-
+    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ k8s_nodes[0].ip }} -e {{ k8s_nodes[0].ip }}
+    etcd members
+  register: talos_etcd
+  changed_when: false
+  failed_when: false
+
+- name: Bootstrap etcd on {{ k8s_nodes[0].name }} (once per cluster)
+  ansible.builtin.command: >-
+    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ k8s_nodes[0].ip }} -e {{ k8s_nodes[0].ip }}
+    bootstrap
+  when: talos_etcd.rc != 0
+  register: talos_bootstrap
+  until: talos_bootstrap.rc == 0
+  retries: 30
+  delay: 10
+  changed_when: true
+
+- name: kubeconfig (git-ignored)
+  ansible.builtin.command: >-
+    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ k8s_nodes[0].ip }} -e {{ k8s_nodes[0].ip }}
+    kubeconfig {{ talos_kubeconfig }} --force --merge=false
+  args:
+    creates: "{{ talos_kubeconfig }}"
+  register: talos_kubeconfig_written
+  until: talos_kubeconfig_written.rc == 0
+  retries: 30
+  delay: 10
+
+- name: Wait for the Kubernetes API on the VIP
+  ansible.builtin.command: "{{ talos_mise }} kubectl --kubeconfig {{ talos_kubeconfig }} get --raw /readyz"
+  register: talos_api
+  until: talos_api.rc == 0
+  retries: 60
+  delay: 10
+  changed_when: false

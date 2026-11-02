@@ -33,3 +33,38 @@
   roles:
     - opnsense
     - adguard
+
+- name: Home Assistant OS (on the node with the radio stick)
+  hosts: pve
+  tags: [homeassistant]
+  tasks:
+    - name: Home Assistant VM
+      ansible.builtin.include_role:
+        name: homeassistant
+      when: inventory_hostname == home_assistant.host
+
+- name: Talos VMs (on the node each one is assigned to)
+  hosts: pve
+  tags: [k8s]
+  tasks:
+    - name: Talos VMs
+      ansible.builtin.include_role:
+        name: talos
+        tasks_from: vms
+
+- name: Talos Kubernetes cluster (install, bootstrap, kubeconfig, Cilium, Flux)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [k8s]
+  tasks:
+    - name: Talos cluster
+      ansible.builtin.include_role:
+        name: talos
+        tasks_from: cluster
+
+    - name: Cilium, SOPS key, Flux
+      ansible.builtin.include_role:
+        name: talos
+        tasks_from: bootstrap
+

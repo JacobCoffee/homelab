@@ -1,0 +1,49 @@
+# Talos VMs that live on this Proxmox node (k8s_nodes[].host). They boot the Image Factory
+# ISO into maintenance mode on an empty disk; tasks/cluster.yml then installs them.
+- name: Talos nodes on this host
+  ansible.builtin.set_fact:
+    talos_here: "{{ k8s_nodes | selectattr('host', 'equalto', inventory_hostname) | list }}"
+
+- name: Talos VMs
+  when: talos_here | length > 0
+  block:
+    - name: Talos ISO {{ talos_version }}
+      ansible.builtin.get_url:
+        url: "{{ talos_iso_url }}"
+        dest: /var/lib/vz/template/iso/{{ talos_iso }}
+        mode: "0644"
+
+    - name: Which VMs exist?
+      ansible.builtin.command: qm status {{ item.vmid }}
+      loop: "{{ talos_here }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: talos_vm_status
+      changed_when: false
+      failed_when: false
+
+    # Disk first: empty, so SeaBIOS falls through to the ISO; after the install it boots Talos.
+    - name: Create VM
+      ansible.builtin.command: >-
+        qm create {{ item.item.vmid }} --name {{ item.item.name }} --ostype l26
+        --machine q35 --bios seabios --cpu host
+        --cores {{ item.item.cores }} --memory {{ item.item.memory }} --balloon 0
+        --scsihw virtio-scsi-single
+        --scsi0 {{ talos_storage }}:{{ item.item.disk_gb }},discard=on,ssd=1,iothread=1
+        --net0 virtio={{ item.item.mac }},bridge={{ talos_zone.vnet }},mtu=1
+        --ide2 local:iso/{{ talos_iso }},media=cdrom --boot 'order=scsi0;ide2'
+        --agent enabled=1 --serial0 socket --onboot 1 --startup order=3
+        --tags talos
+      loop: "{{ talos_vm_status.results }}"
+      loop_control:
+        label: "{{ item.item.name }} (VM {{ item.item.vmid }})"
+      when: item.rc != 0
+      changed_when: true
+
+    - name: Start VMs
+      ansible.builtin.command: qm start {{ item.item.vmid }}
+      loop: "{{ talos_vm_status.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.rc != 0 or 'running' not in item.stdout
+      changed_when: true

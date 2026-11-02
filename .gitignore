@@ -173,3 +173,8 @@ cython_debug/
 !.env.example
 *.local.json
 .DS_Store
+
+# Kubernetes credentials (written by ansible/roles/talos)
+kubernetes/kubeconfig
+kubernetes/talos/talosconfig
+kubernetes/talos/clusterconfig/

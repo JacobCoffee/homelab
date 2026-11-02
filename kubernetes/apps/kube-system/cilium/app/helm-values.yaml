@@ -1,0 +1,44 @@
+# Cilium on Talos. Used for the first `helm install` (ansible/roles/talos) and by the Flux
+# HelmRelease afterwards, so both always agree.
+
+# Talos requirements (docs.siderolabs.com/kubernetes-guides/cni/deploying-cilium).
+ipam:
+  mode: kubernetes
+kubeProxyReplacement: true
+k8sServiceHost: localhost   # KubePrism
+k8sServicePort: 7445
+securityContext:
+  capabilities:
+    ciliumAgent: [CHOWN, KILL, NET_ADMIN, NET_RAW, IPC_LOCK, SYS_ADMIN, SYS_RESOURCE, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    cleanCiliumState: [NET_ADMIN, SYS_ADMIN, SYS_RESOURCE]
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+# The K8S zone is already a VXLAN vnet; route pod traffic natively between the nodes on
+# that L2 segment instead of encapsulating it a second time.
+routingMode: native
+ipv4NativeRoutingCIDR: 10.244.0.0/16
+autoDirectNodeRoutes: true
+bpf:
+  masquerade: true
+  # Talos forwards kube-dns to its host DNS, which eBPF host routing breaks.
+  hostLegacyRouting: true
+
+# LoadBalancer IPs (10.10.30.200-250, pool in cilium-config) answered by ARP on the zone.
+l2announcements:
+  enabled: true
+externalIPs:
+  enabled: true
+k8sClientRateLimit:   # L2 announcement leases add API traffic
+  qps: 20
+  burst: 100
+
+operator:
+  replicas: 2
+rollOutCiliumPods: true
+hubble:
+  enabled: true
+  relay:
+    enabled: true

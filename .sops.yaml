@@ -1,0 +1,10 @@
+# SOPS encryption for the Kubernetes tree. The age private key lives in the Ansible vault
+# (vault_sops_age_key) and, for local use, in ~/.config/sops/age/keys.txt.
+creation_rules:
+  # Talos cluster secrets: encrypt every value.
+  - path_regex: kubernetes/talos/.*\.sops\.ya?ml$
+    age: age18f3u9f99jcwf9mul035mnwnhjpxhqwuqtskrur9nvz40aul8pehqx6egke
+  # Kubernetes Secrets: only data/stringData, so the manifests stay reviewable.
+  - path_regex: kubernetes/.*\.sops\.ya?ml$
+    encrypted_regex: ^(data|stringData)$
+    age: age18f3u9f99jcwf9mul035mnwnhjpxhqwuqtskrur9nvz40aul8pehqx6egke

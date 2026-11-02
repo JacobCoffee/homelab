@@ -1,0 +1,52 @@
+# One-time cluster bootstrap: Cilium (nodes stay NotReady without a CNI), the SOPS age key,
+# then Flux, which takes over everything under kubernetes/ (including this Cilium release,
+# whose values file it shares). Each step is skipped once done.
+- name: Cilium installed?
+  ansible.builtin.command: "{{ talos_mise }} helm --kubeconfig {{ talos_kubeconfig }} status cilium -n kube-system"
+  register: talos_cilium
+  changed_when: false
+  failed_when: false
+
+- name: Install Cilium {{ cilium_version }}
+  ansible.builtin.command: >-
+    {{ talos_mise }} helm --kubeconfig {{ talos_kubeconfig }} install cilium cilium
+    --repo https://helm.cilium.io --version {{ cilium_version }} --namespace kube-system
+    --values {{ talos_repo }}/kubernetes/apps/kube-system/cilium/app/helm-values.yaml
+    --wait --timeout 15m
+  when: talos_cilium.rc != 0
+  changed_when: true
+
+- name: All nodes Ready
+  ansible.builtin.command: >-
+    {{ talos_mise }} kubectl --kubeconfig {{ talos_kubeconfig }} wait node --all
+    --for=condition=Ready --timeout=10m
+  changed_when: false
+
+- name: SOPS age key for Flux (secret flux-system/sops-age)
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    {{ talos_mise }} kubectl --kubeconfig {{ talos_kubeconfig }} create namespace flux-system
+    --dry-run=client -o yaml | {{ talos_mise }} kubectl --kubeconfig {{ talos_kubeconfig }} apply -f - >/dev/null &&
+    {{ talos_mise }} kubectl --kubeconfig {{ talos_kubeconfig }} -n flux-system create secret generic sops-age
+    --from-file=age.agekey={{ lookup('env', 'HOME') }}/.config/sops/age/keys.txt
+    --dry-run=client -o yaml | {{ talos_mise }} kubectl --kubeconfig {{ talos_kubeconfig }} apply -f -
+  register: talos_sops_secret
+  changed_when: "'unchanged' not in talos_sops_secret.stdout"
+  no_log: true
+
+- name: Flux installed?
+  ansible.builtin.command: >-
+    {{ talos_mise }} kubectl --kubeconfig {{ talos_kubeconfig }} -n flux-system get deployment source-controller
+  register: talos_flux
+  changed_when: false
+  failed_when: false
+
+# Commits kubernetes/flux/cluster/flux-system/ to GitHub and adds a read-only deploy key.
+- name: Bootstrap Flux from github.com/{{ flux_github_owner }}/{{ flux_github_repo }}
+  ansible.builtin.shell: >-
+    GITHUB_TOKEN="$(gh auth token)"
+    {{ talos_mise }} flux --kubeconfig {{ talos_kubeconfig }} bootstrap github
+    --owner {{ flux_github_owner }} --repository {{ flux_github_repo }} --branch main
+    --path kubernetes/flux/cluster --personal
+  when: talos_flux.rc != 0
+  changed_when: true

@@ -1,0 +1,22 @@
+# Talos release and Image Factory schematic (kubernetes/talos/schematic.yaml: adds
+# qemu-guest-agent). Re-post the schematic to factory.talos.dev after editing it.
+talos_version: v1.14.5
+talos_schematic_id: ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515
+k8s_version: 1.37.1
+
+talos_iso: talos-{{ talos_version }}-{{ talos_schematic_id[:8] }}-metal-amd64.iso
+talos_iso_url: https://factory.talos.dev/image/{{ talos_schematic_id }}/{{ talos_version }}/metal-amd64.iso
+talos_storage: fast         # VM disks on each node's NVMe pool
+talos_zone: "{{ lab_zones | selectattr('name', 'equalto', 'k8s') | first }}"
+
+# Repo paths (controller side).
+talos_dir: "{{ playbook_dir }}/../../kubernetes/talos"
+talos_config: "{{ talos_dir }}/talosconfig"
+talos_kubeconfig: "{{ playbook_dir }}/../../kubernetes/kubeconfig"
+talos_repo: "{{ playbook_dir }}/../.."
+talos_mise: "mise -C {{ talos_repo }} exec --"   # tool versions pinned in the repo's mise.toml
+
+# Bootstrap only; afterwards Flux owns Cilium (kubernetes/apps/kube-system/cilium).
+cilium_version: 1.20.4
+flux_github_owner: JacobCoffee
+flux_github_repo: homelab

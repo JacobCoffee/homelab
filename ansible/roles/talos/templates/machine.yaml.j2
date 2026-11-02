@@ -1,0 +1,44 @@
+# {{ node.name }}: per-node Talos config, rendered by ansible/roles/talos (applied after
+# kubernetes/talos/patches/cluster.yaml).
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: {{ node.name }}
+auto: off
+---
+# The VM's only NIC, by the MAC Ansible gave it.
+apiVersion: v1alpha1
+kind: LinkAliasConfig
+name: net0
+selector:
+  match: mac(link.permanent_addr) == "{{ node.mac | lower }}"
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: net0
+mtu: {{ lab_mtu }}
+---
+# OPNsense reserves {{ node.ip }} for this MAC, so the address is final from first boot.
+apiVersion: v1alpha1
+kind: DHCPv4Config
+name: net0
+---
+apiVersion: v1alpha1
+kind: Layer2VIPConfig
+name: {{ k8s_vip }}
+link: net0
+---
+apiVersion: v1alpha1
+kind: KubeNodeConfig
+nodeIP:
+  validSubnets:
+    - {{ talos_zone.cidr }}
+labels:
+  node-role.kubernetes.io/control-plane: ""
+---
+apiVersion: v1alpha1
+kind: UnattendedInstallConfig
+installer:
+  image: factory.talos.dev/installer/{{ talos_schematic_id }}:{{ talos_version }}
+provisioning:
+  diskSelector:
+    match: disk.dev_path == "/dev/sda"

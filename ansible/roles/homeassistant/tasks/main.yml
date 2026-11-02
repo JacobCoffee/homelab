@@ -1,0 +1,61 @@
+# Creates the VM once; after that Home Assistant updates itself (Settings -> System -> Updates).
+- name: Does the Home Assistant VM exist?
+  ansible.builtin.command: qm status {{ home_assistant.vmid }}
+  register: ha_vm
+  changed_when: false
+  failed_when: false
+
+- name: Create Home Assistant OS VM
+  when: ha_vm.rc != 0
+  block:
+    - name: Scratch directory
+      ansible.builtin.file:
+        path: "{{ ha_scratch }}"
+        state: directory
+        mode: "0700"
+
+    - name: Download HAOS {{ ha_version }}
+      ansible.builtin.get_url:
+        url: "{{ ha_url }}"
+        dest: "{{ ha_scratch }}/haos.qcow2.xz"
+        mode: "0600"
+
+    - name: Unpack
+      ansible.builtin.command: xz -d -f {{ ha_scratch }}/haos.qcow2.xz
+      args:
+        creates: "{{ ha_scratch }}/haos.qcow2"
+
+    - name: Create VM ({{ home_assistant.usb | join(', ') }} passed through)
+      ansible.builtin.command: >-
+        qm create {{ home_assistant.vmid }} --name {{ home_assistant.name }} --ostype l26
+        --machine q35 --bios ovmf --efidisk0 {{ ha_storage }}:1,efitype=4m,pre-enrolled-keys=0
+        --cpu host --cores {{ ha_cores }} --memory {{ ha_memory }} --balloon 0
+        --scsihw virtio-scsi-single
+        --net0 virtio={{ home_assistant.mac }},bridge={{ ha_zone.vnet }},mtu=1
+        {% for id in home_assistant.usb %}--usb{{ loop.index0 }} host={{ id }},usb3=1 {% endfor %}
+        --agent enabled=1 --tablet 0 --onboot 1 --startup order=4
+      changed_when: true
+
+    - name: Import the disk
+      ansible.builtin.command: qm disk import {{ home_assistant.vmid }} {{ ha_scratch }}/haos.qcow2 {{ ha_storage }}
+      changed_when: true
+
+    - name: Attach, grow and boot from it
+      ansible.builtin.shell: |
+        set -euo pipefail
+        vol=$(qm config {{ home_assistant.vmid }} | sed -n 's/^unused0: //p')
+        qm set {{ home_assistant.vmid }} --scsi0 "$vol,discard=on,ssd=1,iothread=1" --boot order=scsi0
+        qm disk resize {{ home_assistant.vmid }} scsi0 {{ ha_disk_size }}
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Start it
+      ansible.builtin.command: qm start {{ home_assistant.vmid }}
+      changed_when: true
+
+  always:
+    - name: Remove the image
+      ansible.builtin.file:
+        path: "{{ ha_scratch }}"
+        state: absent

@@ -1,0 +1,33 @@
+# Cluster policy applied to every node (all are control plane + workers), Talos 1.14
+# multi-document config. Per-node network, VIP, hostname and installer image come from
+# ansible/roles/talos/templates/machine.yaml.j2, applied after this file.
+
+# The default node config taints control planes NoSchedule and keeps them out of
+# LoadBalancer announcements; every node here runs workloads, so it is deleted and the
+# per-node patch adds a fresh one (a merge can't drop map keys).
+apiVersion: v1alpha1
+kind: KubeNodeConfig
+$patch: delete
+---
+# Serving certs via CSR (approved by kubelet-csr-approver) so metrics-server verifies TLS.
+apiVersion: v1alpha1
+kind: KubeletConfig
+config:
+  serverTLSBootstrap: true
+---
+# Cilium replaces Flannel and kube-proxy (installed right after bootstrap).
+apiVersion: v1alpha1
+kind: KubeFlannelCNIConfig
+$patch: delete
+---
+apiVersion: v1alpha1
+kind: KubeProxyConfig
+enabled: false
+---
+# Spegel (peer-to-peer image cache) needs containerd to keep unpacked layers.
+apiVersion: v1alpha1
+kind: CRICustomizationConfig
+name: spegel
+content: |
+  [plugins."io.containerd.cri.v1.images"]
+    discard_unpacked_layers = false
