@@ -1,3 +1,36 @@
+# Lets the Job restart Jellyfin (and nothing else) after installing the plugin: plugins only load
+# at process start, and Jellyfin's own /System/Restart leaves the container running.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jellyfin-sso-install
+  namespace: media
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jellyfin-sso-install
+  namespace: media
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["jellyfin"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jellyfin-sso-install
+  namespace: media
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jellyfin-sso-install
+subjects:
+  - kind: ServiceAccount
+    name: jellyfin-sso-install
+    namespace: media
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -8,6 +41,7 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      serviceAccountName: jellyfin-sso-install
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534

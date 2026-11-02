@@ -3,8 +3,9 @@
 1. Add the plugin repository (https://raw.githubusercontent.com/k0lin/jellyfin-plugin-sso/
    manifest-release/manifest.json) if it isn't already registered.
 2. Install "SSO Authentication" (GUID 505ce9d1-d916-42fa-86ca-673ef241d7df) from that repo if it
-   isn't already installed, then restart Jellyfin so the new assembly loads (plugins only take
-   effect after a restart; the container's restartPolicy brings it straight back up).
+   isn't already installed, then restart the jellyfin Deployment so the new assembly loads (plugins
+   only load at process start, and Jellyfin's own /System/Restart doesn't restart the container).
+   The Job's ServiceAccount may patch only that Deployment, the way `kubectl rollout restart` does.
 3. Wait for the plugin to report Active, then PUT its configuration: a "pocket-id" OpenID
    provider pointed at https://id.z7x.org, client id "jellyfin", RBAC on, group "lab-admins"
    both allowed to sign in and mapped to Jellyfin admin. NewPath=true locks the callback at
@@ -16,6 +17,7 @@ Keys) -- see kubernetes/README.md "Jellyfin SSO" for how to provide it.
 """
 
 import json
+import ssl
 import os
 import sys
 import time
@@ -97,7 +99,15 @@ def call(method: str, path: str, body=None, ok=(200, 204)):
         raw = err.read()
         if err.code in ok:
             return err.code, (json.loads(raw) if raw else None)
-        sys.exit(f"{method} {path}: {err.code} {raw.decode(errors='replace')[:400]}")
+        raise ApiError(err.code, f"{method} {path}: {err.code} {raw.decode(errors='replace')[:400]}")
+
+
+class ApiError(Exception):
+    """A Jellyfin API answer outside `ok`. Polls retry 503 (Jellyfin still starting); else fatal."""
+
+    def __init__(self, code: int, message: str):
+        super().__init__(message)
+        self.code = code
 
 
 def wait_for_server(tries=60, delay=5):
@@ -106,8 +116,11 @@ def wait_for_server(tries=60, delay=5):
             status, _ = call("GET", "/System/Info")
             if status == 200:
                 return
-        except (urllib.error.URLError, TimeoutError):
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
             pass
+        except ApiError as e:
+            if e.code != 503:
+                raise
         time.sleep(delay)
     sys.exit(f"Jellyfin never became reachable at {JELLYFIN_URL}")
 
@@ -134,14 +147,36 @@ def ensure_plugin_installed():
     print(f"installing {PLUGIN_NAME}")
     qs = urllib.parse.urlencode({"AssemblyGuid": PLUGIN_GUID, "repositoryUrl": REPO_URL})
     call("POST", f"/Packages/Installed/{urllib.parse.quote(PLUGIN_NAME)}?{qs}")
-    print("restarting Jellyfin to load the new plugin")
-    call("POST", "/System/Restart")
-    wait_for_server()
-    for _ in range(30):
-        if plugin_installed():
-            return
+    print("restarting the jellyfin Deployment to load the new plugin")
+    restart_deployment()
+    time.sleep(20)  # let the old pod stop before polling, or it answers without the plugin
+    for _ in range(60):
+        try:
+            if plugin_installed():
+                return
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            pass
+        except ApiError as e:
+            if e.code != 503:
+                raise
         time.sleep(5)
     sys.exit("plugin did not appear in /Plugins after install + restart")
+
+
+def restart_deployment():
+    sa = "/var/run/secrets/kubernetes.io/serviceaccount"
+    token = open(f"{sa}/token").read()
+    patch = {"spec": {"template": {"metadata": {"annotations": {
+        "kubectl.kubernetes.io/restartedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}}}}}
+    req = urllib.request.Request(
+        "https://kubernetes.default.svc/apis/apps/v1/namespaces/media/deployments/jellyfin",
+        method="PATCH", data=json.dumps(patch).encode(),
+        headers={"Authorization": f"Bearer {token}",
+                 "Content-Type": "application/strategic-merge-patch+json"},
+    )
+    ctx = ssl.create_default_context(cafile=f"{sa}/ca.crt")
+    with urllib.request.urlopen(req, timeout=20, context=ctx):
+        pass
 
 
 def set_config():
@@ -187,4 +222,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ApiError as e:
+        sys.exit(str(e))
