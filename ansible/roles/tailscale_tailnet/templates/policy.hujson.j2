@@ -5,6 +5,10 @@
 	"tagOwners": {
 		"tag:pve":    ["autogroup:admin"], // Proxmox hosts
 		"tag:router": ["autogroup:admin"], // OPNsense, sharing the lab subnets
+		// Cabotage's Tailscale operator (terraform/cabotage) logs in as tag:cabotage-operator and
+		// tags the proxies it creates for tenant apps; tag:cabotage is its tenant-device prefix.
+		"tag:cabotage-operator": ["autogroup:admin"],
+		"tag:cabotage":          ["tag:cabotage-operator"],
 	},
 
 	// OPNsense's lab routes go live without a click in the admin console.

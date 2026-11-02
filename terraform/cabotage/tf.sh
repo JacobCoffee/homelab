@@ -55,23 +55,30 @@ AWS_ACCESS_KEY_ID="$(vault_get vault_r2_access_key_id)"
 AWS_SECRET_ACCESS_KEY="$(vault_get vault_r2_secret_access_key)"
 
 export TF_VAR_github_app_id="$GITHUB_APP_ID"
+export TF_VAR_tailscale_oauth_client_id TF_VAR_tailscale_oauth_client_secret
+TF_VAR_tailscale_oauth_client_id="$(vault_get vault_cabotage_tailscale_oauth_client_id)"
+TF_VAR_tailscale_oauth_client_secret="$(vault_get vault_cabotage_tailscale_oauth_client_secret)"
 export KUBECONFIG="$HOMELAB_ROOT/kubernetes/kubeconfig"
 
 # The upstream module has no toggle to label the namespaces it creates (cabotage,
-# cabotage-tenant-builds). Consul (cert-watcher: SYS_PTRACE), Alloy (DAC_READ_SEARCH +
-# hostPath) and cert-manager-csi-driver (privileged + hostPath, cert-manager namespace,
-# labeled separately in kubernetes/apps/cert-manager/namespace.yaml) all need more than the
-# cluster's baseline PodSecurity default. On `apply`, create just the namespaces first (if not
-# already present) and label them before the rest of the graph races to schedule pods into them.
+# cabotage-tenant-builds, tailscale). Consul (cert-watcher: SYS_PTRACE), Alloy (DAC_READ_SEARCH +
+# hostPath), the Tailscale proxies (NET_ADMIN) and cert-manager-csi-driver (privileged + hostPath,
+# cert-manager namespace, labeled separately in kubernetes/apps/cert-manager/namespace.yaml) all
+# need more than the cluster's baseline PodSecurity default. On `apply`, create just the
+# namespaces first (if not already present) and label them before the rest of the graph races to
+# schedule pods into them.
 if [ "${1:-}" = "apply" ]; then
   mise exec -- tofu apply -auto-approve \
     -target=kubernetes_namespace_v1.traefik \
     -target=module.cabotage.kubernetes_namespace_v1.cabotage \
-    -target=module.cabotage.kubernetes_namespace_v1.cabotage_tenant_builds || true
+    -target=module.cabotage.kubernetes_namespace_v1.cabotage_tenant_builds \
+    -target=module.cabotage.kubernetes_namespace_v1.tailscale || true
   mise exec -- kubectl --context admin@homelab label namespace cabotage \
     pod-security.kubernetes.io/enforce=privileged --overwrite || true
   mise exec -- kubectl --context admin@homelab label namespace cabotage-tenant-builds \
     pod-security.kubernetes.io/enforce=baseline --overwrite || true
+  mise exec -- kubectl --context admin@homelab label namespace tailscale \
+    pod-security.kubernetes.io/enforce=privileged --overwrite 2>/dev/null || true
 fi
 
 exec mise exec -- tofu "$@"

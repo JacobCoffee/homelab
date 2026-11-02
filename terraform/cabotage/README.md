@@ -135,6 +135,34 @@ events Push, Pull request, Deployment, Check suite, Repository (installation eve
 arrive). Don't install it from GitHub; Cabotage's UI starts the install so it links to your
 account.
 
+## Optional features
+
+| Feature | State | Where |
+|---|---|---|
+| Cost estimates | on, built-in on-demand rates (`CABOTAGE_COST_RATES` overrides); AWS price list / Cost Explorer off | `cabotage_app_extra_config` in `main.tf` |
+| Tailscale operator | on, device `cabotage-operator` (`tag:cabotage-operator`) on the homelab tailnet; no Funnel ingress | `enable_tailscale` in `main.tf` |
+| Discord / Slack notifications, Sentry, Docker Hub pulls, mail | off | need an app/token each |
+| Karpenter, KMS unseal, S3 instead of RustFS, IRSA | off | AWS only |
+
+Tailscale details, all homelab-side (no module patch):
+- The operator's OAuth client (scopes `devices:core`, `auth_keys`, `services`; tag
+  `tag:cabotage-operator`) was created through the Tailscale API; its id and secret are the vault
+  keys `vault_cabotage_tailscale_oauth_client_id` / `_secret`, exported by `tf.sh`. Both tags are
+  declared in `ansible/roles/tailscale_tailnet/templates/policy.hujson.j2`.
+- Images are upstream `tailscale/k8s-operator` / `tailscale/tailscale` v1.98.9, not the module's
+  default fork images (arm64-only; these nodes are amd64), on the module's chart 1.94.2. Charts
+  from 1.96 bundle the Tailnet/ProxyGroupPolicy CRDs the module already applies, and operators from
+  1.102 need the PeerRelay CRD, so bump the image only after checking both.
+- `main.tf` adds two things the module lacks on Talos/Cilium: a ClusterRole for the operator's
+  ValidatingAdmissionPolicies, and a CiliumNetworkPolicy letting the `tailscale` namespace reach
+  the kube-apiserver (the module's policy only allows 443/8443 to world CIDRs, i.e. EKS).
+- `tf.sh` labels the `tailscale` namespace PodSecurity `privileged` (the proxies need NET_ADMIN).
+
+RustFS's data volume is 50Gi (`rustfs_storage_size`). Resizing later: expand the PVC
+(`kubectl -n cabotage patch pvc data-0-rustfs-0 ...`, the storage class allows it), delete the
+StatefulSet with `--cascade=orphan` (its `volumeClaimTemplates` are immutable), then `./tf.sh apply`
+recreates it around the running pod.
+
 ## First login / first admin
 
 1. Visit `https://cabotage.apps.z7x.org` (tailnet), sign in with GitHub. This creates your user row

@@ -39,12 +39,19 @@ module "cabotage" {
   vault_replicas       = 1
   rustfs_replicas      = 1
   rustfs_disks_per_replica = 1 # FS mode, no erasure coding
+  # Registry images + 30-day Postgres WAL/base backups (platform and tenants) + resident Loki/Mimir.
+  rustfs_storage_size  = "50Gi"
   loki_standalone      = true
   mimir_standalone     = true
   cabotage_postgres_instances = 1
 
   # kopf (Python) OOMKilled at the upstream default 128Mi limit on this cluster; give it room.
   enrollment_operator_resources = {
+    requests = { cpu = "25m", memory = "128Mi" }
+    limits   = { cpu = "250m", memory = "320Mi" }
+  }
+  # Same kopf runtime: OOMKilled at the upstream 128Mi limit right after Tailscale was enabled.
+  tailscale_operator_manager_resources = {
     requests = { cpu = "25m", memory = "128Mi" }
     limits   = { cpu = "250m", memory = "320Mi" }
   }
@@ -90,5 +97,79 @@ module "cabotage" {
 
   security_confirmable = false
 
+  # Hourly cost estimates in the UI, priced at cabotage-app's built-in on-demand rates (override
+  # with CABOTAGE_COST_RATES). AWS price-list / Cost Explorer refresh stays off: no AWS here.
+  cabotage_app_extra_config = {
+    CABOTAGE_SHOW_COST_ESTIMATES = "True"
+  }
+
+  # Tenant apps can be exposed on the homelab tailnet. The operator logs in with a static OAuth
+  # client (tag:cabotage-operator, created via the Tailscale API; tags defined in
+  # ansible/roles/tailscale_tailnet). No Funnel ingress: the UI stays tailnet-only.
+  enable_tailscale              = true
+  tailscale_operator_hostname   = "cabotage-operator"
+  tailscale_oauth_client_id     = var.tailscale_oauth_client_id
+  tailscale_oauth_client_secret = var.tailscale_oauth_client_secret
+  # The module defaults to Ee's fork images, which are arm64-only (EKS Graviton); these nodes are
+  # amd64. Upstream ships the same multi-tailnet support: at v1.98.9 its Tailnet, ProxyGroup and
+  # ProxyGroupPolicy CRDs are field-for-field identical to the fork's ones the module applies.
+  # Stay on the module's chart (1.94.2): charts from 1.96 bundle those CRDs and collide with the
+  # module's copies. 1.98.x is the newest operator needing no CRD beyond them (1.102 adds
+  # PeerRelay); the one RBAC gap it has is granted below.
+  tailscale_operator_image     = "tailscale/k8s-operator"
+  tailscale_operator_image_tag = "v1.98.9"
+  tailscale_proxy_image        = "tailscale/tailscale"
+  tailscale_proxy_image_tag    = "v1.98.9"
+
   depends_on = [kubernetes_namespace_v1.traefik]
+}
+
+# Upstream operators >= 1.96 manage ValidatingAdmissionPolicies for ProxyGroupPolicy; neither the
+# 1.94.2 chart's RBAC nor the module's supplement ClusterRole grants that.
+resource "kubernetes_cluster_role_v1" "tailscale_operator_vap" {
+  metadata {
+    name = "cabotage-tailscale-operator-vap"
+  }
+  rule {
+    api_groups = ["admissionregistration.k8s.io"]
+    resources  = ["validatingadmissionpolicies", "validatingadmissionpolicybindings"]
+    verbs      = ["get", "list", "watch", "create", "update", "delete"]
+  }
+}
+
+resource "kubernetes_cluster_role_binding_v1" "tailscale_operator_vap" {
+  metadata {
+    name = "cabotage-tailscale-operator-vap"
+  }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role_v1.tailscale_operator_vap.metadata[0].name
+  }
+  subject {
+    kind      = "ServiceAccount"
+    name      = "operator" # the tailscale-operator chart's ServiceAccount
+    namespace = "tailscale"
+  }
+  depends_on = [module.cabotage]
+}
+
+# The module's tailscale-namespace policies allow egress on 443/8443 to 0.0.0.0/0, which reaches
+# EKS's external API endpoint. Here the kubernetes Service lands on the Talos control planes at
+# :6443, which Cilium treats as the kube-apiserver entity, not a world CIDR -- so the operator
+# (and the proxies it creates, which keep state in Secrets) hung before their first log line.
+resource "kubernetes_manifest" "tailscale_allow_apiserver" {
+  manifest = {
+    apiVersion = "cilium.io/v2"
+    kind       = "CiliumNetworkPolicy"
+    metadata = {
+      name      = "allow-egress-kube-apiserver"
+      namespace = "tailscale"
+    }
+    spec = {
+      endpointSelector = {}
+      egress           = [{ toEntities = ["kube-apiserver"] }]
+    }
+  }
+  depends_on = [module.cabotage]
 }
