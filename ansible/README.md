@@ -12,23 +12,24 @@ which every node trusts from install.
 | `pve_acme` | all nodes | trusted pveproxy cert per node via Let's Encrypt DNS-01 (Cloudflare): account `default` and the `cloudflare` challenge plugin live cluster-wide in `/etc/pve`, each node gets `acmedomain0=<node>.internal.z7x.org,plugin=cloudflare` and a cert ordered once it's missing, self-signed, wrong name, or <30 days from expiry |
 | `tailscale_tailnet` | the Mac (API) | tailnet policy pushed from [`roles/tailscale_tailnet/templates/policy.hujson.j2`](roles/tailscale_tailnet/templates/policy.hujson.j2): tags `tag:pve`/`tag:router`, lab routes auto-approved, members reach everything |
 | `tailscale` | all nodes | node joined to your tailnet as `tag:pve` (`--accept-dns=false`), reachable even when OPNsense is down |
-| `opnsense` | `core` | VM 100 `hnfw01`: OPNsense 26.7 nano, bootstrapped unattended, kept patched, sharing the lab subnets on Tailscale (see below) |
-| `adguard` | `core` | CT 101 `hndns01` (10.10.10.53): AdGuard Home, the DNS server for INT and K8S |
+| `opnsense` | nodes in `firewalls` (`hnhv01`, `hnhv02`) | VMs 100 `hnfw01` / 110 `hnfw02`: OPNsense 26.7 nano CARP pair, bootstrapped unattended, kept patched, sharing the lab subnets on Tailscale (see below) |
+| `adguard` | nodes in `dns_servers` (`hnhv01`, `hnhv02`) | CTs 101 `hndns01` (10.10.10.54) / 111 `hndns02` (10.10.10.55): AdGuard Home, with keepalived floating the lab DNS address 10.10.10.53 between them |
 | `homeassistant` | node in `home_assistant.host` (`hnhv02`) | VM 301 `hnha01` (10.10.10.20): Home Assistant OS on INT with the Aeotec Z-Wave/Zigbee stick passed through |
 | `pve_csi` | all nodes | Proxmox user/role/token for the Proxmox CSI plugin, captured straight into `kubernetes/apps/storage/proxmox-csi-plugin/app/secret.sops.yaml`; skipped once that file exists, rotates the token if it's ever missing |
 | `media_nfs` | node in `media_nfs.host` (`hnhv01`) | VM 401 `hnnfs01` (10.10.30.20): Debian 13 + cloud-init, nfs-kernel-server exporting `/srv/media` to the K8S zone (temporary, until a NAS takes over) |
-| `talos` | nodes in `k8s_nodes`, then the Mac | VMs 201–203 `hnk8s01`–`03` (10.10.30.11–13, VIP .10): Talos Kubernetes, Cilium, then Flux takes over from [`../kubernetes`](../kubernetes) |
-| `pve_backup` | all nodes | ZFS dataset `vmdata/backups` registered as `dir` storage `backup`, plus one cluster-wide nightly vzdump job (snapshot mode, zstd, keep-daily 7/keep-weekly 4) for VMs/CTs 100/101/102/301/401 -- see "Backups" below |
+| `talos` | nodes in `k8s_nodes`, then the Mac | VMs 201–204 `hnk8s01`–`04` (10.10.30.11–14, VIP .10; `hnk8s04` a worker): Talos Kubernetes, Cilium, then Flux takes over from [`../kubernetes`](../kubernetes) |
+| `pve_backup` | all nodes | ZFS dataset `vmdata/backups` registered as `dir` storage `backup`, plus one cluster-wide nightly vzdump job (snapshot mode, zstd, keep-daily 7/keep-weekly 4) for VMs/CTs 100/101/102/110/111/301/401 -- see "Backups" below |
 | `netboot` | `hnhv01` | CT 102 `hnpxe01` (house LAN): the [`../proxmox-pxe`](../proxmox-pxe) installer, always on, so new PCs install without the Mac |
 
 ## Network
 
 | Zone | VNI | Subnet | Proxmox bridge | OPNsense |
 |---|---|---|---|---|
-| WAN (house LAN, Spectrum) | – | 192.168.1.0/24 (DHCP) | `vmbr0` | `vtnet0` |
-| INT | 10 | 10.10.10.0/24 | `vxint` | `vtnet1` 10.10.10.1 |
-| DMZ | 20 | 10.10.20.0/24 | `vxdmz` | `vtnet2` 10.10.20.1 |
-| K8S | 30 | 10.10.30.0/24 | `vxk8s` | `vtnet3` 10.10.30.1 |
+| WAN (house LAN, Spectrum) | – | 192.168.1.0/24 (DHCP; CARP 192.168.1.250) | `vmbr0` | `vtnet0` |
+| INT | 10 | 10.10.10.0/24 | `vxint` | `vtnet1` .2 / .3, CARP .1 |
+| DMZ | 20 | 10.10.20.0/24 | `vxdmz` | `vtnet2` .2 / .3, CARP .1 |
+| K8S | 30 | 10.10.30.0/24 | `vxk8s` | `vtnet3` .2 / .3, CARP .1 |
+| pfsync | 99 | 10.10.99.0/24 | `vxsync` | `vtnet4` .2 / .3 |
 
 Edit zones in `inventory/group_vars/all/main.yml` (`lab_zones`, `lab_mtu`, `lab_dns`) before the
 first OPNsense deploy.
@@ -61,17 +62,18 @@ when it expires). With it, every run pushes the tailnet policy from the repo (ed
 admin console are overwritten), and each node or OPNsense that isn't connected yet gets its own
 single-use, pre-approved, tagged auth key minted on the spot. No auth keys to manage by hand.
 
-OPNsense advertises 10.10.10/20/30.0/24; the policy approves those routes for `tag:router`.
+Both firewalls advertise 10.10.10/20/30.0/24 (Tailscale fails over between the two subnet
+routers itself); the policy approves those routes for `tag:router`.
 To reach the lab from a Mac or laptop, accept routes once on that device:
 `tailscale set --accept-routes=true` (the macOS app: **Use Tailscale subnets**).
 
 Names: the tailnet sends `z7x.org` lookups to AdGuard (split DNS, set by the same role), so
-on any tailnet device `hnhv01.internal.z7x.org`, `hnhv02…` and `hnfw01…` resolve to their
-Tailscale addresses (records generated from the device list for `tag:pve`/`tag:router`), and
-internal-gateway services like `echo.z7x.org` resolve to the lab. At home, Tailscale connects
+on any tailnet device `hnhv01.internal.z7x.org`, `hnhv02…`, `hnfw01…` and `hnfw02…` resolve to
+their Tailscale addresses (records generated from the device list for `tag:pve`/`tag:router`),
+and internal-gateway services like `echo.z7x.org` resolve to the lab. At home, Tailscale connects
 peer-to-peer over the LAN, so these names are as fast as local IPs. Off the tailnet they don't
-exist. While `hnhv01` (OPNsense, AdGuard) is down, `z7x.org` names don't resolve on tailnet
-devices.
+exist. They keep resolving while one Proxmox node is down (both firewalls and both AdGuards
+would have to be gone).
 
 Already-connected devices are left alone, so to move the nodes to another tailnet: run
 `tailscale logout` on each, swap the token, re-run `site.yml`. (Moving OPNsense this way is
@@ -79,59 +81,89 @@ untested; the plugin only passes the auth key when tailscaled has no logged-in p
 
 ## OPNsense
 
-The play ends by printing OPNsense's WAN IP and MAC: **reserve that IP in the My Spectrum
-app**, since the management rules and later port-forwards point at it.
+Two firewalls (`firewalls` in `group_vars/all/main.yml`): `hnfw01` on `hnhv01` and `hnfw02` on
+`hnhv02`. Each play run ends by printing the firewall's WAN IP and MAC: **reserve both in the My
+Spectrum app**, and keep the WAN CARP address `192.168.1.250` (`firewall_wan_vip`) out of its
+DHCP pool.
 
 - WebGUI: `https://<wan-ip>/`, user `root`, password `vault_opnsense_root_password`
   (`ansible-vault view inventory/group_vars/all/vault.yml`).
 - SSH: `ssh -i ../proxmox-pxe/secrets/automation_ed25519 root@<wan-ip>` (keys only).
 - API: key/secret `vault_opnsense_api_key` / `vault_opnsense_api_secret`.
 - WebGUI, SSH and API are reachable from the house LAN (`opnsense_mgmt_sources`), and from the
-  tailnet at `https://10.10.10.1/`.
+  tailnet at `https://10.10.10.2/` (`hnfw01`) and `https://10.10.10.3/` (`hnfw02`).
+
+### High availability (CARP)
+
+- **Addresses:** each firewall has its own `.2`/`.3` in every zone; `.1` (every zone's gateway)
+  and `192.168.1.250` on the WAN are CARP addresses held by the master. `hnfw01` (advskew 0)
+  is master whenever it is up; preemption moves every CARP address together.
+- **State sync:** pfsync over its own vnet (`vxsync`, 10.10.99.0/24), so connections survive a
+  failover. No config sync: Ansible configures both firewalls.
+- **Outbound NAT** is hybrid: the lab zones leave through `192.168.1.250`, which moves with the
+  master, so synced states stay valid.
+- **DHCP:** Dnsmasq can't share leases, so each firewall serves half of every zone's pool
+  (`hnfw01` `.100`–`.149`, `hnfw02` `.150`–`.199`, answering after a 3 s delay) and both hold
+  the same reservations. A dynamic client's name resolves only through the firewall that gave
+  it the lease.
+- **WAN forwards** (lab DNS, syslog) are bound to `192.168.1.250`, so house devices and the
+  Proxmox hosts follow the master.
+- Check who is master: **Interfaces → Virtual IPs → Status** on either firewall.
 
 ### How the bootstrap works
 
 1. Downloads the official nano image, verifies the published SHA-256.
-2. Renders a minimal `config.xml` (hostname, interfaces, root password + SSH key, API key,
-   WAN management rules). Hashes are made on the Proxmox host (`openssl passwd -6`).
+2. Renders a minimal `config.xml` (hostname, interfaces with this firewall's own addresses, root
+   password + SSH key, API key, WAN management rules). Hashes are made on the Proxmox host
+   (`openssl passwd -6`).
 3. Packs it as `conf/config.xml` on a small FAT partition inside an MBR disk image, attached as
    a USB disk. The importer only reads partitions, so a bare FAT image is rejected.
 4. Starts the VM and answers the first-boot configuration importer over the serial socket
    (`roles/opnsense/files/opnsense-import.py`), then detaches the USB image and deletes it.
 5. Finds the WAN IP by MAC on `vmbr0` and waits for the API.
 
-Steps 1–4 only run when VM 100 doesn't exist (afterwards the images are deleted, since they'd
+Steps 1–4 only run when the VM doesn't exist (afterwards the images are deleted, since they'd
 only fill the USB root); step 5 runs every time.
 Format details and evidence: [`roles/opnsense/NOTES.md`](roles/opnsense/NOTES.md).
 
-Every run then applies these settings through the REST API (`roles/opnsense/tasks/api.yml`,
-plain `ansible.builtin.uri`; each change is checked first, so a second run changes nothing):
+Every run then applies these settings through the REST API (`roles/opnsense/tasks/`, plain
+`ansible.builtin.uri`; each change is checked first, so a second run changes nothing):
 
 - **Updates:** pending updates within the 26.7 series are installed, rebooting OPNsense when
   the update needs it (plugins can't be installed on an out-of-date box). Skip for one run
   with `-e opnsense_update=false`.
-- **DHCP (Dnsmasq)** on INT, DMZ and K8S: `.100`–`.199` per zone, with leases registered in DNS.
-  Dnsmasq's DNS listens on `127.0.0.1:53053`. INT and K8S clients get AdGuard (`lab_dns`) as DNS;
-  DMZ clients get their gateway, so DMZ needs no hole into INT.
+- **Interfaces and HA** (`interfaces.yml`, `ha.yml`): own addresses, lab MTU, the pfsync
+  interface, CARP addresses, pfsync, outbound NAT (see above).
+- **DHCP (Dnsmasq)** on INT, DMZ and K8S, with leases registered in DNS. Dnsmasq's DNS listens on
+  `127.0.0.1:53053`. Every zone gets the CARP `.1` as router; INT and K8S clients get AdGuard
+  (`lab_dns`) as DNS; DMZ clients get the CARP `.1` (Unbound), so DMZ needs no hole into INT.
 - **DNS (Unbound)** on port 53 on all interfaces, with DNSSEC. It forwards each zone domain to
-  Dnsmasq, so DHCP client names resolve. AdGuard uses it as its only upstream.
+  Dnsmasq, so DHCP client names resolve. AdGuard uses it (via the CARP `.1`) as its only upstream.
 - **DMZ isolation:** DMZ → INT and DMZ → K8S are blocked, ahead of the DMZ allow-any rule.
 - **Tailscale** (`os-tailscale` plugin) as `tag:router`, advertising the lab subnets.
-- **Port-forward** WAN 53 → AdGuard, so house devices can use it: set a device's DNS to
-  OPNsense's WAN IP.
+- **Port-forward** WAN CARP address 53 → AdGuard, so house devices can use it: set a device's
+  DNS to `192.168.1.250`.
 
 The `oxlorg.opnsense` collection is pinned to OPNsense versions (latest supports 26.1), so it
 isn't used. Endpoint and field details: [`roles/opnsense/NOTES.md`](roles/opnsense/NOTES.md).
 
 ## AdGuard Home
 
-`hndns01`, an unprivileged Debian 13 LXC at 10.10.10.53 running a pinned, checksum-verified
-AdGuard Home release, configured through its API inside the container (`pct exec`), so the
-Mac needs no route into the lab. Upstream is OPNsense's Unbound (DNSSEC, lab names, and
-client names in the query log); lists are AdGuard DNS filter plus AdAway (`adguard_filters`).
+`hndns01` (`hnhv01`, 10.10.10.54) and `hndns02` (`hnhv02`, 10.10.10.55), unprivileged Debian 13
+LXCs running a pinned, checksum-verified AdGuard Home release, configured identically through
+its API inside each container (`pct exec`), so the Mac needs no route into the lab. Upstream is
+OPNsense's Unbound (DNSSEC, lab names, and client names in the query log); lists are AdGuard
+DNS filter plus AdAway (`adguard_filters`).
 
-- Web UI: `http://10.10.10.53/` over Tailscale, user `admin`, password `vault_adguard_password`.
-- Clients: INT and K8S via DHCP; house devices by pointing their DNS at OPNsense's WAN IP.
+keepalived in each container (unicast VRRP, `roles/adguard/templates/keepalived.conf.j2`)
+holds the lab DNS address `10.10.10.53` on the healthy instance with the higher priority
+(`hndns01` while it answers on port 53), so every client keeps a single DNS server.
+Query logs and statistics stay per instance; external-dns in `../kubernetes` writes its
+records to both.
+
+- Web UI: `http://10.10.10.54/` and `http://10.10.10.55/` over Tailscale, user `admin`,
+  password `vault_adguard_password`.
+- Clients: INT and K8S via DHCP; house devices by pointing their DNS at `192.168.1.250`.
 
 ## Home Assistant
 
@@ -151,9 +183,12 @@ This HA release keeps its HTTP settings in `.storage/http`, not `configuration.y
 
 ## Kubernetes (Talos)
 
-Three Talos VMs (`k8s_nodes` in `group_vars/all/main.yml`), each running the control plane and
-workloads: two on `hnhv01`, one on `hnhv02`. Losing `hnhv01` takes etcd down until it returns;
-a third host fixes that. The role creates the VMs from the Image Factory ISO, renders each
+Talos VMs (`k8s_nodes` in `group_vars/all/main.yml`): three control planes (etcd + workloads;
+two on `hnhv01`, one on `hnhv02`) and workers (`role: worker`, e.g. `hnk8s04` on `hnhv02`).
+Losing `hnhv01` takes etcd down until it returns; moving a control plane to a third host fixes
+that (a control plane can't become a worker in place: Talos reinstalls it). Control planes get
+`kubernetes/talos/patches/controlplane.yaml` on top of `cluster.yaml`. The role creates the VMs
+from the Image Factory ISO, renders each
 node's config from `kubernetes/talos` plus `roles/talos/templates/machine.yaml.j2`, bootstraps
 etcd, installs Cilium and runs `flux bootstrap`; after that, the cluster is whatever is in
 [`../kubernetes`](../kubernetes). `talosctl` and `kubectl` work from the repo root (paths come
@@ -189,9 +224,9 @@ on the cluster (same vault secret as everywhere else, `cloudflare_api_token`).
 `pve_backup` creates `vmdata/backups` (a ZFS dataset on the cluster-wide mirror, local to each
 node) and registers it as `dir` storage `backup`, then creates one cluster-wide vzdump job
 (id `nightly`, 02:30 daily, snapshot mode, zstd, `keep-daily=7,keep-weekly=4`) covering OPNsense
-(100), AdGuard (101), netboot (102), Home Assistant (301) and the media NFS VM's root disk (401
--- its data disk is `backup=0`, set by the `media_nfs` role, so only the OS disk is backed up).
-Talos VMs 201-203 are excluded: they're rebuilt from git (`../kubernetes`), and etcd has its own
+(100, 110), AdGuard (101, 111), netboot (102), Home Assistant (301) and the media NFS VM's root
+disk (401 -- its data disk is `backup=0`, set by the `media_nfs` role, so only the OS disk is
+backed up). Talos VMs (2xx) are excluded: they're rebuilt from git (`../kubernetes`), and etcd has its own
 offsite backup (see below). The job runs locally only -- no restic/extra daemons on the Proxmox
 hosts themselves, keeping them minimal.
 

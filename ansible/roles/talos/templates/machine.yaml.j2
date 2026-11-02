@@ -21,11 +21,13 @@ mtu: {{ lab_mtu }}
 apiVersion: v1alpha1
 kind: DHCPv4Config
 name: net0
+{% if node.role | default('controlplane') == 'controlplane' %}
 ---
 apiVersion: v1alpha1
 kind: Layer2VIPConfig
 name: {{ k8s_vip }}
 link: net0
+{% endif %}
 ---
 apiVersion: v1alpha1
 kind: KubeNodeConfig
@@ -33,7 +35,9 @@ nodeIP:
   validSubnets:
     - {{ talos_zone.cidr }}
 labels:
+{% if node.role | default('controlplane') == 'controlplane' %}
   node-role.kubernetes.io/control-plane: ""
+{% endif %}
   # Proxmox CSI plugin (ansible/roles/pve_csi): region = Proxmox cluster name, zone = the
   # Proxmox node this VM runs on (node.host), so disks land next to the VM that uses them.
   topology.kubernetes.io/region: {{ k8s_cluster_name }}

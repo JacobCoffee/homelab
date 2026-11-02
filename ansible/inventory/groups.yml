@@ -1,5 +1,0 @@
-# Static roles for nodes discovered by pve.py.
-# core: the node with the extra NICs; runs OPNsense (hnfw01).
-core:
-  hosts:
-    hnhv01:

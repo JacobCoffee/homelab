@@ -1,1 +1,3 @@
 pve_sdn_zone_name: lab
+# Every vnet in the zone: the lab zones plus the firewalls' pfsync link.
+pve_sdn_vnets_wanted: "{{ lab_zones + [firewall_sync] }}"

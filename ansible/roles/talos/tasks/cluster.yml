@@ -30,12 +30,15 @@
       changed_when: false   # scratch copy, rendered fresh every run
 
     - name: Per-node machine config
+      vars:
+        role: "{{ node.role | default('controlplane') }}"
       ansible.builtin.command: >-
         {{ talos_mise }} talosctl gen config {{ k8s_cluster_name }} https://{{ k8s_vip }}:6443
         --with-secrets {{ talos_tmp.path }}/secrets.yaml --kubernetes-version {{ k8s_version }}
         --config-patch @{{ talos_dir }}/patches/cluster.yaml
+        {{ '--config-patch @' ~ talos_dir ~ '/patches/controlplane.yaml' if role == 'controlplane' else '' }}
         --config-patch @{{ talos_tmp.path }}/{{ node.name }}.patch.yaml
-        --output-types controlplane --output {{ talos_tmp.path }}/{{ node.name }}.yaml --force
+        --output-types {{ role }} --output {{ talos_tmp.path }}/{{ node.name }}.yaml --force
       loop: "{{ k8s_nodes }}"
       loop_control:
         loop_var: node
@@ -52,11 +55,11 @@
       args:
         creates: "{{ talos_config }}"
 
-    - name: talosconfig endpoints = every node (never the VIP, which needs etcd)
+    - name: talosconfig endpoints = the control planes (never the VIP, which needs etcd)
       ansible.builtin.shell: >-
         {{ talos_mise }} talosctl --talosconfig {{ talos_config }} config endpoint
-        {{ k8s_nodes | map(attribute='ip') | join(' ') }} &&
-        {{ talos_mise }} talosctl --talosconfig {{ talos_config }} config node {{ k8s_nodes[0].ip }} &&
+        {{ talos_controlplanes | map(attribute='ip') | join(' ') }} &&
+        {{ talos_mise }} talosctl --talosconfig {{ talos_config }} config node {{ talos_controlplanes[0].ip }} &&
         chmod 600 {{ talos_config }}
       changed_when: false
 
@@ -131,15 +134,15 @@
 
 - name: etcd members (fails until bootstrapped)
   ansible.builtin.command: >-
-    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ k8s_nodes[0].ip }} -e {{ k8s_nodes[0].ip }}
+    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ talos_controlplanes[0].ip }} -e {{ talos_controlplanes[0].ip }}
     etcd members
   register: talos_etcd
   changed_when: false
   failed_when: false
 
-- name: Bootstrap etcd on {{ k8s_nodes[0].name }} (once per cluster)
+- name: Bootstrap etcd on {{ talos_controlplanes[0].name }} (once per cluster)
   ansible.builtin.command: >-
-    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ k8s_nodes[0].ip }} -e {{ k8s_nodes[0].ip }}
+    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ talos_controlplanes[0].ip }} -e {{ talos_controlplanes[0].ip }}
     bootstrap
   when: talos_etcd.rc != 0
   register: talos_bootstrap
@@ -150,7 +153,7 @@
 
 - name: kubeconfig (git-ignored)
   ansible.builtin.command: >-
-    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ k8s_nodes[0].ip }} -e {{ k8s_nodes[0].ip }}
+    {{ talos_mise }} talosctl --talosconfig {{ talos_config }} -n {{ talos_controlplanes[0].ip }} -e {{ talos_controlplanes[0].ip }}
     kubeconfig {{ talos_kubeconfig }} --force --merge=false
   args:
     creates: "{{ talos_kubeconfig }}"

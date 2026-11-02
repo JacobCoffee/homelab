@@ -13,14 +13,15 @@
   register: opnsense_qm_config
   changed_when: false
 
-# Same MAC, new bridge: the guest keeps vtnetN = zone N. mtu=1 hands the vnet's MTU to virtio.
-- name: Lab NICs on their zone's vnet
+# Same MAC, new bridge: the guest keeps vtnetN = interface N. mtu=1 hands the vnet's MTU to
+# virtio. A NIC that doesn't exist yet (the sync link on a firewall built before HA) is added.
+- name: NICs on their vnets (lab zones, then the sync link)
   vars:
-    nic: "{{ opnsense_qm_config.stdout | regex_search('(?m)^net' ~ (idx + 1) ~ ': (.*)$', '\\1') | first }}"
-    mac: "{{ nic | regex_search('virtio=([0-9A-Fa-f:]{17})', '\\1') | first }}"
-    wanted: "virtio={{ mac }},bridge={{ item.bridge }},mtu=1"
+    nic: "{{ opnsense_qm_config.stdout | regex_search('(?m)^net' ~ (idx + 1) ~ ': (.*)$', '\\1') | default([''], true) | first }}"
+    mac: "{{ nic | regex_search('virtio=([0-9A-Fa-f:]{17})', '\\1') | default([''], true) | first }}"
+    wanted: "virtio{{ '=' ~ mac if mac else '' }},bridge={{ item.bridge }},mtu=1"
   ansible.builtin.command: qm set {{ opnsense_vmid }} --net{{ idx + 1 }} {{ wanted }}
-  loop: "{{ opnsense_zones }}"
+  loop: "{{ opnsense_ifaces }}"
   loop_control:
     index_var: idx
     label: "net{{ idx + 1 }} -> {{ item.bridge }}"
@@ -28,7 +29,7 @@
   changed_when: true
   register: opnsense_nic_moved
 
-# Hot-replugged virtio NICs come back down inside FreeBSD; a clean reboot brings them up.
+# Hot-plugged virtio NICs come back down inside FreeBSD; a clean reboot brings them up.
 - name: Reboot after moving NICs
   ansible.builtin.command: qm reboot {{ opnsense_vmid }} --timeout 120
   when: opnsense_nic_moved is changed
@@ -63,8 +64,13 @@
   ansible.builtin.include_tasks: firmware.yml
   when: opnsense_update | bool
 
-- name: Lab interface MTU
+- name: Lab interface addresses and MTU, pfsync interface
   ansible.builtin.include_tasks: interfaces.yml
+
+# Right after the addresses: on a firewall that still had .1 itself, the zones are without a
+# gateway until the CARP .1 is up.
+- name: CARP addresses, pfsync, outbound NAT via the WAN CARP address
+  ansible.builtin.include_tasks: ha.yml
 
 - name: Configure OPNsense via the REST API
   ansible.builtin.include_tasks: api.yml
@@ -96,4 +102,5 @@
     msg: >-
       {{ opnsense_hostname }} is up: https://{{ opnsense_wan_ip }}/ (OPNsense
       {{ opnsense_api.json.product.CORE_VERSION | default('?') }}).
-      Reserve {{ opnsense_wan_ip }} for MAC {{ opnsense_wan_mac }} in the My Spectrum app.
+      Reserve {{ opnsense_wan_ip }} for MAC {{ opnsense_wan_mac }} in the My Spectrum app, and keep
+      {{ firewall_wan_vip }} (WAN CARP address) out of its DHCP pool.

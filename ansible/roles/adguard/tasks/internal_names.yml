@@ -8,7 +8,6 @@
     headers:
       Authorization: "Bearer {{ tailscale_api_key }}"
   delegate_to: localhost
-  run_once: true
   register: adguard_ts_devices
   no_log: true
 

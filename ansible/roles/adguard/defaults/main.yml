@@ -1,9 +1,17 @@
-# AdGuard Home in an unprivileged Debian LXC on the INT zone. Lab DHCP hands it out as DNS;
-# it asks OPNsense's Unbound (DNSSEC, lab names) for everything it doesn't block.
-adguard_ctid: 101
-adguard_hostname: "{{ site_code }}dns01"
+# AdGuard Home pair, each in an unprivileged Debian LXC on the INT zone (dns_servers in
+# group_vars). Lab DHCP hands out lab_dns, which keepalived keeps on a healthy instance; each
+# asks OPNsense's Unbound (DNSSEC, lab names) for everything it doesn't block.
+adguard_node: "{{ dns_servers | selectattr('host', 'equalto', inventory_hostname) | first }}"
+adguard_ctid: "{{ adguard_node.ctid }}"
+adguard_hostname: "{{ adguard_node.name }}"
 adguard_zone: int
-adguard_ip: "{{ lab_dns }}"
+adguard_ip: "{{ adguard_node.ip }}"
+
+# keepalived: unicast VRRP between the instances (no multicast next to the firewalls' CARP).
+adguard_vip: "{{ lab_dns }}"
+adguard_vrrp_id: 53
+adguard_vrrp_priority: "{{ adguard_node.priority }}"
+adguard_vrrp_peers: "{{ dns_servers | rejectattr('host', 'equalto', inventory_hostname) | map(attribute='ip') | list }}"
 
 adguard_template: debian-13-standard_13.6-1_amd64.tar.zst
 adguard_storage: vmdata

@@ -366,3 +366,44 @@ Verified on the real `hnfw01` (Proxmox/KVM), 26.7 → 26.7.8_2.
 - FreeBSD's vtnet ignores the MTU virtio advertises (`mtu=1`): the guest stayed at 1500 on a
   1450 vnet. `POST /api/interfaces/assignment/set_item/<if>` `{"interface": {"mtu": "1450"}}`
   + `POST .../reconfigure` applies it live; the interface stays up.
+
+## CARP pair (`tasks/interfaces.yml`, `ha.yml`)
+
+Verified on the real `hnfw01` (migrated in place from `.1`) and `hnfw02` (fresh), 26.7.8_2.
+Model fields read from `opnsense/core` `stable/26.7` and the live `get`/`get_item` templates.
+
+- **Interface assignment:** `GET interfaces/assignment/search_item` rows are keyed by
+  identifier (`uuid` = `lan`/`optN`) and carry `descr`, `ipaddr` (`"10.10.10.2/24"`) and `mtu`.
+  `POST set_item/<ident>` `{"interface": {"type4": "staticv4", "ipaddr": "<ip>/<bits>",
+  "mtu": "1450"}}` + `POST reconfigure` re-addresses live. `POST add_item` with
+  `{"interface": {"if": "vtnet4", "descr": "PFSYNC", "enable": "1", ...}}` assigns a new NIC
+  (it became `opt3`); `if` only offers NICs the kernel already has, hence the reboot after
+  adding the VM NIC.
+- **CARP VIPs:** `POST interfaces/vip_settings/add_item` `{"vip": {"mode": "carp", "interface",
+  "network": "<ip>/<bits>", "vhid", "advbase", "advskew", "password", "descr"}}`: the
+  controller splits `network` into the model's `subnet`/`subnet_bits` (what `search_item`
+  returns). A password is required; VHIDs must be unique per interface. Apply with
+  `POST vip_settings/reconfigure`.
+- **pfsync:** `core/hasync` (`Hasync.xml`): `pfsyncinterface` (identifier), `pfsyncpeerip`,
+  `pfsyncversion` (`1500` = 26.7+; the migrated box still had `1400`), `disablepreempt`,
+  `synchronizetoip` (empty: no XMLRPC config sync). `POST core/hasync/set` `{"hasync": {...}}`
+  + `POST core/hasync/reconfigure`. Result: `ifconfig pfsync0` shows `syncdev: vtnet4 syncpeer:
+  <peer>`, and `pfctl -ss` counts on both boxes match within a few states.
+- **Outbound NAT:** `GET/POST firewall/source_nat/get|set` `{"filter": {"general":
+  {"snat_mode": "hybrid"}}}`; rules via `source_nat/add_rule` `{"rule": {"interface": "wan",
+  "source_net": "<cidr>", "target": "<WAN VIP>", ...}}`. `pfctl -s nat` then lists
+  `nat on vtnet0 inet from 10.10.10.0/24 to any -> 192.168.1.250` ahead of the automatic rules.
+- **Dnsmasq split pools:** `dnsmasq.dhcp.reply_delay` (seconds, global) on the second box.
+- **WAN forwards on the VIP:** `d_nat` `destination.network` accepts a plain address
+  (`192.168.1.250`); a syslog line from `hnhv01` showed up as
+  `10.10.30.210:514 (192.168.1.250:514) <- 192.168.1.220`.
+- **CARP over the SDN vnets works:** the VXLAN head-end replication carries the multicast
+  advertisements; `hnfw02` sat in `BACKUP` on all four VHIDs.
+- **Failover, measured** (`qm suspend 100`, ping every 0.5 s from `hndns02` to 1.1.1.1): `hnfw02`
+  took every VHID within ~3.5 s, the same ICMP flow kept going (pfsync state), new HTTPS from
+  the lab worked; `qm resume 100` handed everything back with no loss (preemption, advskew 0).
+- **Migration gotcha:** a flow that was mid-flight while `.1` moved from the interface to the
+  VIP kept a state without NAT and stayed dead until it went idle; new flows were fine.
+- **Tailscale:** both boxes advertise the same routes; the control plane keeps whichever was
+  primary (here `hnfw02`, after `hnfw01` rebooted for its new NIC). Subnet traffic via the
+  backup is SNATed to its own zone address, so replies come straight back.

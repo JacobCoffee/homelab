@@ -3,7 +3,7 @@
 
 Reads ../../proxmox-pxe/state/hosts.json (written by proxmox-pxe/server/core.py, via server/app.py)
 and puts each installed node in group `pve` with its install-time IP.
-Static group membership (e.g. `core`) lives in inventory/groups.yml.
+Which node runs what is data in group_vars/all/main.yml (firewalls, dns_servers, k8s_nodes, ...).
 
 Installs normally happen through the hnpxe01 LXC (CT 102 on hnhv01; see
 ../roles/netboot), not this Mac, so its state/hosts.json there is the live one. This

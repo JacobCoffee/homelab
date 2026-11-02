@@ -15,18 +15,11 @@
     state: started
 
 # The hosts can't reach the lab directly (the house router has no route to 10.10.30.0/24), so
-# they send to OPNsense's WAN address, which forwards to Alloy (opnsense role, syslog.yml). The
-# address is discovered the same way the opnsense role does it, on the node that runs OPNsense.
-- name: Syslog | OPNsense WAN address
-  ansible.builtin.include_role:
-    name: opnsense
-    tasks_from: wan_ip
-    apply:
-      delegate_to: "{{ groups['core'][0] }}"
-
+# they send to the firewalls' WAN CARP address, which forwards to Alloy (opnsense role,
+# syslog.yml) from whichever firewall is master.
 - name: Syslog | forward target
   ansible.builtin.set_fact:
-    pve_syslog_target: "{{ opnsense_wan_ip }}"
+    pve_syslog_target: "{{ firewall_wan_vip }}"
 
 - name: Syslog | rsyslog forwarder config
   ansible.builtin.template:

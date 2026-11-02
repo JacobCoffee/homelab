@@ -33,12 +33,23 @@
   roles:
     - tailscale
 
-- name: Core node (OPNsense, lab DNS)
-  hosts: core
+# import_role (static), so tasks tagged monitoring/syslog inside the opnsense role still run
+# under --tags monitoring / --tags syslog. Narrow with --tags opnsense / --tags adguard.
+- name: Firewall pair (OPNsense CARP) and lab DNS pair (AdGuard + keepalived)
+  hosts: pve
   tags: [core]
-  roles:
-    - opnsense
-    - adguard
+  tasks:
+    - name: OPNsense
+      ansible.builtin.import_role:
+        name: opnsense
+      when: inventory_hostname in firewalls | map(attribute='host')
+      tags: [opnsense]
+
+    - name: AdGuard Home
+      ansible.builtin.import_role:
+        name: adguard
+      when: inventory_hostname in dns_servers | map(attribute='host')
+      tags: [adguard]
 
 - name: "Proxmox backups (local vzdump: ZFS dataset + nightly cluster job)"
   hosts: pve
@@ -69,6 +80,12 @@
   tags: [notify]
   roles:
     - pve_notify
+
+- name: "Proxmox UI themes (ProxMorph; UniFi light/dark default)"
+  hosts: pve
+  tags: [theme]
+  roles:
+    - pve_theme
 
 - name: "Cloudflare cache rules (z7x.org): bypass cache for media.z7x.org video streaming"
   hosts: localhost

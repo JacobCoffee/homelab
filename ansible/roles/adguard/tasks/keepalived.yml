@@ -1,0 +1,30 @@
+# keepalived inside the container holds lab_dns (adguard_vip) on one instance at a time.
+- name: keepalived installed
+  ansible.builtin.command: >-
+    pct exec {{ adguard_ctid }} -- sh -c
+    'command -v keepalived || (apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -yq keepalived)'
+  register: adguard_keepalived_pkg
+  changed_when: "'Setting up keepalived' in adguard_keepalived_pkg.stdout"
+
+- name: Current keepalived config
+  ansible.builtin.command: pct exec {{ adguard_ctid }} -- cat /etc/keepalived/keepalived.conf
+  register: adguard_keepalived_current
+  changed_when: false
+  failed_when: false
+
+- name: keepalived config
+  vars:
+    wanted: "{{ lookup('ansible.builtin.template', 'keepalived.conf.j2') }}"
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, sh, -c, "cat > /etc/keepalived/keepalived.conf"]
+    stdin: "{{ wanted }}"
+    stdin_add_newline: false
+  when: adguard_keepalived_current.stdout | trim != wanted | trim
+  register: adguard_keepalived_conf
+  changed_when: true
+
+- name: keepalived enabled and (re)started
+  ansible.builtin.command: >-
+    pct exec {{ adguard_ctid }} -- sh -c
+    'systemctl enable -q keepalived && {{ "systemctl restart keepalived" if adguard_keepalived_conf is changed else "systemctl start keepalived" }}'
+  changed_when: adguard_keepalived_conf is changed

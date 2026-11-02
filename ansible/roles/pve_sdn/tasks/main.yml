@@ -1,7 +1,7 @@
-# Lab zones as Proxmox SDN: one VXLAN zone over the house LAN, one vnet per lab zone.
-# SDN config is cluster-wide (/etc/pve/sdn), so it is written once; every node then gets
-# the vnet bridges when the config is applied. Peers follow the inventory, so a new node
-# joins the tunnel on the next run.
+# Lab zones as Proxmox SDN: one VXLAN zone over the house LAN, one vnet per lab zone plus the
+# firewalls' pfsync link. SDN config is cluster-wide (/etc/pve/sdn), so it is written once;
+# every node then gets the vnet bridges when the config is applied. Peers follow the
+# inventory, so a new node joins the tunnel on the next run.
 - name: SDN | peers (every node's management IP)
   ansible.builtin.set_fact:
     pve_sdn_peers: "{{ ansible_play_hosts_all | map('extract', hostvars, 'ansible_host') | sort | join(',') }}"
@@ -31,11 +31,11 @@
   changed_when: true
   run_once: true
 
-- name: SDN | vnet per lab zone
+- name: SDN | vnet per lab zone (and the sync link)
   ansible.builtin.command: >-
     pvesh {{ 'set /cluster/sdn/vnets/' ~ item.vnet if item.vnet in pve_sdn_vnets else 'create /cluster/sdn/vnets --vnet ' ~ item.vnet }}
     --zone {{ pve_sdn_zone_name }} --tag {{ item.vlan }} --alias lab-{{ item.name }}
-  loop: "{{ lab_zones }}"
+  loop: "{{ pve_sdn_vnets_wanted }}"
   loop_control:
     label: "{{ item.vnet }} (VNI {{ item.vlan }})"
   when: pve_sdn_vnets[item.vnet] | default('') | string != item.vlan | string
@@ -45,7 +45,7 @@
 
 - name: SDN | are the vnet bridges up on this node?
   ansible.builtin.command: ip -o link show {{ item.vnet }}
-  loop: "{{ lab_zones }}"
+  loop: "{{ pve_sdn_vnets_wanted }}"
   loop_control:
     label: "{{ item.vnet }}"
   register: pve_sdn_links
@@ -63,7 +63,7 @@
 
 - name: SDN | wait for the vnet bridges on this node
   ansible.builtin.command: ip -o link show {{ item.vnet }}
-  loop: "{{ lab_zones }}"
+  loop: "{{ pve_sdn_vnets_wanted }}"
   loop_control:
     label: "{{ item.vnet }}"
   register: pve_sdn_up

@@ -2,36 +2,69 @@ opnsense_version: "26.7"
 opnsense_mirror: https://pkg.opnsense.org/releases
 opnsense_image: "OPNsense-{{ opnsense_version }}-nano-amd64.img"
 
-opnsense_vmid: 100
-opnsense_hostname: "{{ site_code }}fw01"
+# This node's firewall and its CARP peer (firewalls in group_vars: exactly two). Not
+# opnsense_fw: firmware.yml registers that name.
+opnsense_node: "{{ firewalls | selectattr('host', 'equalto', inventory_hostname) | first }}"
+opnsense_peer: "{{ firewalls | rejectattr('host', 'equalto', inventory_hostname) | first }}"
+opnsense_node_index: "{{ (firewalls | map(attribute='host') | list).index(inventory_hostname) }}"
+opnsense_vmid: "{{ opnsense_node.vmid }}"
+opnsense_hostname: "{{ opnsense_node.name }}"
 opnsense_domain: "{{ domain_int }}"
 opnsense_timezone: "{{ timezone }}"
 
 opnsense_storage: vmdata
 opnsense_cores: 2
-opnsense_memory: 4096
+opnsense_memory: "{{ opnsense_node.memory | default(4096) }}"
 opnsense_disk_size: 32G
 opnsense_workdir: /var/lib/vz/opnsense
 
-# net0 = WAN on the house LAN; net1.. = one NIC per lab zone, each on that zone's SDN vnet.
+# net0 = WAN on the house LAN; net1.. = one NIC per lab zone, each on that zone's SDN vnet;
+# the last NIC is the pfsync link to the peer.
+# Per zone: ip = this firewall's own address, vip = the shared CARP gateway (VHID = zone VLAN),
+# dhcp_start/dhcp_end = this firewall's half of the zone's pool (first firewall: lower half).
 opnsense_wan_bridge: vmbr0
 opnsense_wan_if: vtnet0
 opnsense_zones: >-
   {%- set out = [] -%}
   {%- for z in lab_zones -%}
+  {%- set net = z.cidr.split('/')[0].rsplit('.', 1)[0] -%}
+  {%- set lo = z.dhcp[0].rsplit('.', 1)[1] | int -%}
+  {%- set hi = z.dhcp[1].rsplit('.', 1)[1] | int -%}
+  {%- set half = (hi - lo + 1) // 2 -%}
+  {%- set first = opnsense_node_index | int == 0 -%}
   {%- set _ = out.append({
         'name': 'lan' if loop.first else 'opt' ~ (loop.index - 1),
         'descr': z.name | upper,
         'if': 'vtnet' ~ loop.index,
         'bridge': z.vnet,
-        'ip': z.gateway,
+        'ip': net ~ '.' ~ opnsense_node.lan_host,
+        'vip': z.gateway,
+        'vhid': z.vlan,
         'prefix': z.cidr.split('/')[1] | int,
         'cidr': z.cidr,
         'domain': z.domain,
-        'dhcp_start': z.dhcp[0],
-        'dhcp_end': z.dhcp[1]}) -%}
+        'dhcp_start': net ~ '.' ~ (lo if first else lo + half),
+        'dhcp_end': net ~ '.' ~ (lo + half - 1 if first else hi)}) -%}
   {%- endfor -%}
   {{ out }}
+opnsense_sync_net: "{{ firewall_sync.cidr.split('/')[0].rsplit('.', 1)[0] }}"
+opnsense_sync_if:
+  name: "opt{{ lab_zones | length }}"
+  descr: PFSYNC
+  if: "vtnet{{ lab_zones | length + 1 }}"
+  bridge: "{{ firewall_sync.vnet }}"
+  ip: "{{ opnsense_sync_net }}.{{ opnsense_node.lan_host }}"
+  prefix: "{{ firewall_sync.cidr.split('/')[1] | int }}"
+  cidr: "{{ firewall_sync.cidr }}"
+opnsense_peer_sync_ip: "{{ opnsense_sync_net }}.{{ opnsense_peer.lan_host }}"
+opnsense_ifaces: "{{ opnsense_zones + [opnsense_sync_if] }}"
+
+# CARP: one shared password for every VHID; WAN VHID (the lab zones use their VLAN id).
+opnsense_carp_password: "{{ vault_opnsense_carp_password }}"
+opnsense_wan_vhid: 250
+# The second firewall answers DHCP only after this many seconds, so clients take the first
+# one's offer while it is up (docs.opnsense.org/manual/dnsmasq.html, HA with split pools).
+opnsense_dhcp_reply_delay: "{{ '' if opnsense_node_index | int == 0 else '3' }}"
 
 # WebGUI/SSH/API reachable on WAN from these sources (the house LAN, where the Mac is).
 opnsense_mgmt_sources:

@@ -20,18 +20,19 @@
   register: adguard_pct_config
   changed_when: false
 
-# Keep the MAC; move to the zone's vnet with the lab MTU (applies live).
+# Keep the MAC; move to the zone's vnet, address and lab MTU.
 - name: NIC on the zone's vnet
   vars:
     net0: "{{ adguard_pct_config.stdout | regex_search('(?m)^net0: (.*)$', '\\1') | first }}"
     mac: "{{ net0 | regex_search('hwaddr=([0-9A-Fa-f:]{17})', '\\1') | first }}"
   ansible.builtin.command: pct set {{ adguard_ctid }} --net0 {{ adguard_net0 }},hwaddr={{ mac }}
   when: >-
-    ('bridge=' ~ adguard_zone_cfg.vnet ~ ',') not in net0 or ('mtu=' ~ lab_mtu) not in net0 or 'tag=' in net0
+    ('bridge=' ~ adguard_zone_cfg.vnet ~ ',') not in net0 or ('mtu=' ~ lab_mtu) not in net0 or 'tag=' in net0 or
+    ('ip=' ~ adguard_ip ~ '/') not in net0
   changed_when: true
   register: adguard_nic_moved
 
-# The bridge moves live, the MTU inside only on start.
+# The bridge and address move live, the MTU inside only on start.
 - name: Restart the container after a NIC change
   ansible.builtin.command: pct reboot {{ adguard_ctid }}
   when: adguard_nic_moved is changed
@@ -64,6 +65,9 @@
 
 - name: Install AdGuard Home
   ansible.builtin.include_tasks: install.yml
+
+- name: Float lab DNS between the instances
+  ansible.builtin.include_tasks: keepalived.yml
 
 - name: Configure AdGuard Home through its API
   ansible.builtin.include_tasks: configure.yml

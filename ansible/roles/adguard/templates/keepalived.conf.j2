@@ -1,0 +1,38 @@
+# Managed by ansible (roles/adguard): {{ adguard_vip }} (lab DNS) lives on the healthy AdGuard
+# instance with the highest priority. Unicast VRRP, so nothing is multicast on INT next to the
+# firewalls' CARP (same IP protocol, 112).
+global_defs {
+    router_id {{ adguard_hostname }}
+    enable_script_security
+    script_user root
+}
+
+# AdGuard answering on TCP 53 (it serves UDP and TCP from the same listener). Full path without
+# symlinks: keepalived's script security rejects /bin/bash (a symlink under usrmerge).
+vrrp_script adguard_dns {
+    script "/usr/bin/bash -c 'exec 3<>/dev/tcp/127.0.0.1/53'"
+    interval 2
+    timeout 2
+    fall 2
+    rise 2
+}
+
+vrrp_instance lab_dns {
+    state BACKUP
+    interface eth0
+    virtual_router_id {{ adguard_vrrp_id }}
+    priority {{ adguard_vrrp_priority }}
+    advert_int 1
+    unicast_src_ip {{ adguard_ip }}
+    unicast_peer {
+{% for peer in adguard_vrrp_peers %}
+        {{ peer }}
+{% endfor %}
+    }
+    virtual_ipaddress {
+        {{ adguard_vip }}/{{ adguard_zone_cfg.cidr.split('/')[1] }} dev eth0
+    }
+    track_script {
+        adguard_dns
+    }
+}

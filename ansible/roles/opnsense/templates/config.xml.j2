@@ -15,10 +15,12 @@
     opnsense_api_key             - plaintext API key
     opnsense_api_secret_hash     - SHA-512 crypt ($6$) of the API secret
     opnsense_wan_if              - e.g. "vtnet0"
-    opnsense_zones               - list of {name, descr, if, ip, prefix}
-                                    name is one of lan/opt1/opt2/... (OPNsense
-                                    interface identifier), if is the NIC name
-                                    (vtnet1, vtnet2, ...)
+    opnsense_ifaces              - list of {name, descr, if, ip, prefix}: the lab zones
+                                    (opnsense_zones, also used for the default allow
+                                    rules) plus the pfsync link. name is one of
+                                    lan/opt1/opt2/... (OPNsense interface identifier),
+                                    if is the NIC name (vtnet1, vtnet2, ...), ip is this
+                                    firewall's own address (the CARP .1 comes via the API)
     opnsense_mgmt_sources        - list of CIDRs allowed to reach the
                                     WebGUI (443) and SSH (22) on the WAN
                                     interface
@@ -95,7 +97,7 @@
       <blockbogons>1</blockbogons>
       <dhcphostname/>
     </wan>
-{% for zone in opnsense_zones %}
+{% for zone in opnsense_ifaces %}
     <{{ zone.name }}>
       <enable>1</enable>
       <if>{{ zone.if }}</if>

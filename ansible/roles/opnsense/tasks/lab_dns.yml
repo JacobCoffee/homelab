@@ -1,15 +1,19 @@
-# DHCP options per zone, plus the house LAN's way into AdGuard through the WAN.
-# Every zone: MTU (option 26) = lab_mtu, since lab networks are VXLAN.
-# INT and K8S: DNS (option 6) = AdGuard. DMZ keeps its gateway (Unbound) as DNS so it stays
-# fully cut off from INT.
+# DHCP options per zone, plus the house LAN's way into AdGuard through the WAN CARP address.
+# Every zone: MTU (option 26) = lab_mtu, since lab networks are VXLAN; router (option 3) = the
+# zone's CARP .1 (Dnsmasq would hand out this firewall's own address).
+# INT and K8S: DNS (option 6) = AdGuard (lab_dns). DMZ gets its CARP .1 (Unbound) as DNS so it
+# stays fully cut off from INT.
 - name: DHCP | wanted options (zone, option, value)
   ansible.builtin.set_fact:
     opnsense_dhcp_wanted: >-
       {%- set out = [] -%}
       {%- for z in opnsense_zones -%}
       {%- set _ = out.append({'zone': z, 'option': '26', 'value': lab_mtu | string, 'descr': 'Lab MTU (' ~ z.descr ~ ')'}) -%}
+      {%- set _ = out.append({'zone': z, 'option': '3', 'value': z.vip, 'descr': 'CARP gateway (' ~ z.descr ~ ')'}) -%}
       {%- if z.descr != 'DMZ' -%}
       {%- set _ = out.append({'zone': z, 'option': '6', 'value': lab_dns, 'descr': 'Lab DNS: AdGuard Home (' ~ z.descr ~ ')'}) -%}
+      {%- else -%}
+      {%- set _ = out.append({'zone': z, 'option': '6', 'value': z.vip, 'descr': 'DNS: CARP gateway (' ~ z.descr ~ ')'}) -%}
       {%- endif -%}
       {%- endfor -%}
       {{ out }}
@@ -76,10 +80,13 @@
   delegate_to: localhost
   register: opnsense_dnat_rules
 
-# "pass": "pass" makes OPNsense keep a matching WAN pass rule itself.
-- name: Lab DNS | forward WAN port 53 to AdGuard
+# "pass": "pass" makes OPNsense keep a matching WAN pass rule itself. Bound to the WAN CARP
+# address, so it follows the master.
+- name: Lab DNS | forward WAN CARP address port 53 to AdGuard
+  vars:
+    existing: "{{ opnsense_dnat_rules.json.rows | selectattr('descr', 'equalto', 'Lab DNS: WAN 53 to AdGuard') | list }}"
   ansible.builtin.uri:
-    url: "https://{{ opnsense_wan_ip }}/api/firewall/d_nat/add_rule"
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/d_nat/{{ 'set_rule/' ~ existing[0].uuid if existing else 'add_rule' }}"
     url_username: "{{ opnsense_api_key }}"
     url_password: "{{ opnsense_api_secret }}"
     force_basic_auth: true
@@ -91,7 +98,7 @@
         interface: wan
         ipprotocol: inet
         protocol: TCP/UDP
-        destination: {network: wanip, port: "53"}
+        destination: {network: "{{ firewall_wan_vip }}", port: "53"}
         target: "{{ lab_dns }}"
         local-port: "53"
         descr: "Lab DNS: WAN 53 to AdGuard"
@@ -99,8 +106,7 @@
   delegate_to: localhost
   register: opnsense_dnat_add
   when: >-
-    opnsense_dnat_rules.json.rows | selectattr('descr', 'equalto', 'Lab DNS: WAN 53 to AdGuard')
-    | list | length == 0
+    not existing or existing[0]['destination.network'] != firewall_wan_vip or existing[0].target != lab_dns
   changed_when: opnsense_dnat_add.json.result == "saved"
   failed_when: opnsense_dnat_add.json.result is not defined or opnsense_dnat_add.json.result == "failed"
 

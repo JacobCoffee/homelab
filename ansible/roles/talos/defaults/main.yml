@@ -12,6 +12,8 @@ talos_iso: talos-{{ talos_version }}-{{ talos_schematic_id[:8] }}-metal-amd64.is
 talos_iso_url: https://factory.talos.dev/image/{{ talos_schematic_id }}/{{ talos_version }}/metal-amd64.iso
 talos_storage: fast         # VM disks on each node's NVMe pool
 talos_zone: "{{ lab_zones | selectattr('name', 'equalto', 'k8s') | first }}"
+# Nodes with role controlplane (the default): etcd members, VIP holders, talosctl endpoints.
+talos_controlplanes: "{{ k8s_nodes | rejectattr('role', 'defined') | list + k8s_nodes | selectattr('role', 'defined') | selectattr('role', 'equalto', 'controlplane') | list }}"
 
 # Repo paths (controller side).
 talos_dir: "{{ playbook_dir }}/../../kubernetes/talos"

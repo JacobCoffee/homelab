@@ -1,21 +1,21 @@
-# Lab interfaces at the VXLAN MTU. FreeBSD ignores the MTU virtio advertises, so it is set
-# in OPNsense itself (applies live, interface stays up).
-- name: Interfaces | current lab interface settings
+# Lab interfaces on this firewall's own address (the CARP .1 is a VIP, ha.yml) at the VXLAN MTU,
+# plus the pfsync interface. FreeBSD ignores the MTU virtio advertises, so it is set in OPNsense
+# itself. Interfaces are matched by description (INT, DMZ, K8S, PFSYNC); identifiers come from
+# OPNsense (lan/optN). Address changes apply live (interface stays up).
+- name: Interfaces | current assignments
   ansible.builtin.uri:
-    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/get_item/{{ item.name }}"
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/search_item"
     url_username: "{{ opnsense_api_key }}"
     url_password: "{{ opnsense_api_secret }}"
     force_basic_auth: true
     validate_certs: false
   delegate_to: localhost
-  loop: "{{ opnsense_zones }}"
-  loop_control:
-    label: "{{ item.descr }}"
-  register: opnsense_ifaces
+  register: opnsense_assign
 
-- name: Interfaces | MTU {{ lab_mtu }}
+# Only on a firewall built before HA; its NIC exists since the reboot in main.yml.
+- name: Interfaces | assign the pfsync NIC
   ansible.builtin.uri:
-    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/set_item/{{ item.item.name }}"
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/add_item"
     url_username: "{{ opnsense_api_key }}"
     url_password: "{{ opnsense_api_secret }}"
     force_basic_auth: true
@@ -24,15 +24,59 @@
     body_format: json
     body:
       interface:
+        if: "{{ opnsense_sync_if.if }}"
+        descr: "{{ opnsense_sync_if.descr }}"
+        enable: "1"
+        type4: staticv4
+        ipaddr: "{{ opnsense_sync_if.ip }}/{{ opnsense_sync_if.prefix }}"
         mtu: "{{ lab_mtu | string }}"
   delegate_to: localhost
-  loop: "{{ opnsense_ifaces.results }}"
+  when: opnsense_assign.json.rows | selectattr('descr', 'equalto', opnsense_sync_if.descr) | list | length == 0
+  register: opnsense_sync_assigned
+  changed_when: opnsense_sync_assigned.json.result == "saved"
+  failed_when: opnsense_sync_assigned.json.result is not defined or opnsense_sync_assigned.json.result == "failed"
+
+- name: Interfaces | assignments after adding pfsync
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/search_item"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_assign_after
+  when: opnsense_sync_assigned is changed
+
+- name: Interfaces | identifiers by description
+  vars:
+    rows: "{{ (opnsense_assign_after if opnsense_sync_assigned is changed else opnsense_assign).json.rows }}"
+  ansible.builtin.set_fact:
+    opnsense_assign_by_descr: "{{ dict(rows | map(attribute='descr') | zip(rows)) }}"
+
+- name: Interfaces | address {{ opnsense_node.lan_host }} and MTU {{ lab_mtu }}
+  vars:
+    row: "{{ opnsense_assign_by_descr[item.descr] }}"
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/set_item/{{ row.identifier }}"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      interface:
+        type4: staticv4
+        ipaddr: "{{ item.ip }}/{{ item.prefix }}"
+        mtu: "{{ lab_mtu | string }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_ifaces }}"
   loop_control:
-    label: "{{ item.item.descr }}"
-  when: item.json.interface.mtu != lab_mtu | string
-  register: opnsense_iface_mtu
-  changed_when: opnsense_iface_mtu.json.result == "saved"
-  failed_when: opnsense_iface_mtu.json.result is not defined or opnsense_iface_mtu.json.result == "failed"
+    label: "{{ item.descr }} {{ item.ip }}/{{ item.prefix }}"
+  when: row.ipaddr != item.ip ~ '/' ~ item.prefix or row.mtu != lab_mtu | string
+  register: opnsense_iface_set
+  changed_when: opnsense_iface_set.json.result == "saved"
+  failed_when: opnsense_iface_set.json.result is not defined or opnsense_iface_set.json.result == "failed"
 
 - name: Interfaces | apply
   ansible.builtin.uri:
@@ -42,8 +86,10 @@
     force_basic_auth: true
     validate_certs: false
     method: POST
-    body_format: json
-    body: {}
   delegate_to: localhost
-  when: opnsense_iface_mtu is changed
+  when: opnsense_sync_assigned is changed or opnsense_iface_set is changed
   changed_when: true
+
+- name: Interfaces | pfsync interface identifier
+  ansible.builtin.set_fact:
+    opnsense_sync_ifname: "{{ opnsense_assign_by_descr[opnsense_sync_if.descr].identifier }}"

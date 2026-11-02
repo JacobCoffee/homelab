@@ -29,7 +29,7 @@
   delegate_to: localhost
   register: opnsense_dnsmasq_get
 
-- name: Dnsmasq | enable service, register DHCP leases in DNS, move DNS off 53
+- name: Dnsmasq | enable service, register DHCP leases in DNS, move DNS off 53, reply delay
   ansible.builtin.uri:
     url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/set"
     url_username: "{{ opnsense_api_key }}"
@@ -43,12 +43,15 @@
         enable: "1"
         regdhcp: "1"
         port: "53053"
+        dhcp:
+          reply_delay: "{{ opnsense_dhcp_reply_delay }}"
   delegate_to: localhost
   register: opnsense_dnsmasq_set
   when: >-
     opnsense_dnsmasq_get.json.dnsmasq.enable != "1" or
     opnsense_dnsmasq_get.json.dnsmasq.regdhcp != "1" or
-    opnsense_dnsmasq_get.json.dnsmasq.port != "53053"
+    opnsense_dnsmasq_get.json.dnsmasq.port != "53053" or
+    opnsense_dnsmasq_get.json.dnsmasq.dhcp.reply_delay != opnsense_dhcp_reply_delay
   changed_when: opnsense_dnsmasq_set.json.result == "saved"
   failed_when: opnsense_dnsmasq_set.json.result is not defined or opnsense_dnsmasq_set.json.result == "failed"
 
@@ -62,71 +65,34 @@
   delegate_to: localhost
   register: opnsense_dnsmasq_ranges
 
-- name: Dnsmasq | add DHCP range per zone
-  ansible.builtin.uri:
-    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/addRange"
-    url_username: "{{ opnsense_api_key }}"
-    url_password: "{{ opnsense_api_secret }}"
-    force_basic_auth: true
-    validate_certs: false
-    method: POST
-    body_format: json
-    body:
-      range:
-        interface: "{{ item.name }}"
-        start_addr: "{{ item.dhcp_start }}"
-        end_addr: "{{ item.dhcp_end }}"
-        domain_type: range
-        domain: "{{ item.domain }}"
-        description: "ansible-managed range for {{ item.descr }}"
-  delegate_to: localhost
-  loop: "{{ opnsense_zones }}"
-  loop_control: { label: "{{ item.descr }}" }
-  register: opnsense_dnsmasq_range_add
-  when: >-
-    opnsense_dnsmasq_ranges.json.rows
-    | selectattr('interface', 'equalto', item.name)
-    | selectattr('start_addr', 'equalto', item.dhcp_start)
-    | selectattr('end_addr', 'equalto', item.dhcp_end)
-    | list | length == 0
-  changed_when: opnsense_dnsmasq_range_add.json.result == "saved"
-  failed_when: opnsense_dnsmasq_range_add.json.result is not defined or opnsense_dnsmasq_range_add.json.result == "failed"
-
-- name: Dnsmasq | update DHCP range domain if it drifted
-  ansible.builtin.uri:
-    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/setRange/{{ (opnsense_dnsmasq_ranges.json.rows
-      | selectattr('interface', 'equalto', item.name)
-      | selectattr('start_addr', 'equalto', item.dhcp_start)
-      | selectattr('end_addr', 'equalto', item.dhcp_end)
-      | first).uuid }}"
-    url_username: "{{ opnsense_api_key }}"
-    url_password: "{{ opnsense_api_secret }}"
-    force_basic_auth: true
-    validate_certs: false
-    method: POST
-    body_format: json
-    body:
-      range:
-        interface: "{{ item.name }}"
-        start_addr: "{{ item.dhcp_start }}"
-        end_addr: "{{ item.dhcp_end }}"
-        domain_type: range
-        domain: "{{ item.domain }}"
-        description: "ansible-managed range for {{ item.descr }}"
-  delegate_to: localhost
-  loop: "{{ opnsense_zones }}"
-  loop_control: { label: "{{ item.descr }}" }
-  register: opnsense_dnsmasq_range_set
+# One ansible-managed range per zone (matched by description): this firewall's half of the pool.
+- name: Dnsmasq | DHCP range per zone
   vars:
-    opnsense_existing_range: >-
-      {{ (opnsense_dnsmasq_ranges.json.rows
-      | selectattr('interface', 'equalto', item.name)
-      | selectattr('start_addr', 'equalto', item.dhcp_start)
-      | selectattr('end_addr', 'equalto', item.dhcp_end)
-      | list | first) | default({}) }}
+    descr: "ansible-managed range for {{ item.descr }}"
+    existing: "{{ opnsense_dnsmasq_ranges.json.rows | selectattr('description', 'equalto', descr) | list }}"
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/{{ 'setRange/' ~ existing[0].uuid if existing else 'addRange' }}"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      range:
+        interface: "{{ item.name }}"
+        start_addr: "{{ item.dhcp_start }}"
+        end_addr: "{{ item.dhcp_end }}"
+        domain_type: range
+        domain: "{{ item.domain }}"
+        description: "{{ descr }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_zones }}"
+  loop_control: { label: "{{ item.descr }} {{ item.dhcp_start }}-{{ item.dhcp_end }}" }
+  register: opnsense_dnsmasq_range_set
   when: >-
-    opnsense_existing_range != {} and
-    opnsense_existing_range.domain != item.domain
+    not existing or existing[0].interface != item.name or existing[0].start_addr != item.dhcp_start or
+    existing[0].end_addr != item.dhcp_end or existing[0].domain != item.domain
   changed_when: opnsense_dnsmasq_range_set.json.result == "saved"
   failed_when: opnsense_dnsmasq_range_set.json.result is not defined or opnsense_dnsmasq_range_set.json.result == "failed"
 
@@ -139,10 +105,7 @@
     validate_certs: false
     method: POST
   delegate_to: localhost
-  when: >-
-    opnsense_dnsmasq_set is changed or
-    opnsense_dnsmasq_range_add.results | default([]) | selectattr('changed', 'equalto', true) | list | length > 0 or
-    opnsense_dnsmasq_range_set.results | default([]) | selectattr('changed', 'equalto', true) | list | length > 0
+  when: opnsense_dnsmasq_set is changed or opnsense_dnsmasq_range_set is changed
   changed_when: true
 
 # ---------------------------------------------------------------------------

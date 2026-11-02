@@ -77,7 +77,7 @@
     --onboot 1 --startup order=1
     --serial0 socket
     --net0 virtio,bridge={{ opnsense_wan_bridge }}
-    {% for z in opnsense_zones %}--net{{ loop.index }} virtio,bridge={{ z.bridge }},mtu=1 {% endfor %}
+    {% for z in opnsense_ifaces %}--net{{ loop.index }} virtio,bridge={{ z.bridge }},mtu=1 {% endfor %}
     --args "-device qemu-xhci,id=cfgxhci -drive file={{ opnsense_workdir }}/config.img,format=raw,if=none,id=cfgusb -device usb-storage,bus=cfgxhci.0,drive=cfgusb"
   changed_when: true
 
