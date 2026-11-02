@@ -6,14 +6,18 @@ timezone: America/Chicago
 house_lan_cidr: 192.168.1.0/24
 house_gateway: 192.168.1.1
 
-# Lab zones behind OPNsense: VLAN id -> subnet, firewall at .1.
+# Lab zones behind OPNsense, firewall at .1. Each zone is a Proxmox SDN VXLAN network (vnet)
+# spanning every node (id = the VLAN id, ready for a real trunk once the switches arrive).
 # Per zone: .2-.99 static, .100-.199 DHCP, .200-.250 reserved (k8s LoadBalancer IPs).
 lab_zones:
-  - { name: int, vlan: 10, cidr: 10.10.10.0/24, gateway: 10.10.10.1, domain: int.z7x.org,     dhcp: [10.10.10.100, 10.10.10.199] }
-  - { name: dmz, vlan: 20, cidr: 10.10.20.0/24, gateway: 10.10.20.1, domain: dmz.z7x.org,     dhcp: [10.10.20.100, 10.10.20.199] }
-  - { name: k8s, vlan: 30, cidr: 10.10.30.0/24, gateway: 10.10.30.1, domain: k8s.int.z7x.org, dhcp: [10.10.30.100, 10.10.30.199] }
+  - { name: int, vlan: 10, vnet: vxint, cidr: 10.10.10.0/24, gateway: 10.10.10.1, domain: int.z7x.org,     dhcp: [10.10.10.100, 10.10.10.199] }
+  - { name: dmz, vlan: 20, vnet: vxdmz, cidr: 10.10.20.0/24, gateway: 10.10.20.1, domain: dmz.z7x.org,     dhcp: [10.10.20.100, 10.10.20.199] }
+  - { name: k8s, vlan: 30, vnet: vxk8s, cidr: 10.10.30.0/24, gateway: 10.10.30.1, domain: k8s.int.z7x.org, dhcp: [10.10.30.100, 10.10.30.199] }
 
-# Lab DNS (AdGuard Home, hndns01): every zone's DHCP hands it out; it asks OPNsense's Unbound.
+# VXLAN adds 50 bytes to a 1500-byte house LAN; every lab NIC uses this (DHCP option 26).
+lab_mtu: 1450
+
+# Lab DNS (AdGuard Home, hndns01): INT and K8S DHCP hand it out; it asks OPNsense's Unbound.
 lab_dns: 10.10.10.53
 
 # Shared SSH material produced by proxmox-pxe/build.sh

@@ -11,7 +11,7 @@
     --unprivileged 1 --features nesting=1
     --cores {{ adguard_cores }} --memory {{ adguard_memory }} --swap {{ adguard_memory }}
     --rootfs {{ adguard_storage }}:{{ adguard_disk_gb }}
-    --net0 name=eth0,bridge={{ adguard_bridge }},tag={{ adguard_zone_cfg.vlan }},ip={{ adguard_ip }}/{{ adguard_zone_cfg.cidr.split('/')[1] }},gw={{ adguard_zone_cfg.gateway }}
+    --net0 {{ adguard_net0 }}
     --nameserver {{ adguard_zone_cfg.gateway }} --searchdomain {{ adguard_zone_cfg.domain }}
     --ssh-public-keys /root/.ssh/authorized_keys
     --onboot 1 --startup order=2

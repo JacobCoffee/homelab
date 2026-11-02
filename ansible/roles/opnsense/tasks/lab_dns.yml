@@ -1,10 +1,20 @@
-# Point the lab at AdGuard Home (lab_dns) and let the house LAN use it through the WAN.
-# DMZ keeps its own gateway (Unbound) as DNS so it stays fully cut off from INT.
-- name: Lab DNS | zones that get AdGuard
+# DHCP options per zone, plus the house LAN's way into AdGuard through the WAN.
+# Every zone: MTU (option 26) = lab_mtu, since lab networks are VXLAN.
+# INT and K8S: DNS (option 6) = AdGuard. DMZ keeps its gateway (Unbound) as DNS so it stays
+# fully cut off from INT.
+- name: DHCP | wanted options (zone, option, value)
   ansible.builtin.set_fact:
-    opnsense_dns_zones: "{{ opnsense_zones | rejectattr('descr', 'equalto', 'DMZ') | list }}"
+    opnsense_dhcp_wanted: >-
+      {%- set out = [] -%}
+      {%- for z in opnsense_zones -%}
+      {%- set _ = out.append({'zone': z, 'option': '26', 'value': lab_mtu | string, 'descr': 'Lab MTU (' ~ z.descr ~ ')'}) -%}
+      {%- if z.descr != 'DMZ' -%}
+      {%- set _ = out.append({'zone': z, 'option': '6', 'value': lab_dns, 'descr': 'Lab DNS: AdGuard Home (' ~ z.descr ~ ')'}) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
 
-- name: Lab DNS | existing DHCP options
+- name: DHCP | existing options
   ansible.builtin.uri:
     url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/search_option"
     url_username: "{{ opnsense_api_key }}"
@@ -14,11 +24,12 @@
   delegate_to: localhost
   register: opnsense_dhcp_options
 
-# One option per zone: the option's interface field takes a single interface.
-- name: Lab DNS | DHCP option 6 (dns-server) per zone
+# Keyed on (interface, option): the option's interface field takes a single interface.
+- name: DHCP | set options
   vars:
-    descr: "Lab DNS: AdGuard Home ({{ item.descr }})"
-    existing: "{{ opnsense_dhcp_options.json.rows | selectattr('description', 'equalto', descr) | list }}"
+    existing: >-
+      {{ opnsense_dhcp_options.json.rows | selectattr('interface', 'equalto', item.zone.name)
+         | selectattr('option', 'equalto', item.option) | list }}
   ansible.builtin.uri:
     url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/{{ 'set_option/' ~ existing[0].uuid if existing else 'add_option' }}"
     url_username: "{{ opnsense_api_key }}"
@@ -30,20 +41,20 @@
     body:
       option:
         type: set
-        option: "6"
-        interface: "{{ item.name }}"
-        value: "{{ lab_dns }}"
-        description: "{{ descr }}"
+        option: "{{ item.option }}"
+        interface: "{{ item.zone.name }}"
+        value: "{{ item.value }}"
+        description: "{{ item.descr }}"
   delegate_to: localhost
-  loop: "{{ opnsense_dns_zones }}"
+  loop: "{{ opnsense_dhcp_wanted }}"
   loop_control:
-    label: "{{ item.descr }}"
+    label: "{{ item.zone.descr }} option {{ item.option }} = {{ item.value }}"
   register: opnsense_dhcp_option_set
-  when: not existing or existing[0].value != lab_dns or existing[0].interface != item.name
+  when: not existing or existing[0].value != item.value or existing[0].description != item.descr
   changed_when: opnsense_dhcp_option_set.json.result == "saved"
   failed_when: opnsense_dhcp_option_set.json.result is not defined or opnsense_dhcp_option_set.json.result == "failed"
 
-- name: Lab DNS | reconfigure Dnsmasq
+- name: DHCP | reconfigure Dnsmasq
   ansible.builtin.uri:
     url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/service/reconfigure"
     url_username: "{{ opnsense_api_key }}"

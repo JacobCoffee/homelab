@@ -8,6 +8,32 @@
   ansible.builtin.include_tasks: create.yml
   when: opnsense_vm_status.rc != 0
 
+- name: VM NICs
+  ansible.builtin.command: qm config {{ opnsense_vmid }}
+  register: opnsense_qm_config
+  changed_when: false
+
+# Same MAC, new bridge: the guest keeps vtnetN = zone N. mtu=1 hands the vnet's MTU to virtio.
+- name: Lab NICs on their zone's vnet
+  vars:
+    nic: "{{ opnsense_qm_config.stdout | regex_search('(?m)^net' ~ (idx + 1) ~ ': (.*)$', '\\1') | first }}"
+    mac: "{{ nic | regex_search('virtio=([0-9A-Fa-f:]{17})', '\\1') | first }}"
+    wanted: "virtio={{ mac }},bridge={{ item.bridge }},mtu=1"
+  ansible.builtin.command: qm set {{ opnsense_vmid }} --net{{ idx + 1 }} {{ wanted }}
+  loop: "{{ opnsense_zones }}"
+  loop_control:
+    index_var: idx
+    label: "net{{ idx + 1 }} -> {{ item.bridge }}"
+  when: nic != wanted
+  changed_when: true
+  register: opnsense_nic_moved
+
+# Hot-replugged virtio NICs come back down inside FreeBSD; a clean reboot brings them up.
+- name: Reboot after moving NICs
+  ansible.builtin.command: qm reboot {{ opnsense_vmid }} --timeout 120
+  when: opnsense_nic_moved is changed
+  changed_when: true
+
 - name: Locate the WAN address
   ansible.builtin.include_tasks: wan_ip.yml
 
@@ -30,13 +56,16 @@
   ansible.builtin.include_tasks: firmware.yml
   when: opnsense_update | bool
 
+- name: Lab interface MTU
+  ansible.builtin.include_tasks: interfaces.yml
+
 - name: Configure OPNsense via the REST API
   ansible.builtin.include_tasks: api.yml
 
 - name: Tailscale subnet router for the lab zones
   ansible.builtin.include_tasks: tailscale.yml
 
-- name: Lab DNS (AdGuard) via DHCP and a WAN port-forward
+- name: DHCP options (MTU, AdGuard) and the WAN DNS port-forward
   ansible.builtin.include_tasks: lab_dns.yml
 
 - name: Report

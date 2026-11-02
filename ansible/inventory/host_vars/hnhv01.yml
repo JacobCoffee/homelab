@@ -1,5 +1,0 @@
-# HP EliteDesk 800 G5 SFF + Broadcom dual-port card (bnx2x driver).
-#   eno1      built-in Intel I219-LM  -> vmbr0 (house LAN, management, OPNsense WAN)
-#   enp1s0f0  card port 1             -> vmbr1 lab VLAN trunk
-#   enp1s0f1  card port 2             -> spare (future modem-side WAN)
-pve_trunk_nic: enp1s0f0

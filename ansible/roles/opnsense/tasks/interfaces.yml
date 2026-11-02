@@ -1,0 +1,49 @@
+# Lab interfaces at the VXLAN MTU. FreeBSD ignores the MTU virtio advertises, so it is set
+# in OPNsense itself (applies live, interface stays up).
+- name: Interfaces | current lab interface settings
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/get_item/{{ item.name }}"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  loop: "{{ opnsense_zones }}"
+  loop_control:
+    label: "{{ item.descr }}"
+  register: opnsense_ifaces
+
+- name: Interfaces | MTU {{ lab_mtu }}
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/set_item/{{ item.item.name }}"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      interface:
+        mtu: "{{ lab_mtu | string }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_ifaces.results }}"
+  loop_control:
+    label: "{{ item.item.descr }}"
+  when: item.json.interface.mtu != lab_mtu | string
+  register: opnsense_iface_mtu
+  changed_when: opnsense_iface_mtu.json.result == "saved"
+  failed_when: opnsense_iface_mtu.json.result is not defined or opnsense_iface_mtu.json.result == "failed"
+
+- name: Interfaces | apply
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/interfaces/assignment/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body: {}
+  delegate_to: localhost
+  when: opnsense_iface_mtu is changed
+  changed_when: true

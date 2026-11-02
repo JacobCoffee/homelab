@@ -10,7 +10,6 @@ adguard_storage: vmdata
 adguard_cores: 1
 adguard_memory: 512
 adguard_disk_gb: 4
-adguard_bridge: vmbr1
 
 adguard_version: v0.107.79
 adguard_sha256: c48f4a43000665484c5ec28177de11a004759b620dae8f77b2aabefc9ef3687f  # AdGuardHome_linux_amd64.tar.gz
@@ -26,3 +25,5 @@ adguard_password: "{{ vault_adguard_password }}"
 # Derived from the zone; no need to change.
 adguard_zone_cfg: "{{ lab_zones | selectattr('name', 'equalto', adguard_zone) | first }}"
 adguard_upstream: "{{ adguard_zone_cfg.gateway }}"
+adguard_net0: >-
+  name=eth0,bridge={{ adguard_zone_cfg.vnet }},gw={{ adguard_zone_cfg.gateway }},ip={{ adguard_ip }}/{{ adguard_zone_cfg.cidr.split('/')[1] }},mtu={{ lab_mtu }}

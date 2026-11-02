@@ -1,0 +1,73 @@
+# Lab zones as Proxmox SDN: one VXLAN zone over the house LAN, one vnet per lab zone.
+# SDN config is cluster-wide (/etc/pve/sdn), so it is written once; every node then gets
+# the vnet bridges when the config is applied. Peers follow the inventory, so a new node
+# joins the tunnel on the next run.
+- name: SDN | peers (every node's management IP)
+  ansible.builtin.set_fact:
+    pve_sdn_peers: "{{ ansible_play_hosts_all | map('extract', hostvars, 'ansible_host') | sort | join(',') }}"
+  run_once: true
+
+- name: SDN | current zones and vnets
+  ansible.builtin.command: pvesh get /cluster/sdn/{{ item }} --output-format json
+  loop: [zones, vnets]
+  register: pve_sdn_current
+  changed_when: false
+  run_once: true
+
+- name: SDN | index current config
+  ansible.builtin.set_fact:
+    pve_sdn_zone: "{{ pve_sdn_current.results[0].stdout | from_json | selectattr('zone', 'equalto', pve_sdn_zone_name) | first | default({}) }}"
+    pve_sdn_vnets: "{{ pve_sdn_current.results[1].stdout | from_json | items2dict(key_name='vnet', value_name='tag') }}"
+  run_once: true
+
+- name: SDN | VXLAN zone {{ pve_sdn_zone_name }}
+  ansible.builtin.command: >-
+    pvesh {{ 'set /cluster/sdn/zones/' ~ pve_sdn_zone_name if pve_sdn_zone else 'create /cluster/sdn/zones --zone ' ~ pve_sdn_zone_name ~ ' --type vxlan' }}
+    --peers {{ pve_sdn_peers }} --mtu {{ lab_mtu }}
+  when: >-
+    not pve_sdn_zone or pve_sdn_zone.peers | default('') != pve_sdn_peers or
+    pve_sdn_zone.mtu | default(0) | int != lab_mtu | int
+  register: pve_sdn_zone_set
+  changed_when: true
+  run_once: true
+
+- name: SDN | vnet per lab zone
+  ansible.builtin.command: >-
+    pvesh {{ 'set /cluster/sdn/vnets/' ~ item.vnet if item.vnet in pve_sdn_vnets else 'create /cluster/sdn/vnets --vnet ' ~ item.vnet }}
+    --zone {{ pve_sdn_zone_name }} --tag {{ item.vlan }} --alias lab-{{ item.name }}
+  loop: "{{ lab_zones }}"
+  loop_control:
+    label: "{{ item.vnet }} (VNI {{ item.vlan }})"
+  when: pve_sdn_vnets[item.vnet] | default('') | string != item.vlan | string
+  register: pve_sdn_vnet_set
+  changed_when: true
+  run_once: true
+
+- name: SDN | are the vnet bridges up on this node?
+  ansible.builtin.command: ip -o link show {{ item.vnet }}
+  loop: "{{ lab_zones }}"
+  loop_control:
+    label: "{{ item.vnet }}"
+  register: pve_sdn_links
+  changed_when: false
+  failed_when: false
+
+- name: SDN | apply (writes /etc/network/interfaces.d/sdn and reloads networking on every node)
+  ansible.builtin.command: pvesh set /cluster/sdn
+  when: >-
+    pve_sdn_zone_set is changed or pve_sdn_vnet_set is changed or
+    ansible_play_hosts | map('extract', hostvars, 'pve_sdn_links') | map(attribute='results') | flatten
+    | selectattr('rc', 'ne', 0) | list | length > 0
+  run_once: true
+  changed_when: true
+
+- name: SDN | wait for the vnet bridges on this node
+  ansible.builtin.command: ip -o link show {{ item.vnet }}
+  loop: "{{ lab_zones }}"
+  loop_control:
+    label: "{{ item.vnet }}"
+  register: pve_sdn_up
+  until: pve_sdn_up.rc == 0
+  retries: 20
+  delay: 3
+  changed_when: false

@@ -15,6 +15,53 @@
   when: adguard_ct_status.rc == 0 and 'running' not in adguard_ct_status.stdout
   changed_when: true
 
+- name: Container NIC
+  ansible.builtin.command: pct config {{ adguard_ctid }}
+  register: adguard_pct_config
+  changed_when: false
+
+# Keep the MAC; move to the zone's vnet with the lab MTU (applies live).
+- name: NIC on the zone's vnet
+  vars:
+    net0: "{{ adguard_pct_config.stdout | regex_search('(?m)^net0: (.*)$', '\\1') | first }}"
+    mac: "{{ net0 | regex_search('hwaddr=([0-9A-Fa-f:]{17})', '\\1') | first }}"
+  ansible.builtin.command: pct set {{ adguard_ctid }} --net0 {{ adguard_net0 }},hwaddr={{ mac }}
+  when: >-
+    ('bridge=' ~ adguard_zone_cfg.vnet ~ ',') not in net0 or ('mtu=' ~ lab_mtu) not in net0 or 'tag=' in net0
+  changed_when: true
+  register: adguard_nic_moved
+
+# The bridge moves live, the MTU inside only on start.
+- name: Restart the container after a NIC change
+  ansible.builtin.command: pct reboot {{ adguard_ctid }}
+  when: adguard_nic_moved is changed
+  changed_when: true
+
+# Proxmox gives the host side of the veth the lab MTU, but eth0 inside comes up at 1500
+# (Debian 13 template); an if-up hook owned by the container fixes it on every ifup.
+- name: eth0 at the lab MTU inside the container
+  vars:
+    hook: |
+      #!/bin/sh
+      # Managed by ansible (roles/adguard): lab vnets are VXLAN, MTU {{ lab_mtu }}.
+      [ "$IFACE" = eth0 ] && ip link set eth0 mtu {{ lab_mtu }}
+      exit 0
+  block:
+    - name: Current hook
+      ansible.builtin.command: pct exec {{ adguard_ctid }} -- cat /etc/network/if-up.d/lab-mtu
+      register: adguard_mtu_hook
+      changed_when: false
+      failed_when: false
+
+    - name: Install the hook and apply it now
+      ansible.builtin.command:
+        argv: [pct, exec, "{{ adguard_ctid }}", --, sh, -c,
+               "cat > /etc/network/if-up.d/lab-mtu && chmod 755 /etc/network/if-up.d/lab-mtu && ip link set eth0 mtu {{ lab_mtu }}"]
+        stdin: "{{ hook }}"
+        stdin_add_newline: false
+      when: adguard_mtu_hook.stdout ~ '\n' != hook
+      changed_when: true
+
 - name: Install AdGuard Home
   ansible.builtin.include_tasks: install.yml
 

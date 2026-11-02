@@ -8,29 +8,36 @@ which every node trusts from install.
 | Play | Hosts | Result |
 |---|---|---|
 | `pve_cluster` | all nodes | one cluster `homelab`: the first node creates it, every other node joins over node-to-node SSH (no password); a node with guests is refused; joined nodes get their ZFS pools registered and HA turned on |
+| `pve_sdn` | all nodes | SDN VXLAN zone `lab` over the house LAN with one vnet per lab zone, so lab guests can run on any node |
 | `tailscale_tailnet` | the Mac (API) | tailnet policy pushed from [`roles/tailscale_tailnet/templates/policy.hujson.j2`](roles/tailscale_tailnet/templates/policy.hujson.j2): tags `tag:pve`/`tag:router`, lab routes auto-approved, members reach everything |
 | `tailscale` | all nodes | node joined to your tailnet as `tag:pve` (`--accept-dns=false`), reachable even when OPNsense is down |
-| `pve_network` | `core` (hnhv01) | `vmbr1`: VLAN-aware bridge on the lab trunk NIC carrying VLANs 10/20/30 |
 | `opnsense` | `core` | VM 100 `hnfw01`: OPNsense 26.7 nano, bootstrapped unattended, kept patched, sharing the lab subnets on Tailscale (see below) |
 | `adguard` | `core` | CT 101 `hndns01` (10.10.10.53): AdGuard Home, the DNS server for INT and K8S |
 
 ## Network
 
-| Zone | VLAN | Subnet | OPNsense |
-|---|---|---|---|
-| WAN (house LAN, Spectrum) | – | 192.168.1.0/24 (DHCP) | `vtnet0` on `vmbr0` |
-| INT | 10 | 10.10.10.0/24 | `vtnet1` 10.10.10.1 |
-| DMZ | 20 | 10.10.20.0/24 | `vtnet2` 10.10.20.1 |
-| K8S | 30 | 10.10.30.0/24 | `vtnet3` 10.10.30.1 |
+| Zone | VNI | Subnet | Proxmox bridge | OPNsense |
+|---|---|---|---|---|
+| WAN (house LAN, Spectrum) | – | 192.168.1.0/24 (DHCP) | `vmbr0` | `vtnet0` |
+| INT | 10 | 10.10.10.0/24 | `vxint` | `vtnet1` 10.10.10.1 |
+| DMZ | 20 | 10.10.20.0/24 | `vxdmz` | `vtnet2` 10.10.20.1 |
+| K8S | 30 | 10.10.30.0/24 | `vxk8s` | `vtnet3` 10.10.30.1 |
 
-Edit zones in `inventory/group_vars/all/main.yml` (`lab_zones`, `lab_dns`) before the first OPNsense deploy.
+Edit zones in `inventory/group_vars/all/main.yml` (`lab_zones`, `lab_mtu`, `lab_dns`) before the
+first OPNsense deploy.
+
+The lab zones are Proxmox SDN vnets in one VXLAN zone, tunnelled between the nodes over the
+house LAN (UDP 4789), so no managed switch is needed and a guest on any node can join any zone.
+VXLAN costs 50 bytes, so lab NICs run at MTU 1450: OPNsense's lab interfaces are set to it,
+DHCP hands it out (option 26) and containers with static IPs get it from an if-up hook.
+When the managed switches arrive, the same vnets can move to an SDN VLAN zone on a trunk port
+(`hnhv01`: card port 1 `enp1s0f0`, with `enp1s0f1` spare for a future modem-side WAN) and the
+MTU back to 1500, without touching guests' bridge names.
 
 ## First run
 
 ```sh
 cd ansible
-ansible-playbook playbooks/discover-nics.yml        # find hnhv01's card ports
-echo 'pve_trunk_nic: enp1s0f0' > inventory/host_vars/hnhv01.yml   # card port 1 (use the real name)
 ansible-vault edit inventory/group_vars/all/vault.yml   # add tailscale_api_key (see Tailscale)
 ansible-playbook playbooks/site.yml                     # or --skip-tags tailscale until the key is in
 ```

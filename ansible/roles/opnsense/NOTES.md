@@ -357,3 +357,12 @@ Verified on the real `hnfw01` (Proxmox/KVM), 26.7 → 26.7.8_2.
   target, "local-port", descr, pass: pass}}`. `wanip` reads back as "WAN address";
   `pass: pass` keeps the matching WAN filter rule. Note `descr`, not `description`. Applied
   with `POST /api/firewall/filter/apply`.
+
+## Moving lab NICs to SDN vnets (`tasks/main.yml`, `interfaces.yml`)
+
+- `qm set 100 --netN virtio=<same MAC>,bridge=<vnet>,mtu=1` on the running VM hot-replugs the
+  NIC: the interfaces came back **without the UP flag** (no lab DHCP/DNS) until a reboot. The
+  role reboots the VM whenever it moves NICs; same MAC keeps `vtnetN` = zone N.
+- FreeBSD's vtnet ignores the MTU virtio advertises (`mtu=1`): the guest stayed at 1500 on a
+  1450 vnet. `POST /api/interfaces/assignment/set_item/<if>` `{"interface": {"mtu": "1450"}}`
+  + `POST .../reconfigure` applies it live; the interface stays up.

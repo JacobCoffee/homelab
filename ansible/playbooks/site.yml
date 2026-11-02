@@ -7,6 +7,12 @@
   roles:
     - pve_cluster
 
+- name: Lab networks (SDN VXLAN zone across every node)
+  hosts: pve
+  tags: [sdn]
+  roles:
+    - pve_sdn
+
 - name: Tailnet policy (tags, route approval, access) from the repo
   hosts: localhost
   connection: local
@@ -21,10 +27,9 @@
   roles:
     - tailscale
 
-- name: Core node (extra NICs, OPNsense, lab DNS)
+- name: Core node (OPNsense, lab DNS)
   hosts: core
   tags: [core]
   roles:
-    - pve_network
     - opnsense
     - adguard

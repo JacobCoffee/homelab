@@ -13,9 +13,8 @@ opnsense_memory: 4096
 opnsense_disk_size: 32G
 opnsense_workdir: /var/lib/vz/opnsense
 
-# net0 = WAN on the house LAN; net1.. = one NIC per lab zone, VLAN-tagged on the trunk.
+# net0 = WAN on the house LAN; net1.. = one NIC per lab zone, each on that zone's SDN vnet.
 opnsense_wan_bridge: vmbr0
-opnsense_lab_bridge: vmbr1
 opnsense_wan_if: vtnet0
 opnsense_zones: >-
   {%- set out = [] -%}
@@ -24,7 +23,7 @@ opnsense_zones: >-
         'name': 'lan' if loop.first else 'opt' ~ (loop.index - 1),
         'descr': z.name | upper,
         'if': 'vtnet' ~ loop.index,
-        'vlan': z.vlan,
+        'bridge': z.vnet,
         'ip': z.gateway,
         'prefix': z.cidr.split('/')[1] | int,
         'cidr': z.cidr,
