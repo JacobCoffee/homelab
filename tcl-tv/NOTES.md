@@ -5,6 +5,7 @@ Identical to upstream tested list `cleanyourtv/examples/tcl-65qm8l-google-tv`.
 Addresses live in `../fire-tv/config/site.env` (`TV_HOST`, `FIRETV_HOST`; template `site.env.example`). The Fire TV is also on adb — always pass `-s`.
 
 ## Layout
+- `Makefile` — `make` lists the actions (`make tcl-tv/<target>` from the repo root): setup/connect/shell/run/probe, bridge start/stop/status/send, check/apply/restore, `launcher-config` (push the theme), theme-reset/launcher/wallpapers/preview, status/screenshot/keycodes/soundbar, lint. Finds the TV's current adb port itself: an open connection to `TV_HOST` from site.env, else mDNS.
 - `cleanyourtv/` — upstream clone (tools, launcher). `tools/venv` created there.
 - `debloat.txt` — this TV's list (apply/restore source of truth).
 - `launcher-config/` — launcher theme overlay: functional keys (dock, hidden apps, `app_keys`) plus the "Local Dimming" look (see below). Push: `tools/theme.sh ../launcher-config`.
