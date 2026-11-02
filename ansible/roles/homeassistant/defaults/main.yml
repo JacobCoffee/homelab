@@ -8,3 +8,9 @@ ha_cores: 2
 ha_memory: 4096
 ha_disk_size: 64G
 ha_zone: "{{ lab_zones | selectattr('name', 'equalto', 'int') | first }}"
+ha_config: /mnt/data/supervisor/homeassistant/configuration.yaml   # on the HAOS host
+# Envoy Gateway in Kubernetes proxies home.z7x.org; HA sees node IPs (Cilium masquerades pod
+# traffic leaving the cluster) and must trust them to read X-Forwarded-For.
+ha_trusted_proxies:
+  - "{{ (lab_zones | selectattr('name', 'equalto', 'k8s') | first).cidr }}"
+  - 10.244.0.0/16   # pod CIDR (kubernetes/apps/kube-system/cilium/app/helm-values.yaml)

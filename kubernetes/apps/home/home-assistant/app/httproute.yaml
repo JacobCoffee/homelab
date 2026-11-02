@@ -1,0 +1,34 @@
+# Same name on both gateways: the internet reaches it through Cloudflare and the tunnel
+# (external-dns-cloudflare), the lab and tailnet go straight to the internal gateway
+# (external-dns-adguard).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: home-assistant-external
+spec:
+  parentRefs:
+    - name: external
+      namespace: network
+      sectionName: https
+  hostnames:
+    - home.z7x.org
+  rules:
+    - backendRefs:
+        - name: home-assistant
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: home-assistant-internal
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - home.z7x.org
+  rules:
+    - backendRefs:
+        - name: home-assistant
+          port: 80

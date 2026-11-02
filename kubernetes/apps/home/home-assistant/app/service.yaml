@@ -1,0 +1,27 @@
+# Home Assistant runs as a VM (hnha01, ansible/roles/homeassistant), not in the cluster: a
+# selector-less Service plus a hand-written EndpointSlice give the gateways a backend for it.
+# HA trusts the node and pod ranges as proxies (ha_trusted_proxies in that role).
+apiVersion: v1
+kind: Service
+metadata:
+  name: home-assistant
+spec:
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: home-assistant-vm
+  labels:
+    kubernetes.io/service-name: home-assistant
+addressType: IPv4
+ports:
+  - name: http
+    port: 80
+    protocol: TCP
+endpoints:
+  - addresses:
+      - 10.10.10.20   # home_assistant.ip in ansible/inventory/group_vars/all/main.yml

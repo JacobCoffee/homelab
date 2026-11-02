@@ -59,3 +59,51 @@
       ansible.builtin.file:
         path: "{{ ha_scratch }}"
         state: absent
+
+# Reverse-proxy settings as a marked block in configuration.yaml, written through the guest
+# agent. Don't add your own top-level `http:` in HA; edit ha_trusted_proxies instead.
+- name: Read configuration.yaml
+  ansible.builtin.command: qm guest exec {{ home_assistant.vmid }} --timeout 20 -- cat {{ ha_config }}
+  register: ha_cfg_read
+  changed_when: false
+  failed_when: false
+
+- name: Reverse-proxy block
+  vars:
+    ha_cfg_result: "{{ ha_cfg_read.stdout | from_json if ha_cfg_read.rc == 0 else {} }}"
+    ha_cfg_current: "{{ ha_cfg_result['out-data'] | default('') }}"
+    ha_cfg_block: |
+      # BEGIN ANSIBLE reverse proxy
+      http:
+        use_x_forwarded_for: true
+        trusted_proxies:
+      {% for p in ha_trusted_proxies %}
+          - {{ p }}
+      {% endfor %}
+      # END ANSIBLE reverse proxy
+    # Double-quoted so YAML turns \n into real newlines (a folded scalar would pass "\n" through
+    # literally); \\n stays a regex newline.
+    ha_cfg_wanted: "{{ (ha_cfg_current | regex_replace('(?s)\\n*# BEGIN ANSIBLE reverse proxy.*# END ANSIBLE reverse proxy\\n?', '')).rstrip('\n') ~ '\n\n' ~ ha_cfg_block }}"
+  block:
+    - name: Not there yet (HA is still on its first start); re-run later
+      ansible.builtin.debug:
+        msg: "{{ ha_config }} doesn't exist yet"
+      when: ha_cfg_result.exitcode | default(1) != 0
+
+    - name: Write it
+      ansible.builtin.command:
+        cmd: >-
+          qm guest exec {{ home_assistant.vmid }} --timeout 20 --pass-stdin 1 --
+          sh -c 'cat > {{ ha_config }}'
+        stdin: "{{ ha_cfg_wanted }}"
+        stdin_add_newline: false
+      when:
+        - ha_cfg_result.exitcode | default(1) == 0
+        - ha_cfg_current != ha_cfg_wanted
+      register: ha_cfg_written
+      changed_when: true
+
+    - name: Restart Home Assistant Core to load it
+      ansible.builtin.command: qm guest exec {{ home_assistant.vmid }} --timeout 60 -- docker restart homeassistant
+      when: ha_cfg_written is changed
+      changed_when: true
