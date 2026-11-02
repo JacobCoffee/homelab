@@ -86,7 +86,8 @@ def call(method: str, path: str, body=None, ok=(200, 204)):
         JELLYFIN_URL + path,
         method=method,
         data=data,
-        headers={"X-Emby-Token": API_KEY, "Content-Type": "application/json"},
+        # Jellyfin 12 dropped the legacy X-Emby-Token header; only this form authenticates.
+        headers={"Authorization": f'MediaBrowser Token="{API_KEY}"', "Content-Type": "application/json"},
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
