@@ -21,6 +21,9 @@ spec:
       - gateway-httproute
     extraArgs:
       gateway-name: internal
+      annotation-filter: dns.z7x.org/publish notin (false)
+    domainFilters:
+      - z7x.org
     policy: sync
     registry: txt
     txtOwnerId: homelab

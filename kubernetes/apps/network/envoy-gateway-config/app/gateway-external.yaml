@@ -8,8 +8,9 @@ metadata:
   namespace: network
   annotations:
     # Read by external-dns' gateway-httproute source: publish a CNAME to the tunnel instead of an A
-    # record to this Gateway's (LAN-only) LoadBalancer IP.
-    external-dns.alpha.kubernetes.io/target: "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com"
+    # record to this Gateway's (LAN-only) LoadBalancer IP. external-dns >= 0.23 only reads the
+    # external-dns.kubernetes.io/ prefix (the old .alpha. one is ignored).
+    external-dns.kubernetes.io/target: "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com"
 spec:
   gatewayClassName: envoy
   infrastructure:

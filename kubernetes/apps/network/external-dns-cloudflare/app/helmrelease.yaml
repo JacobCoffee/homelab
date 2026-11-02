@@ -28,6 +28,7 @@ spec:
     extraArgs:
       gateway-name: external
       cloudflare-proxied: true
+      annotation-filter: dns.z7x.org/publish notin (false)
     policy: sync
     registry: txt
     txtOwnerId: homelab
