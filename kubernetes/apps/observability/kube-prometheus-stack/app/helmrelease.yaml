@@ -208,6 +208,20 @@ spec:
           folderAnnotation: grafana_folder
           provider:
             foldersFromFilesStructure: true
+      # Loads the grafana.com downloads under dashboards.default below; without a provider for
+      # that group the chart downloads them and nothing ever reads the directory.
+      dashboardProviders:
+        dashboardproviders.yaml:
+          apiVersion: 1
+          providers:
+            - name: default
+              orgId: 1
+              folder: Imported
+              type: file
+              disableDeletion: true
+              editable: false
+              options:
+                path: /var/lib/grafana/dashboards/default
         datasources:
           # Mimir (below) is the new default; this chart's own auto-provisioned "Prometheus"
           # datasource (still pointing at this release's own Prometheus) stays, just not default.
@@ -230,6 +244,32 @@ spec:
           access: proxy
           url: http://loki.observability.svc.cluster.local:3100
           isDefault: false
+        # Cabotage runs its own standalone Mimir/Loki (multi-tenant, X-Scope-OrgID required);
+        # read-only viewing here, not wired into alerting. tlsSkipVerify is a deliberate gap:
+        # Cabotage's internal mTLS CA isn't plumbed into Grafana's trust store.
+        - name: Cabotage Mimir
+          type: prometheus
+          uid: cabotage-mimir
+          access: proxy
+          url: https://resident-mimir-read.cabotage.svc.cluster.local:8080/prometheus
+          isDefault: false
+          jsonData:
+            httpMethod: POST
+            httpHeaderName1: X-Scope-OrgID
+            tlsSkipVerify: true
+          secureJsonData:
+            httpHeaderValue1: cabotage-infra|anonymous
+        - name: Cabotage Loki
+          type: loki
+          uid: cabotage-loki
+          access: proxy
+          url: https://resident-loki-read.cabotage.svc.cluster.local:3100
+          isDefault: false
+          jsonData:
+            httpHeaderName1: X-Scope-OrgID
+            tlsSkipVerify: true
+          secureJsonData:
+            httpHeaderValue1: cabotage-infra|anonymous
       # Downloaded straight from grafana.com by the chart's dashboard sidecar init container.
       dashboards:
         default:
