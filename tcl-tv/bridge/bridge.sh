@@ -7,10 +7,10 @@
 # Usage: bridge/bridge.sh start|stop|status
 set -euo pipefail
 cd "$(dirname "$0")"
-# Addresses come from ../../fire-tv/config/site.env (FIRETV_HOST, TV_HOST); FIRE_IP/TCL_IP override.
-source ../../fire-tv/tools/site.sh
-FIRE_IP="${FIRE_IP:-${FIRETV_HOST:?set FIRETV_HOST in fire-tv/config/site.env}}"
-TCL_IP="${TCL_IP:-${TV_HOST:?set TV_HOST in fire-tv/config/site.env}}"
+# Addresses come from ../../fire-tv/hearth/config/site.env (FIRETV_HOST, TV_HOST); FIRE_IP/TCL_IP override.
+source ../../fire-tv/hearth/tools/site.sh
+FIRE_IP="${FIRE_IP:-${FIRETV_HOST:?set FIRETV_HOST in fire-tv/hearth/config/site.env}}"
+TCL_IP="${TCL_IP:-${TV_HOST:?set TV_HOST in fire-tv/hearth/config/site.env}}"
 PORT=47800
 LISTEN_PORT=47801
 

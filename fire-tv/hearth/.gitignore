@@ -5,3 +5,6 @@ app/build/
 *.iml
 .idea/
 screenshots/
+dist/
+config/hearth.local.json
+config/site.env

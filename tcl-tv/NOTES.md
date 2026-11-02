@@ -2,7 +2,7 @@
 
 TV: TCL QM8L "Smart TV Pro", board G17, product G17_4K_US, Android 14 (SDK 34), firmware UTT2.250416.001 AU27.
 Identical to upstream tested list `cleanyourtv/examples/tcl-65qm8l-google-tv`.
-Addresses live in `../fire-tv/config/site.env` (`TV_HOST`, `FIRETV_HOST`; template `site.env.example`). The Fire TV is also on adb — always pass `-s`.
+Addresses live in `../fire-tv/hearth/config/site.env` (`TV_HOST`, `FIRETV_HOST`; template `site.env.example`). The Fire TV is also on adb — always pass `-s`.
 
 ## Layout
 - `Makefile` — `make` lists the actions (`make tcl-tv/<target>` from the repo root): setup/connect/shell/run/probe, bridge start/stop/status/send, check/apply/restore, `launcher-config` (push the theme), theme-reset/launcher/wallpapers/preview, status/screenshot/keycodes/soundbar, lint. Finds the TV's current adb port itself: an open connection to `TV_HOST` from site.env, else mDNS.

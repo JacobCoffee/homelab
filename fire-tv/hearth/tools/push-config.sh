@@ -6,7 +6,7 @@
 set -euo pipefail
 
 CONFIG_FILE="${1:?usage: push-config.sh <config.json> [adb-serial]}"
-source "$(dirname "${BASH_SOURCE[0]}")/../../tools/site.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/site.sh"
 SERIAL="${2:-${FIRETV_HOST:?set FIRETV_HOST in config/site.env}:${FIRETV_ADB_PORT:-5555}}"
 LOCK=/tmp/firetv-device.lock
 

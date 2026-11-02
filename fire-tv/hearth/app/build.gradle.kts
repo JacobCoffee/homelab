@@ -119,10 +119,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-// Copies every theme folder under $FT/themes into assets/themes/<id>/, so the app can load
+// Copies every theme folder under themes/ into assets/themes/<id>/, so the app can load
 // them bundled. The build fails clearly if themes/default is missing or incomplete, since
 // the theme contract requires a default theme to always exist.
-val hearthThemesSrc = file("${project.rootDir}/../themes")
+val hearthThemesSrc = file("${project.rootDir}/themes")
 val hearthThemesAssetsDir = layout.buildDirectory.dir("generated/hearthThemes/assets")
 
 val copyHearthThemes = tasks.register<Copy>("copyHearthThemes") {

@@ -1,0 +1,32 @@
+# Publishes fire-tv/hearth to github.com/JacobCoffee/hearth. The split is deterministic, so
+# each push is a fast-forward; it is not forced, so commits made directly on hearth make
+# this fail instead of being overwritten.
+name: mirror-hearth
+
+on:
+  push:
+    branches: [main]
+    paths: ['fire-tv/hearth/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-hearth
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.HEARTH_DEPLOY_KEY }}
+      - name: Split and push
+        run: |
+          sha=$(git subtree split --prefix=fire-tv/hearth)
+          git push git@github.com:JacobCoffee/hearth.git "$sha:refs/heads/main"

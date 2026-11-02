@@ -27,25 +27,25 @@ and network access for Gradle/Maven dependencies the first time.
 ./gradlew testReleaseUnitTest assembleRelease
 ```
 
-The build copies every theme folder from `../themes/<id>/` into the APK's
+The build copies every theme folder from `themes/<id>/` into the APK's
 `assets/themes/<id>/` and fails with a clear error if `themes/default/theme.json` is
 missing, since the theme contract requires a default theme to always exist.
 
 ## Installing on the device
 
 Your devices, name, weather location and service addresses live in one file,
-`../config/site.env` (gitignored). Every script reads it.
+`config/site.env` (gitignored). Every script reads it.
 
 ```sh
-cp ../config/site.env.example ../config/site.env   # then edit it
-tools/make-keystore.sh     # creates ~/.hearth-keys/hearth-release.keystore if missing
-tools/install.sh           # builds, installs, grants READ_LOGS, sets Hearth as the Home redirect
-../tools/make-config.py    # renders ../config/hearth.local.json from site.env
-tools/push-config.sh ../config/hearth.local.json
+make setup         # copies config/site.env.example to config/site.env; then edit it
+make keystore      # creates ~/.hearth-keys/hearth-release.keystore if missing
+make install       # builds, installs, grants READ_LOGS, sets Hearth as the Home redirect
+make push-config   # renders config/hearth.local.json from site.env and pushes it
 ```
 
-From `fire-tv/`, the same steps are `make setup`, `make install` and `make push-config`
-(`make` lists the rest).
+`make` lists the rest: logs, screenshots, theme art (`make themes`), the theme catalog
+(`make catalog`, into `dist/catalog`) and a local test stack of AdGuard, Uptime Kuma and the
+catalog (`make stack-up`).
 
 `install.sh` points `enabled_accessibility_services` at Hearth's `HomeRedirectService` only.
 Unset widgets (weather, guild events, Uptime Kuma, AdGuard, TV controls) stay hidden.
@@ -53,7 +53,8 @@ Unset widgets (weather, guild events, Uptime Kuma, AdGuard, TV controls) stay hi
 ## Remote bridge
 
 `homekey/RemoteBridge.kt` listens on TCP 47800 (LAN clients only) for one word per connection
-from the TV (`../../tcl-tv/bridge/tcl-keys.sh`): jellyfin, netflix, prime, youtube, hbo,
+from the TV ([`tcl-tv/bridge/tcl-keys.sh`](https://github.com/JacobCoffee/homelab/tree/main/tcl-tv/bridge)
+in the homelab repo): jellyfin, netflix, prime, youtube, hbo,
 disney, hearth, settings. It wakes the stick and opens that app. It lives in the
 accessibility service, so it starts at boot and its activity starts are not blocked.
 `widgets/TvLink.kt` talks the other way, to the TV's listener on TCP 47801 (config `tv`).
@@ -81,3 +82,8 @@ accessibility service, so it starts at boot and its activity starts are not bloc
 resolution (wrap-around, priority, ties, no-match), theme.json validation, and the catalog
 installer's zip-slip and sha256-mismatch rejection. Everything else (UI, network widgets,
 the home-redirect service) is exercised on-device.
+
+## Source
+
+Developed in [JacobCoffee/homelab](https://github.com/JacobCoffee/homelab) under
+`fire-tv/hearth/` and mirrored here on every push, so send changes there.

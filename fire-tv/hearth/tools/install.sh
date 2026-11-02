@@ -7,7 +7,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$HERE/../tools/site.sh"
+source "$HERE/tools/site.sh"
 SERIAL="${1:-${FIRETV_HOST:?set FIRETV_HOST in config/site.env}:${FIRETV_ADB_PORT:-5555}}"
 LOCK=/tmp/firetv-device.lock
 APP_ID="dev.jacobcoffee.hearth"

@@ -6,7 +6,7 @@ site.env holds this house: name, place, devices and service addresses. Environme
 override site.env, which is how teststack/up.sh hands over its generated endpoints and password.
 
     tools/make-config.py            # writes config/hearth.local.json
-    hearth/tools/push-config.sh config/hearth.local.json
+    tools/push-config.sh config/hearth.local.json
 """
 
 from __future__ import annotations

@@ -33,7 +33,7 @@ lint: ## Shellcheck every project
 	@for p in fire-tv tcl-tv proxmox-pxe; do $(MAKE) --no-print-directory -C $$p lint || exit 1; done
 
 # <project>/<target> runs that target in the project's directory. FORCE keeps targets that
-# share a name with a real path (fire-tv/themes) from being skipped as up to date.
+# share a name with a real path (tcl-tv/launcher-config) from being skipped as up to date.
 define delegate
 $(1)/%: FORCE
 	@$$(MAKE) --no-print-directory -C $(1) $$*

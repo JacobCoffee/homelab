@@ -1,8 +1,8 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-# TV_HOST and FIRETV_HOST come from ../fire-tv/config/site.env.
-SITE := source ../fire-tv/tools/site.sh && site_require
+# TV_HOST and FIRETV_HOST come from ../fire-tv/hearth/config/site.env.
+SITE := source ../fire-tv/hearth/tools/site.sh && site_require
 # Wireless debugging moves to a new port after every reboot or Wi-Fi drop. Use the adb connection already
 # open to TV_HOST, else find the port over mDNS (which can list nothing while a connection is up).
 # TV_HOST may also be given as ip:port; only the ip is matched.

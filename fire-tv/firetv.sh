@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Fire TV debloat state, kept in this directory. See DECISIONS.md.
 #   ./firetv.sh connect | status | apply | revert | tweaks | untweak | snapshot
-# The stick is FIRETV_HOST:FIRETV_ADB_PORT from config/site.env; FIRETV=<ip:port> overrides it.
+# The stick is FIRETV_HOST:FIRETV_ADB_PORT from hearth/config/site.env; FIRETV=<ip:port> overrides it.
 set -euo pipefail
 cd "$(dirname "$0")"
 CMD="${1:-status}"
-source tools/site.sh
+source hearth/tools/site.sh
 
-TARGET="${FIRETV:-${FIRETV_HOST:?set FIRETV_HOST in config/site.env}:${FIRETV_ADB_PORT:-5555}}"
+TARGET="${FIRETV:-${FIRETV_HOST:?set FIRETV_HOST in hearth/config/site.env}:${FIRETV_ADB_PORT:-5555}}"
 LIST=packages.txt
 # IActivityManager transaction codes, read from this device's framework.jar (Fire OS 8.0
 # RS8160.3380N; unchanged in 8.1.8.5 RS8185.3898N). Re-check after a Fire OS update.
