@@ -1,0 +1,7 @@
+.terraform/
+terraform.tfstate*
+.secrets/
+ca.*.crt
+ca.*.srl
+local_override.tf
+*.pem

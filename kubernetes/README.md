@@ -304,3 +304,17 @@ nodes one at a time, then Kubernetes:
 talosctl -n 10.10.30.11 upgrade --image factory.talos.dev/installer/<schematic>:<version>   # then .12, .13
 talosctl -n 10.10.30.11 upgrade-k8s --to <version>
 ```
+
+## Cabotage PaaS
+
+`terraform/cabotage/` (repo root, outside this `kubernetes/` tree) runs the
+[Cabotage](https://github.com/cabotage/cabotage-app) PaaS via the upstream `cabotage/terraform`
+module — Terraform-managed, not Flux. See
+[`../terraform/cabotage/README.md`](../terraform/cabotage/README.md) for how to run it, where
+secrets live, GitHub App setup, and how to deploy an app. This `kubernetes/` tree only owns the
+pieces that integrate it with the rest of the cluster: the `letsencrypt` ClusterIssuer
+(`apps/cert-manager/cert-manager-issuers/`), the public GitHub-webhook-only HTTPRoute
+(`apps/cabotage/cabotage-ingress/`), and the read-only Cabotage Loki/Mimir Grafana datasources
+(`apps/observability/kube-prometheus-stack/`). DNS for `*.apps.z7x.org` is a static AdGuard
+rewrite (`../ansible/roles/adguard/`), not external-dns.
+
