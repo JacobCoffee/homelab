@@ -63,6 +63,13 @@ spec:
                 memory: 384Mi
         pod:
           automountServiceAccountToken: true
+          # Every URL in the config is fully qualified. With the default ndots:5, each of the ~30
+          # concurrent checks first walks the search list (one entry goes out to AdGuard), and
+          # bursts of those time out as EAI_AGAIN; ndots:1 looks the name up as written first.
+          dnsConfig:
+            options:
+              - name: ndots
+                value: "1"
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000

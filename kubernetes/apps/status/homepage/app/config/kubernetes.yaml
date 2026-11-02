@@ -1,3 +1,7 @@
 ---
 # In-cluster: the pod's service account (read-only ClusterRole in ../rbac.yaml).
 mode: cluster
+# No auto-discovery: services.yaml is the one list (Proxmox, OPNsense and AdGuard aren't routes).
+ingress: false
+traefik: false
+gateway: false
