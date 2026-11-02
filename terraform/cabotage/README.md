@@ -141,8 +141,22 @@ account.
 |---|---|---|
 | Cost estimates | on, built-in on-demand rates (`CABOTAGE_COST_RATES` overrides); AWS price list / Cost Explorer off | `cabotage_app_extra_config` in `main.tf` |
 | Tailscale operator | on, device `cabotage-operator` (`tag:cabotage-operator`) on the homelab tailnet; no Funnel ingress | `enable_tailscale` in `main.tf` |
-| Discord / Slack notifications, Sentry, Docker Hub pulls, mail | off | need an app/token each |
+| Discord notifications | on once the vault has the Discord app (below) | `cabotage_app_extra_config` in `main.tf` |
+| Slack notifications, Sentry, Docker Hub pulls, mail | off | need an app/token each |
 | Karpenter, KMS unseal, S3 instead of RustFS, IRSA | off | AWS only |
+
+Discord: create an application at <https://discord.com/developers/applications>. Under **OAuth2**,
+add the redirect `https://cabotage.apps.z7x.org/integrations/discord/callback` and note the client
+ID and secret. Under **Bot**, turn on **Requires OAuth2 Code Grant** (Cabotage's callback exchanges
+the code it returns) and reset the token. Store the three values, then re-apply; orgs connect a
+server from their settings page (the bot only gets Send Messages):
+
+```sh
+scripts/vault-set.py vault_cabotage_discord_client_id vault_cabotage_discord_client_secret vault_cabotage_discord_bot_token
+cd terraform/cabotage && ./tf.sh apply
+```
+
+The module has no Secret for these, so they live in the `cabotage-config` ConfigMap.
 
 Tailscale details, all homelab-side (no module patch):
 - The operator's OAuth client (scopes `devices:core`, `auth_keys`, `services`; tag

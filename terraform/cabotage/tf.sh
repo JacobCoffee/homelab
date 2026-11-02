@@ -58,6 +58,10 @@ export TF_VAR_github_app_id="$GITHUB_APP_ID"
 export TF_VAR_tailscale_oauth_client_id TF_VAR_tailscale_oauth_client_secret
 TF_VAR_tailscale_oauth_client_id="$(vault_get vault_cabotage_tailscale_oauth_client_id)"
 TF_VAR_tailscale_oauth_client_secret="$(vault_get vault_cabotage_tailscale_oauth_client_secret)"
+export TF_VAR_discord_client_id TF_VAR_discord_client_secret TF_VAR_discord_bot_token
+TF_VAR_discord_client_id="$(vault_get vault_cabotage_discord_client_id)"
+TF_VAR_discord_client_secret="$(vault_get vault_cabotage_discord_client_secret)"
+TF_VAR_discord_bot_token="$(vault_get vault_cabotage_discord_bot_token)"
 export KUBECONFIG="$HOMELAB_ROOT/kubernetes/kubeconfig"
 
 # The upstream module has no toggle to label the namespaces it creates (cabotage,

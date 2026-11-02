@@ -99,9 +99,16 @@ module "cabotage" {
 
   # Hourly cost estimates in the UI, priced at cabotage-app's built-in on-demand rates (override
   # with CABOTAGE_COST_RATES). AWS price-list / Cost Explorer refresh stays off: no AWS here.
-  cabotage_app_extra_config = {
-    CABOTAGE_SHOW_COST_ESTIMATES = "True"
-  }
+  # Discord notifications switch on once the vault holds the Discord app (README "Discord"); the
+  # module has no Secret for these, so they ride in the cabotage-config ConfigMap.
+  cabotage_app_extra_config = merge(
+    { CABOTAGE_SHOW_COST_ESTIMATES = "True" },
+    var.discord_bot_token == "" ? {} : {
+      CABOTAGE_DISCORD_CLIENT_ID     = var.discord_client_id
+      CABOTAGE_DISCORD_CLIENT_SECRET = var.discord_client_secret
+      CABOTAGE_DISCORD_BOT_TOKEN     = var.discord_bot_token
+    },
+  )
 
   # Tenant apps can be exposed on the homelab tailnet. The operator logs in with a static OAuth
   # client (tag:cabotage-operator, created via the Tailscale API; tags defined in

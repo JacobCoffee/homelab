@@ -19,3 +19,23 @@ variable "tailscale_oauth_client_secret" {
   default     = ""
   sensitive   = true
 }
+
+variable "discord_client_id" {
+  description = "Discord app client ID for Cabotage notifications; vault_cabotage_discord_client_id via tf.sh."
+  type        = string
+  default     = ""
+}
+
+variable "discord_client_secret" {
+  description = "Discord app client secret; vault_cabotage_discord_client_secret via tf.sh."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "discord_bot_token" {
+  description = "Discord bot token; vault_cabotage_discord_bot_token via tf.sh. Empty leaves Discord off."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
