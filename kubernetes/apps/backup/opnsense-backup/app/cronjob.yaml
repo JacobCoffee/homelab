@@ -1,0 +1,51 @@
+# Nightly: fetch config.xml from OPNsense's core backup API (reachable from the K8S zone through
+# OPNsense's own routing; 10.10.10.1 is its stable INT address, see ansible/README.md#opnsense),
+# then restic-backup it to R2 (repo s3://homelab-backups/opnsense, see secret.sops.yaml).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: opnsense-backup
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          initContainers:
+            - name: fetch
+              image: curlimages/curl:8.11.1
+              command: ["/bin/sh", "-c"]
+              args:
+                - >-
+                  curl -fsSk -u "$OPNSENSE_API_KEY:$OPNSENSE_API_SECRET"
+                  "https://$OPNSENSE_HOST/api/core/backup/download/this" -o /backup/config.xml
+              envFrom:
+                - secretRef:
+                    name: opnsense-backup-restic
+              volumeMounts:
+                - mountPath: /backup
+                  name: backup
+          containers:
+            - name: restic
+              image: restic/restic:0.19.1
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  restic snapshots >/dev/null 2>&1 || restic init
+                  restic backup /backup --tag opnsense --host opnsense-backup
+                  restic forget --prune --keep-daily 7 --keep-weekly 4
+              envFrom:
+                - secretRef:
+                    name: opnsense-backup-restic
+              volumeMounts:
+                - mountPath: /backup
+                  name: backup
+          volumes:
+            - name: backup
+              emptyDir: {}

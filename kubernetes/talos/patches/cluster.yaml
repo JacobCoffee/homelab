@@ -31,3 +31,13 @@ name: spegel
 content: |
   [plugins."io.containerd.cri.v1.images"]
     discard_unpacked_layers = false
+---
+# Talos API access from Kubernetes (v1.14+ document): lets the etcd-backup CronJob
+# (kubernetes/apps/backup/etcd-backup, namespace `backup`) take authenticated etcd snapshots via
+# talosctl, scoped to the minimum role needed. Owner: Backups.
+apiVersion: v1alpha1
+kind: KubeTalosAPIAccessConfig
+allowedRoles:
+  - os:etcd:backup
+allowedKubernetesNamespaces:
+  - backup

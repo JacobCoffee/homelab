@@ -1,0 +1,18 @@
+# Local (no-restic, no extra daemons) Proxmox vzdump backups: a ZFS dataset on the
+# cluster-wide `vmdata` storage, registered as a `dir` storage, plus one cluster backup
+# job. Talos VMs 201-203 are excluded (rebuilt from git, see ../../../kubernetes).
+pve_backup_dataset: vmdata/backups
+pve_backup_storage_id: backup
+pve_backup_job_id: nightly
+pve_backup_schedule: "02:30"          # systemd calendar shorthand: every day at 02:30
+pve_backup_keep_daily: 7
+pve_backup_keep_weekly: 4
+
+# name -> vmid, for the comment only; the job itself just takes the vmid list.
+pve_backup_guests:
+  - { name: hnfw01, vmid: 100 }   # OPNsense
+  - { name: hndns01, vmid: 101 } # AdGuard
+  - { name: hnpxe01, vmid: 102 } # netboot
+  - { name: hnha01, vmid: 301 }  # Home Assistant
+  - { name: hnnfs01, vmid: 401 } # media NFS (root disk only; its data disk is backup=0)
+pve_backup_vmids: "{{ pve_backup_guests | map(attribute='vmid') | list }}"

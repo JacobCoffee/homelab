@@ -1,0 +1,23 @@
+# Nightly restic backup of ${APP}'s PVC (expected to be named ${APP}; apps using this component
+# must name their config PVC that way). copyMethod Direct: the Proxmox CSI driver (owner Storage)
+# doesn't support clone/snapshot, so the mover reads the PVC directly -- it's scheduled on the
+# same node as the PVC (volumes are node-pinned) and RWO allows same-node co-mounting.
+# ${VOLSYNC_CAPACITY} sizes the restic metadata cache volume (always created, regardless of
+# copyMethod); it must hold the non-pruned repository metadata, not the app's data.
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationSource
+metadata:
+  name: ${APP}
+spec:
+  sourcePVC: ${APP}
+  trigger:
+    schedule: "0 4 * * *"
+  restic:
+    repository: ${APP}-volsync-restic
+    copyMethod: Direct
+    cacheCapacity: ${VOLSYNC_CAPACITY}
+    cacheStorageClassName: ${VOLSYNC_STORAGECLASS:=proxmox-vmdata}
+    pruneIntervalDays: 7
+    retain:
+      daily: 7
+      weekly: 4

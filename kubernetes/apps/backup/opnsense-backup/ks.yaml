@@ -1,0 +1,28 @@
+# Daily OPNsense config.xml fetch (core backup API, same key/secret as ansible/roles/opnsense)
+# uploaded with restic to R2.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: opnsense-backup
+  namespace: flux-system
+spec:
+  targetNamespace: backup
+  path: ./kubernetes/apps/backup/opnsense-backup/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+      - kind: Secret
+        name: cluster-secrets

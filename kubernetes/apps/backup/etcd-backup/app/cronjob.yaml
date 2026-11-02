@@ -1,0 +1,60 @@
+# Nightly: snapshot etcd through the Talos API (talosctl, authenticated via the mounted Talos
+# ServiceAccount token), then restic-backup the snapshot file to R2 (repo s3://homelab-backups/etcd,
+# see secret.sops.yaml). talosctl image pinned to the cluster's Talos version.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etcd-backup
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          initContainers:
+            - name: snapshot
+              image: ghcr.io/siderolabs/talosctl:v1.14.5
+              command:
+                - talosctl
+                - etcd
+                - snapshot
+                - /backup/db.snapshot
+                - -n
+                - $(NODE_IP)
+              env:
+                - name: NODE_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.hostIP
+              volumeMounts:
+                - mountPath: /var/run/secrets/talos.dev
+                  name: talos-secrets
+                - mountPath: /backup
+                  name: backup
+          containers:
+            - name: restic
+              image: restic/restic:0.19.1
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  restic snapshots >/dev/null 2>&1 || restic init
+                  restic backup /backup --tag etcd --host etcd-backup
+                  restic forget --prune --keep-daily 7 --keep-weekly 4
+              envFrom:
+                - secretRef:
+                    name: etcd-backup-restic
+              volumeMounts:
+                - mountPath: /backup
+                  name: backup
+          volumes:
+            - name: backup
+              emptyDir: {}
+            - name: talos-secrets
+              secret:
+                secretName: etcd-backup-talos

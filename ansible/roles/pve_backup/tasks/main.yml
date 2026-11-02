@@ -1,0 +1,83 @@
+# Every node gets its own vmdata/backups dataset (vmdata is a per-node ZFS mirror, not
+# shared storage, so the `dir` storage below is registered with shared=0: each node
+# writes its own guests' backups to its own disk). The cluster backup job itself is
+# cluster-wide config (/etc/pve/vzdump.cron via pvesh), so it only needs creating once.
+- name: Backups | check for the vmdata/backups dataset
+  ansible.builtin.command: zfs list -H -o name {{ pve_backup_dataset }}
+  register: pve_backup_zfs_check
+  changed_when: false
+  failed_when: false
+
+- name: Backups | create the vmdata/backups dataset
+  ansible.builtin.command: zfs create {{ pve_backup_dataset }}
+  when: pve_backup_zfs_check.rc != 0
+  changed_when: true
+
+- name: Backups | current storage config
+  ansible.builtin.command: pvesh get /storage/{{ pve_backup_storage_id }} --output-format json
+  register: pve_backup_storage_get
+  changed_when: false
+  failed_when: false
+  run_once: true
+
+- name: Backups | register the backup dir storage
+  ansible.builtin.command: >-
+    pvesh create /storage --storage {{ pve_backup_storage_id }} --type dir
+    --path /{{ pve_backup_dataset }} --content backup --shared 0
+    --prune-backups keep-daily={{ pve_backup_keep_daily }},keep-weekly={{ pve_backup_keep_weekly }}
+  when: pve_backup_storage_get.rc != 0
+  changed_when: true
+  run_once: true
+
+- name: Backups | existing nightly job
+  ansible.builtin.command: pvesh get /cluster/backup/{{ pve_backup_job_id }} --output-format json
+  register: pve_backup_job_get
+  changed_when: false
+  failed_when: false
+  run_once: true
+
+- name: Backups | desired job state
+  ansible.builtin.set_fact:
+    pve_backup_job_wanted:
+      schedule: "{{ pve_backup_schedule }}"
+      storage: "{{ pve_backup_storage_id }}"
+      mode: snapshot
+      compress: zstd
+      "prune-backups": "keep-daily={{ pve_backup_keep_daily }},keep-weekly={{ pve_backup_keep_weekly }}"
+      "prune-backups-parsed": { "keep-daily": "{{ pve_backup_keep_daily | string }}", "keep-weekly": "{{ pve_backup_keep_weekly | string }}" }
+      vmid: "{{ pve_backup_vmids | join(',') }}"
+      enabled: 1
+    pve_backup_job_current: "{{ (pve_backup_job_get.stdout | from_json) if pve_backup_job_get.rc == 0 else {} }}"
+  run_once: true
+
+- name: Backups | create the nightly cluster backup job
+  ansible.builtin.command: >-
+    pvesh create /cluster/backup --id {{ pve_backup_job_id }}
+    --schedule "{{ pve_backup_job_wanted.schedule }}" --storage {{ pve_backup_job_wanted.storage }}
+    --mode {{ pve_backup_job_wanted.mode }} --compress {{ pve_backup_job_wanted.compress }}
+    --prune-backups {{ pve_backup_job_wanted['prune-backups'] }} --vmid {{ pve_backup_job_wanted.vmid }}
+    --enabled {{ pve_backup_job_wanted.enabled }} --notification-mode notification-system
+    --comment "ansible-managed nightly vzdump ({{ pve_backup_guests | map(attribute='name') | join(', ') }})"
+  when: pve_backup_job_get.rc != 0
+  changed_when: true
+  run_once: true
+
+- name: Backups | update the nightly cluster backup job
+  ansible.builtin.command: >-
+    pvesh set /cluster/backup/{{ pve_backup_job_id }}
+    --schedule "{{ pve_backup_job_wanted.schedule }}" --storage {{ pve_backup_job_wanted.storage }}
+    --mode {{ pve_backup_job_wanted.mode }} --compress {{ pve_backup_job_wanted.compress }}
+    --prune-backups {{ pve_backup_job_wanted['prune-backups'] }} --vmid {{ pve_backup_job_wanted.vmid }}
+    --enabled {{ pve_backup_job_wanted.enabled }}
+  when: >-
+    pve_backup_job_get.rc == 0 and (
+      pve_backup_job_current.schedule != pve_backup_job_wanted.schedule or
+      pve_backup_job_current.storage != pve_backup_job_wanted.storage or
+      pve_backup_job_current.mode != pve_backup_job_wanted.mode or
+      pve_backup_job_current.compress != pve_backup_job_wanted.compress or
+      pve_backup_job_current['prune-backups'] != pve_backup_job_wanted['prune-backups-parsed'] or
+      pve_backup_job_current.vmid != pve_backup_job_wanted.vmid or
+      pve_backup_job_current.enabled | int != pve_backup_job_wanted.enabled
+    )
+  changed_when: true
+  run_once: true

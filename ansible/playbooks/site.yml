@@ -40,6 +40,39 @@
     - opnsense
     - adguard
 
+- name: "Proxmox backups (local vzdump: ZFS dataset + nightly cluster job)"
+  hosts: pve
+  tags: [backup]
+  roles:
+    - pve_backup
+
+- name: "Proxmox CSI plugin (user, role, token -> SOPS secret in kubernetes/apps/storage)"
+  hosts: pve
+  tags: [csi]
+  roles:
+    - pve_csi
+
+- name: "Prometheus PVE exporter token (user, role, token -> SOPS secrets in kubernetes/apps/observability)"
+  hosts: pve
+  tags: [monitoring]
+  roles:
+    - monitoring_pve
+
+- name: "Proxmox notifications (Discord webhook target + matcher)"
+  hosts: pve
+  tags: [notify]
+  roles:
+    - pve_notify
+
+- name: "Media NFS VM (temporary, on the K8S zone; see kubernetes README)"
+  hosts: pve
+  tags: [media-nfs]
+  tasks:
+    - name: Media NFS VM
+      ansible.builtin.include_role:
+        name: media_nfs
+      when: inventory_hostname == media_nfs.host
+
 - name: Home Assistant OS (on the node with the radio stick)
   hosts: pve
   tags: [homeassistant]

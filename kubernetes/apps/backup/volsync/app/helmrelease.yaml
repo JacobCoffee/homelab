@@ -1,0 +1,19 @@
+# 0.17.0 is the latest chart/app version as of 2026-11-01 (restic bundled at v0.19.1, matching
+# the restic pin in ../../../../../mise.toml used for local repo verification/restores).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: volsync
+  namespace: backup
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: volsync
+      version: "0.17.0"
+      sourceRef:
+        kind: HelmRepository
+        name: volsync
+        namespace: backup
+  values:
+    manageCRDs: true
