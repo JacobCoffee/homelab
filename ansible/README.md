@@ -19,6 +19,7 @@ which every node trusts from install.
 | `media_nfs` | node in `media_nfs.host` (`hnhv01`) | VM 401 `hnnfs01` (10.10.30.20): Debian 13 + cloud-init, nfs-kernel-server exporting `/srv/media` to the K8S zone (temporary, until a NAS takes over) |
 | `talos` | nodes in `k8s_nodes`, then the Mac | VMs 201–204 `hnk8s01`–`04` (10.10.30.11–14, VIP .10; `hnk8s04` a worker): Talos Kubernetes, Cilium, then Flux takes over from [`../kubernetes`](../kubernetes) |
 | `pve_backup` | all nodes | ZFS dataset `vmdata/backups` registered as `dir` storage `backup`, plus one cluster-wide nightly vzdump job (snapshot mode, zstd, keep-daily 7/keep-weekly 4) for VMs/CTs 100/101/102/110/111/301/401 -- see "Backups" below |
+| `pve_theme` | all nodes | [ProxMorph](https://github.com/IT-BAER/proxmorph) themes (pinned release, sha256-checked) in the Color Theme selector, with "UniFi (Auto)" (UniFi Light/UniFi following the browser's light/dark setting) as the default for browsers that haven't picked one; its APT hook re-patches after Proxmox updates. Revert with `bash /root/proxmorph-<ver>/install.sh uninstall` |
 | `netboot` | `hnhv01` | CT 102 `hnpxe01` (house LAN): the [`../proxmox-pxe`](../proxmox-pxe) installer, always on, so new PCs install without the Mac |
 
 ## Network

@@ -1,0 +1,13 @@
+# ProxMorph (github.com/IT-BAER/proxmorph): extra themes in the native Color Theme selector.
+# Pinned with its sha256 from the release's SHA256SUMS; bump both together (not tracked by
+# Renovate for that reason, like adguard_version).
+proxmorph_version: 2.9.0
+proxmorph_sha256: b89273a9459d0f278278a57277e2bf50f9de39627089414e07e69d15850ad324
+proxmorph_url: "https://github.com/IT-BAER/proxmorph/releases/download/v{{ proxmorph_version }}/proxmorph-{{ proxmorph_version }}.tar.gz"
+proxmorph_src: "/root/proxmorph-{{ proxmorph_version }}"
+
+# "UniFi (Auto)": UniFi Light or UniFi (dark) following the browser's light/dark setting. This is
+# only the default for browsers that haven't picked a theme; a user's own choice wins.
+proxmorph_default_theme: unifi-auto
+
+proxmorph_widget_toolkit: /usr/share/javascript/proxmox-widget-toolkit

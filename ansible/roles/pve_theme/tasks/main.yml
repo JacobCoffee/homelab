@@ -1,0 +1,65 @@
+# Every node serves its own web UI, so this runs on each one. install.sh copies the theme CSS,
+# registers it in proxmoxlib.js's theme_map and installs an APT hook
+# (/etc/apt/apt.conf.d/99proxmorph) that re-patches from /opt/proxmorph after Proxmox updates.
+# Originals are kept in /root/.proxmorph-backup; `install.sh uninstall` from proxmorph_src reverts.
+- name: Theme | release tarball (checksum-pinned)
+  ansible.builtin.get_url:
+    url: "{{ proxmorph_url }}"
+    dest: "/root/proxmorph-{{ proxmorph_version }}.tar.gz"
+    checksum: "sha256:{{ proxmorph_sha256 }}"
+    mode: "0600"
+
+# The tarball has no top-level directory, so it gets its own.
+- name: Theme | release directory
+  ansible.builtin.file:
+    path: "{{ proxmorph_src }}"
+    state: directory
+    mode: "0700"
+
+- name: Theme | unpack
+  ansible.builtin.unarchive:
+    src: "/root/proxmorph-{{ proxmorph_version }}.tar.gz"
+    dest: "{{ proxmorph_src }}"
+    remote_src: true
+    owner: root
+    group: root
+    creates: "{{ proxmorph_src }}/install.sh"
+
+- name: Theme | current state
+  ansible.builtin.shell: |
+    set -o pipefail
+    printf 'version=%s\n' "$(cat /opt/proxmorph/.version 2>/dev/null)"
+    printf 'registered=%s\n' "$(grep -c 'unifi-light' {{ proxmorph_widget_toolkit }}/proxmoxlib.js || true)"
+    printf 'auto=%s\n' "$(grep -c '{{ proxmorph_default_theme }}' {{ proxmorph_widget_toolkit }}/proxmoxlib.js || true)"
+    printf 'default=%s\n' "$(cat /etc/proxmorph/default-theme 2>/dev/null)"
+  args:
+    executable: /bin/bash
+  register: proxmorph_state
+  changed_when: false
+
+- name: Theme | parse state
+  ansible.builtin.set_fact:
+    proxmorph_now: "{{ dict(proxmorph_state.stdout_lines | map('split', '=', 1)) }}"
+
+# From the unpacked release: install.sh uses the local themes/ and downloads nothing. The
+# tarball ships it without the execute bit, hence `bash install.sh`.
+- name: Theme | install ProxMorph {{ proxmorph_version }}
+  ansible.builtin.command: bash install.sh install
+  args:
+    chdir: "{{ proxmorph_src }}"
+  when: proxmorph_now.version != proxmorph_version or proxmorph_now.registered | int == 0
+  changed_when: true
+
+- name: Theme | light/dark "(Auto)" entries
+  ansible.builtin.command: bash install.sh auto-theme enable
+  args:
+    chdir: "{{ proxmorph_src }}"
+  when: proxmorph_default_theme.endswith('-auto') and proxmorph_now.auto | int == 0
+  changed_when: true
+
+- name: Theme | server-side default ({{ proxmorph_default_theme }})
+  ansible.builtin.command: bash install.sh default-theme {{ proxmorph_default_theme }}
+  args:
+    chdir: "{{ proxmorph_src }}"
+  when: proxmorph_now.default != proxmorph_default_theme
+  changed_when: true
