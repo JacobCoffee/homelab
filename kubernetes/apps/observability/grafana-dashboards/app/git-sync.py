@@ -31,7 +31,8 @@ CONNECTION = {
             "installationID": os.environ["GITHUB_APP_INSTALLATION_ID"],
         },
     },
-    "secure": {"privateKey": {"create": os.environ["GITHUB_APP_PRIVATE_KEY"]}},
+    # Grafana wants the PEM itself base64-encoded ("privateKey must be base64 encoded").
+    "secure": {"privateKey": {"create": base64.b64encode(os.environ["GITHUB_APP_PRIVATE_KEY"].encode()).decode()}},
 }
 
 REPOSITORY = {

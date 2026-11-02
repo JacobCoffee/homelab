@@ -86,6 +86,9 @@ APPS = {
             "default_permissions": {
                 "contents": "write",  # branch pushes for dashboard-save PRs
                 "pull_requests": "write",  # opens those PRs
+                # Grafana's connection check refuses an app without it ("lacks required 'webhooks'
+                # permission"), even though this internal-only Grafana polls rather than taking pushes.
+                "repository_hooks": "write",
                 "administration": "read",  # branch protection check (Grafana docs)
                 "metadata": "read",
             },
