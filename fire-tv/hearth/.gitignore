@@ -4,7 +4,7 @@ build/
 app/build/
 *.iml
 .idea/
-screenshots/
+/screenshots/
 dist/
 config/hearth.local.json
 config/site.env

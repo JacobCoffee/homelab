@@ -4,6 +4,15 @@ A custom Fire TV launcher with switchable and seasonal themes, homelab status, a
 rail built for a remote that only sends arrows, OK, Back and play/pause (a TCL TV remote over
 HDMI-CEC). Built for a Fire TV Stick 4K (`AFTKRT`, Fire OS 8 / Android 11).
 
+![Hearth home screen in the SideQuest theme: greeting, weather, the next guild event and the app grid](docs/screenshots/sidequest.webp)
+
+| | |
+|---|---|
+| ![The command rail open on the left edge](docs/screenshots/command-rail.webp) | ![New Year theme](docs/screenshots/new-year.webp) |
+| The command rail: everything the remote can't reach directly | New Year |
+| ![Date Night theme](docs/screenshots/date-night.webp) | ![Christmas theme](docs/screenshots/christmas.webp) |
+| Date Night | Christmas |
+
 ## License and credit
 
 Hearth is licensed under the **GNU General Public License v3.0 or later** (see `LICENSE`).
