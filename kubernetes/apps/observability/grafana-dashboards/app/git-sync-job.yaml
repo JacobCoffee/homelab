@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: grafana-git-sync
+  namespace: observability
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: git-sync
+          image: python:3.12-slim
+          command: ["python3", "/script/git-sync.py"]
+          env:
+            - name: GRAFANA_URL
+              value: http://kube-prometheus-stack-grafana.observability.svc.cluster.local
+            - name: GRAFANA_USER
+              valueFrom:
+                secretKeyRef: { name: grafana-admin-credentials, key: admin-user }
+            - name: GRAFANA_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: grafana-admin-credentials, key: admin-password }
+          envFrom:
+            - secretRef:
+                name: grafana-git-sync
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: grafana-git-sync-script

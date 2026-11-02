@@ -202,12 +202,6 @@ spec:
         server:
           root_url: https://grafana.z7x.org
       sidecar:
-        dashboards:
-          # Lets ../grafana-dashboards' per-folder ConfigMaps (annotation grafana_folder) land in
-          # their own Grafana folders instead of all piling into General.
-          folderAnnotation: grafana_folder
-          provider:
-            foldersFromFilesStructure: true
         datasources:
           # Mimir (below) is the new default; this chart's own auto-provisioned "Prometheus"
           # datasource (still pointing at this release's own Prometheus) stays, just not default.

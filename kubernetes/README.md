@@ -296,6 +296,26 @@ HA,
 Restores are built in too: Settings -> System -> Backups -> pick the R2 backup -> Restore (or
 from the onboarding screen on a freshly reinstalled HAOS).
 
+## Dashboards (Grafana Git Sync)
+
+`apps/observability/grafana-dashboards/app/dashboards/` is owned by Grafana
+[Git Sync](https://grafana.com/docs/grafana/latest/as-code/git-sync/): Grafana polls `main` every
+60s through the private GitHub App `grafana-z7x-git-sync` (installed on this repo only) and shows
+the files under a **Homelab** folder, one subfolder per directory. Each directory's
+`_folder.json` sets that folder's title and stable UID. Edit dashboards in either place: commit
+JSON here, or save in the UI, which pushes a branch and opens a PR (nothing lands on `main`
+without a merge). Chart-shipped dashboards (kube-prometheus-stack, the gnetId downloads in the
+**Imported** folder) stay on the sidecar and file provider and are read-only.
+
+The Kustomization's `grafana-git-sync` Job registers the Connection and Repository through
+Grafana's provisioning API and fails if the first sync isn't healthy. Its secret
+(`app/secret.sops.yaml`) is built from the vault keys `vault_grafana_github_app_id`,
+`vault_grafana_github_app_installation_id` and `vault_grafana_github_app_private_key`, which
+`../scripts/github-app.py grafana` creates. Most dashboard JSON is vendored from upstream
+(grafana.com, the grafana/{mimir,loki,alloy} mixins, cilium/cilium, envoyproxy/gateway), with
+datasource variables patched so it follows whichever Prometheus/Loki datasource is the default.
+Never name a folder "General": that's Grafana's reserved root folder.
+
 ## Updates
 
 Renovate ([`../.github/renovate.json5`](../.github/renovate.json5)) opens PRs on weekends for
