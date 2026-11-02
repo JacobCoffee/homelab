@@ -10,7 +10,10 @@ dependencies. The HTTP side lives in app.py.
 """
 
 import argparse
+import hashlib
 import json
+import os
+import secrets
 import sys
 import threading
 import time
@@ -22,7 +25,9 @@ FIRST_BOOT = ROOT / "server" / "first-boot.sh"
 ROOT_PASSWORD = ROOT / "secrets" / "root-password"
 PASSWORD_HASH = ROOT / "secrets" / "root-password.hash"
 AUTHORIZED_KEYS = ROOT / "secrets" / "authorized_keys"
+AUTOMATION_KEY = ROOT / "secrets" / "automation_ed25519"
 DEFAULT_STATE = ROOT / "state" / "hosts.json"
+KNOWN_HOSTS = ROOT / "state" / "known_hosts"  # node host keys, for pushing password changes
 
 INSTALLED = ("installed", "ready")
 
@@ -119,6 +124,68 @@ class State:
 def toml_str(value: str) -> str:
     # JSON string escaping is valid TOML basic-string escaping.
     return json.dumps(value)
+
+
+# --- Root password ------------------------------------------------------------------
+# SHA-512 crypt ($6$, glibc/libxcrypt), so the web app can hash without the build
+# container: Python 3.13 dropped `crypt` and macOS LibreSSL lacks `openssl passwd -6`.
+
+_B64 = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+_ORDER = [(i, (i + 21) % 63, (i + 42) % 63) for i in (0, 22, 44, 3, 25, 47, 6, 28, 50, 9, 31, 53, 12, 34, 56, 15, 37, 59, 18, 40, 62)]
+
+
+def sha512_crypt(password: str, salt: str | None = None, rounds: int = 5000) -> str:
+    key, salt_b = password.encode(), (salt or secrets.token_urlsafe(12)[:16]).replace("_", ".").replace("-", "/").encode()[:16]
+    sha = hashlib.sha512
+    b = sha(key + salt_b + key).digest()
+    a = sha(key + salt_b)
+    a.update(b * (len(key) // 64) + b[: len(key) % 64])
+    n = len(key)
+    while n:
+        a.update(b if n & 1 else key)
+        n >>= 1
+    c = a.digest()
+    dp = sha(key * len(key)).digest()
+    p = dp * (len(key) // 64) + dp[: len(key) % 64]
+    ds = sha(salt_b * (16 + c[0])).digest()
+    s = ds[: len(salt_b)]
+    for r in range(rounds):
+        h = sha(p if r & 1 else c)
+        if r % 3:
+            h.update(s)
+        if r % 7:
+            h.update(p)
+        h.update(c if r & 1 else p)
+        c = h.digest()
+    out = []
+    for i, j, k in _ORDER:
+        w = c[i] << 16 | c[j] << 8 | c[k]
+        out += [_B64[(w >> 6 * x) & 63] for x in range(4)]
+    out += [_B64[(c[63] >> 6 * x) & 63] for x in range(2)]
+    head = "$6$" if rounds == 5000 else f"$6$rounds={rounds}$"
+    return f"{head}{salt_b.decode()}${''.join(out)}"
+
+
+def check_password(password: str) -> str | None:
+    """Why the password is unusable, or None."""
+    if len(password) < 8:
+        return "use at least 8 characters"
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in password):
+        return "no control characters or line breaks"
+    if password != password.strip():
+        return "no leading or trailing spaces"
+    return None
+
+
+def set_root_password(password: str) -> str:
+    """Store the password and its hash for future installs; returns the hash."""
+    hashed = sha512_crypt(password, rounds=200_000)
+    for path, value in ((ROOT_PASSWORD, password), (PASSWORD_HASH, hashed)):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(value + "\n")
+    return hashed
 
 
 def render_answer(cfg: dict, hostname: str) -> str:

@@ -32,11 +32,19 @@
     <div id="status" class="top-status">{% include "_status.html" %}</div>
     <div class="top-actions">
       <span id="conn" class="conn" data-state="connecting">Connecting</span>
-      {% if has_password %}
-      <button class="btn" data-variant="outline" data-size="sm" type="button" data-copy-url="/ui/root-password" data-tooltip="Root password for every node (SSH and :8006)" data-side="bottom">
-        {{ lucide("key", 14) }}<span>Root password</span>
-      </button>
-      {% endif %}
+      <a class="btn" data-variant="ghost" data-size="sm" href="/api" target="_blank" rel="noopener" data-tooltip="API reference (Scalar)" data-side="bottom">
+        {{ lucide("book", 14) }}<span>API</span>
+      </a>
+      <div class="btn-group">
+        {% if has_password %}
+        <button class="btn" data-variant="outline" data-size="sm" type="button" data-copy-url="/ui/root-password" data-tooltip="Copy the root password for every node (SSH and :8006)" data-side="bottom" data-align="end">
+          {{ lucide("key", 14) }}<span>Root password</span>
+        </button>
+        {% endif %}
+        <button class="btn" data-variant="outline" data-size="sm" type="button" data-open-password data-tooltip="Change the root password" data-side="bottom" data-align="end" aria-label="Change the root password">
+          {{ lucide("pencil", 14) }}
+        </button>
+      </div>
     </div>
   </header>
 
@@ -83,6 +91,36 @@
         <button class="btn" data-variant="destructive" type="button" data-confirm-forget>Reinstall on next boot</button>
       </footer>
     </div>
+  </dialog>
+
+  <dialog id="password-dialog" class="dialog" aria-labelledby="password-title" aria-describedby="password-desc"
+          onpointerdown="this.dataset.backdropPress = event.target === this"
+          onclick="if (event.target === this && this.dataset.backdropPress === 'true') this.close()">
+    <form class="sm:max-w-md" id="password-form" novalidate>
+      <header>
+        <h2 id="password-title">Change root password</h2>
+        <p id="password-desc">New installs use it. Installed nodes can get it now over SSH with the automation key; only its hash leaves this Mac.</p>
+      </header>
+      <section class="form pw-fields">
+        <div class="field">
+          <label for="pw-new">New password</label>
+          <input class="input" id="pw-new" name="password" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <div class="field">
+          <label for="pw-confirm">Confirm</label>
+          <input class="input" id="pw-confirm" type="password" autocomplete="new-password" required>
+        </div>
+        <label class="pw-apply">
+          <input class="input" type="checkbox" name="apply" checked>
+          <span>Also set it on installed nodes now</span>
+        </label>
+        <p class="pw-msg" id="pw-msg" role="status" aria-live="polite"></p>
+      </section>
+      <footer>
+        <button class="btn" data-variant="outline" type="button" onclick="this.closest('dialog').close()">Cancel</button>
+        <button class="btn" data-variant="primary" type="submit">Save password</button>
+      </footer>
+    </form>
   </dialog>
 </body>
 </html>

@@ -117,6 +117,16 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const openPassword = event.target.closest("[data-open-password]");
+  if (openPassword) {
+    pwForm.reset();
+    pwMsg.textContent = "";
+    pwMsg.dataset.state = "";
+    pwDialog.showModal();
+    $("#pw-new").focus();
+    return;
+  }
+
   const forget = event.target.closest("[data-forget]");
   if (forget) {
     dialog.dataset.node = forget.dataset.forget;
@@ -132,6 +142,46 @@ document.addEventListener("click", async (event) => {
     confirm.disabled = false;
     if (res.ok) dialog.close();
     else confirm.textContent = "Failed. Try again";
+  }
+});
+
+// --- Root password -------------------------------------------------------------------
+
+const pwDialog = $("#password-dialog");
+const pwForm = $("#password-form");
+const pwMsg = $("#pw-msg");
+
+function pwStatus(state, text) {
+  pwMsg.dataset.state = state;
+  pwMsg.textContent = text;
+}
+
+pwForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const password = $("#pw-new").value;
+  if (password.length < 8) return pwStatus("error", "Use at least 8 characters.");
+  if (password !== $("#pw-confirm").value) return pwStatus("error", "The two entries don't match.");
+  const save = $("button[type=submit]", pwForm);
+  save.disabled = true;
+  pwStatus("busy", "Saving…");
+  try {
+    const res = await fetch("/ui/root-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password, apply: pwForm.elements.apply.checked }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return pwStatus("error", body.error ? `Not saved: ${body.error}.` : `Not saved (HTTP ${res.status}).`);
+    const failed = (body.nodes || []).filter((n) => !n.ok);
+    const done = (body.nodes || []).filter((n) => n.ok).map((n) => n.name);
+    if (failed.length) {
+      pwStatus("error", `Saved for new installs${done.length ? ` and set on ${done.join(", ")}` : ""}. Not set on ${failed.map((n) => `${n.name} (${n.error})`).join("; ")}.`);
+      return;
+    }
+    pwStatus("ok", done.length ? `Saved. Set on ${done.join(", ")}.` : "Saved for new installs.");
+    setTimeout(() => pwDialog.close(), 1400);
+  } finally {
+    save.disabled = false;
   }
 });
 

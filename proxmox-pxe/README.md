@@ -29,7 +29,7 @@ sequenceDiagram
 | Hostname | `hnhv01`, `hnhv02`, … in install order (`<site><role><NN>`: homenet, hypervisor), FQDN `hnhv01.int.z7x.org`; set in `config.env` |
 | OS disk | the USB disk (`ID_BUS=usb`), ext4, no swap, no data volume |
 | IP | whatever the router's DHCP gave it during install, written as static config |
-| root password | `secrets/root-password` (generated on first build) |
+| root password | `secrets/root-password`: generated on first build as `xxxxx-xxxxx-xxxxx-xxxxx` (no lookalike characters); change it from the dashboard |
 | root SSH keys | your SSH agent's keys (Secretive) + `secrets/automation_ed25519` for Ansible; refreshed on every `./build.sh` |
 | VM/CT storage | `vmdata`: LVM-thin on the internal drive, if it is the only internal drive **and blank** |
 | `local` storage (USB) | `iso,vztmpl,backup` only, so VM disks never land on the stick |
@@ -90,8 +90,9 @@ the LAN.
 ![API reference at /api](docs/api-scalar.png)
 
 Web UI: `https://<node-ip>:8006`, user `root`, realm PAM, password from
-`secrets/root-password` (the dashboard has buttons to open this and to copy the
-password).
+`secrets/root-password`. The dashboard's **Root password** button copies it; the pencil
+next to it sets a new one for future installs and, optionally, on every installed node
+at once over SSH (automation key; only the SHA-512 crypt hash is sent).
 
 ## Day-2
 

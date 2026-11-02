@@ -382,6 +382,19 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.011em; }
 .dialog header p { max-width: 52ch; }
 .dialog [data-name] { font-family: var(--mono); font-size: 0.95em; }
 
+.pw-fields { display: grid; gap: 14px; }
+.pw-fields .field { display: grid; gap: 6px; }
+.pw-fields label { font-size: 13px; font-weight: 500; }
+.pw-apply { display: flex; align-items: center; gap: 8px; font-weight: 400 !important; color: var(--muted-foreground); }
+.pw-msg { min-height: 1.4em; margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
+.pw-msg[data-state="error"] { color: var(--destructive); }
+.pw-msg[data-state="ok"] { color: var(--ready); }
+
+/* Copy + change root password read as one control. */
+.btn-group { display: inline-flex; }
+.btn-group > .btn:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.btn-group > .btn:not(:first-child) { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
+
 /* --- Responsive ----------------------------------------------------------------- */
 
 @media (max-width: 1280px) {

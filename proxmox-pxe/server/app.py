@@ -33,16 +33,19 @@ import json
 import os
 import re
 import signal
+import subprocess
 import sys
 import time
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from litestar import Litestar, Request, Response, Router, get, post
 from litestar.connection import ASGIConnection
+from litestar.datastructures import CacheControlHeader
 from litestar.exceptions import NotFoundException, PermissionDeniedException
 from litestar.handlers import BaseRouteHandler
 from litestar.openapi import OpenAPIConfig
@@ -453,6 +456,14 @@ def html(body: str) -> Response[str]:
     return Response(body, media_type="text/html; charset=utf-8")
 
 
+def same_origin(connection: ASGIConnection, _: BaseRouteHandler) -> None:
+    """Dashboard writes: refuse requests a web page on another site makes through this Mac's browser."""
+    origin = connection.headers.get("origin")
+    cross = connection.headers.get("sec-fetch-site") == "cross-site"
+    if cross or (origin and urlsplit(origin).netloc != connection.headers.get("host")):
+        raise PermissionDeniedException("Cross-site request refused.")
+
+
 @get("/", guards=[local_only], sync_to_thread=False, include_in_schema=False)
 def index() -> Response[str]:
     return html(
@@ -499,7 +510,7 @@ async def events() -> ServerSentEvent:
 
 @post(
     "/ui/nodes/{name:str}/forget",
-    guards=[local_only],
+    guards=[local_only, same_origin],
     status_code=200,
     sync_to_thread=False,
     tags=DASHBOARD,
@@ -507,8 +518,11 @@ async def events() -> ServerSentEvent:
     description="Forgets the node so its next network boot reinstalls it (wipes its USB stick).",
 )
 def forget(name: str) -> Response[str]:
+    ip = STATE.snapshot().get(name, {}).get("ip")
     if not STATE.forget(name):
         raise NotFoundException(f"unknown node {name}")
+    if ip and core.KNOWN_HOSTS.exists():  # the reinstall brings a new host key
+        subprocess.run(["ssh-keygen", "-R", ip, "-f", str(core.KNOWN_HOSTS)], capture_output=True, check=False)
     HUB.add_log("server", f"forgot {name}; its next network boot reinstalls it", "warn")
     HUB.nodes_changed()
     return text("ok\n")
@@ -519,6 +533,61 @@ def root_password() -> Response[str]:
     if not core.ROOT_PASSWORD.exists():
         raise NotFoundException("secrets/root-password missing; run ./build.sh")
     return text(core.ROOT_PASSWORD.read_text().strip())
+
+
+@dataclass
+class PasswordChange:
+    password: str
+    apply: bool = True
+
+
+async def push_password(ip: str, hashed: str) -> str | None:
+    """Set root's password hash on an installed node over SSH; returns an error or None."""
+    core.KNOWN_HOSTS.parent.mkdir(parents=True, exist_ok=True)
+    proc = await asyncio.create_subprocess_exec(
+        "ssh", "-i", str(core.AUTOMATION_KEY),
+        "-o", "IdentityAgent=none", "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=5", "-o", f"UserKnownHostsFile={core.KNOWN_HOSTS}",
+        "-o", "StrictHostKeyChecking=accept-new",
+        f"root@{ip}", "chpasswd -e",
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )  # fmt: skip
+    try:
+        _, err = await asyncio.wait_for(proc.communicate(f"root:{hashed}\n".encode()), 20)
+    except TimeoutError:
+        proc.kill()
+        return "timed out"
+    if proc.returncode:
+        lines = err.decode(errors="replace").strip().splitlines()
+        return lines[-1] if lines else f"ssh exited {proc.returncode}"
+    return None
+
+
+@post(
+    "/ui/root-password",
+    guards=[local_only, same_origin],
+    status_code=200,
+    tags=DASHBOARD,
+    summary="Change the root password",
+    description="Stores it for future installs and, with `apply`, sets it on every installed node over SSH "
+    "(automation key; only the SHA-512 crypt hash is sent).",
+)
+async def set_root_password(data: PasswordChange) -> Response[dict]:
+    if problem := core.check_password(data.password):
+        return Response({"error": problem}, status_code=400)
+    hashed = await asyncio.to_thread(core.set_root_password, data.password)
+    HUB.add_log("server", "root password changed; new installs use it")
+    targets = [(n, h["ip"]) for n, h in sorted(STATE.snapshot().items()) if h.get("status") in core.INSTALLED and h.get("ip")]
+    results = []
+    if data.apply and targets:
+        errors = await asyncio.gather(*(push_password(ip, hashed) for _, ip in targets))
+        for (name, ip), error in zip(targets, errors):
+            results.append({"name": name, "ip": ip, "ok": error is None, "error": error})
+            if error:
+                HUB.add_log("server", f"root password not set on {name} ({ip}): {error}", "warn")
+            else:
+                HUB.add_log("server", f"root password set on {name} ({ip})")
+    return Response({"nodes": results})
 
 
 app = Litestar(
@@ -534,8 +603,13 @@ app = Litestar(
         events,
         forget,
         root_password,
-        create_static_files_router(
-            path="/static", directories=[SERVER_DIR / "static"], guards=[local_only], include_in_schema=False
+        set_root_password,
+        create_static_files_router(  # no-cache: revalidate via ETag, so updates never run stale JS/CSS
+            path="/static",
+            directories=[SERVER_DIR / "static"],
+            guards=[local_only],
+            include_in_schema=False,
+            cache_control=CacheControlHeader(no_cache=True),
         ),
     ],
     openapi_config=OpenAPIConfig(

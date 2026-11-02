@@ -18,10 +18,10 @@
       <span class="col-time"><time data-ts="{{ n.updated }}">{{ n.updated[11:16] }}</time></span>
       <span class="row-actions">
         {% if n.ip and n.mac %}
-        <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" data-copy="{{ n.ip }} {{ n.mac }}" data-tooltip="Copy IP and MAC for the Spectrum reservation" aria-label="Copy IP and MAC">{{ lucide("copy", 15) }}</button>
-        <a class="btn" data-variant="ghost" data-size="icon-sm" href="https://{{ n.ip }}:8006" target="_blank" rel="noopener" data-tooltip="Open the Proxmox web UI" aria-label="Open {{ n.name }} web UI">{{ lucide("external", 15) }}</a>
+        <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" data-copy="{{ n.ip }} {{ n.mac }}" data-tooltip="Copy IP and MAC for the Spectrum reservation" data-align="end" aria-label="Copy IP and MAC">{{ lucide("copy", 15) }}</button>
+        <a class="btn" data-variant="ghost" data-size="icon-sm" href="https://{{ n.ip }}:8006" target="_blank" rel="noopener" data-tooltip="Open the Proxmox web UI" data-align="end" aria-label="Open {{ n.name }} web UI">{{ lucide("external", 15) }}</a>
         {% endif %}
-        <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" data-forget="{{ n.name }}" data-tooltip="Reinstall on next network boot" aria-label="Reinstall {{ n.name }}">{{ lucide("reinstall", 15) }}</button>
+        <button class="btn" data-variant="ghost" data-size="icon-sm" type="button" data-forget="{{ n.name }}" data-tooltip="Reinstall on next network boot" data-align="end" aria-label="Reinstall {{ n.name }}">{{ lucide("reinstall", 15) }}</button>
       </span>
     </div>
     <div class="node-detail" id="detail-{{ n.name }}" hidden>

@@ -16,8 +16,11 @@ if [ ! -f "$ISO" ]; then
 fi
 echo "$PVE_ISO_SHA256  $ISO" | shasum -a 256 -c - >/dev/null || { echo "Checksum mismatch for $ISO" >&2; exit 1; }
 
+# Typeable: no lookalikes (0/O, 1/l/I) or symbols; 20 chars of 31 symbols ~ 99 bits.
+# Replace the file with your own password to use that instead.
 if [ ! -s secrets/root-password ]; then
-  (umask 077; openssl rand -base64 18 > secrets/root-password)
+  (umask 077; openssl rand 1024 | LC_ALL=C tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' | head -c 20 \
+    | fold -w5 | paste -sd- - > secrets/root-password)
   echo "==> Generated root password in secrets/root-password"
 fi
 
