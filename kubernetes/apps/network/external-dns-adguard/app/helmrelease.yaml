@@ -1,5 +1,7 @@
 # Same chart-vs-appVersion note as external-dns-cloudflare applies (1.23.0 / v0.23.0); the webhook
 # sidecar image is pinned to its own latest release (v11.2.0) independently.
+# One release per AdGuard instance (hndns01 here, hndns02 in helmrelease-dns02.yaml): the pair
+# doesn't sync, and lab DNS (10.10.10.53) floats to whichever is healthy.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -49,10 +51,7 @@ spec:
           timeoutSeconds: 5
         env:
           - name: ADGUARD_URL
-            valueFrom:
-              secretKeyRef:
-                name: external-dns-adguard-credentials
-                key: url
+            value: http://10.10.10.54
           - name: ADGUARD_USER
             valueFrom:
               secretKeyRef:

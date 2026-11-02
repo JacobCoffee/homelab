@@ -1,5 +1,6 @@
 # henrywhitaker3/adguard-exporter: actively maintained Prometheus exporter for AdGuard Home
-# (hndns01, 10.10.10.53). Credentials in secret.sops.yaml (vault_adguard_password).
+# (the hndns01/hndns02 pair on their own addresses; lab DNS 10.10.10.53 floats between them).
+# Credentials in secret.sops.yaml (vault_adguard_password, once per server).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,9 +21,9 @@ spec:
           image: ghcr.io/henrywhitaker3/adguard-exporter:v1.2.1
           env:
             - name: ADGUARD_SERVERS
-              value: "http://10.10.10.53"
+              value: "http://10.10.10.54,http://10.10.10.55"
             - name: ADGUARD_USERNAMES
-              value: "admin"
+              value: "admin,admin"
             - name: INTERVAL
               value: "30s"
           envFrom:

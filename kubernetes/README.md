@@ -1,12 +1,13 @@
 # Kubernetes (Talos + Flux)
 
-Three Talos nodes (`hnk8s01`–`03`, 10.10.30.11–13, API VIP 10.10.30.10) built by
+Talos nodes (`k8s_nodes` in `../ansible/inventory/group_vars/all/main.yml`: control planes
+`hnk8s01`–`03` at 10.10.30.11–13, workers from `hnk8s04` at .14 on; API VIP 10.10.30.10) built by
 [`../ansible`](../ansible/README.md#kubernetes-talos). Once `flux bootstrap` has run, the cluster
 follows `main`: push a change here and Flux applies it (every hour, or right away with
 `flux reconcile ks flux-system --with-source`).
 
 From the repo root (`mise.toml` sets `KUBECONFIG`, `TALOSCONFIG` and the SOPS key path; the Mac
-reaches 10.10.30.0/24 through OPNsense's Tailscale subnet route):
+reaches 10.10.30.0/24 through the OPNsense pair's Tailscale subnet routes):
 
 ```sh
 kubectl get nodes
@@ -222,17 +223,18 @@ etcdutl snapshot status ./etcd-restore/<path>/db.snapshot -w table
 
 ### OPNsense (`apps/backup/opnsense-backup`)
 
-Nightly (03:00) CronJob: fetches `config.xml` from OPNsense's core backup API
+Nightly (03:00) CronJob: fetches `config.xml` from both firewalls' core backup API
 (`/api/core/backup/download/this`, same `vault_opnsense_api_key`/`vault_opnsense_api_secret` as
-`ansible/roles/opnsense`, reachable at `10.10.10.1` from the K8S zone), then restic-backs it up to
-`s3:${R2_ENDPOINT}/${R2_BUCKET}/opnsense`.
+`ansible/roles/opnsense`, at each firewall's own K8S-zone address 10.10.30.2 / 10.10.30.3), then
+restic-backs them up (`config-<address>.xml`) to `s3:${R2_ENDPOINT}/${R2_BUCKET}/opnsense`.
 
 ```sh
 # Same pattern as etcd above, repository .../opnsense, password from
 # kubernetes/apps/backup/opnsense-backup/app/secret.sops.yaml
 mise exec -- restic -r "s3:$R2_ENDPOINT/homelab-backups/opnsense" restore latest --target ./opnsense-restore
 # Restore: OPNsense webGUI -> System -> Configuration -> Backups -> Restore configuration,
-# upload ./opnsense-restore/config.xml (or POST it to /api/core/backup/restore).
+# upload ./opnsense-restore/backup/config-<address>.xml for that firewall (or POST it to
+# /api/core/backup/restore).
 ```
 
 ### App config PVCs (`components/volsync`)
@@ -301,7 +303,7 @@ A merged Talos or Kubernetes bump only changes config for new installs; upgrade 
 nodes one at a time, then Kubernetes:
 
 ```sh
-talosctl -n 10.10.30.11 upgrade --image factory.talos.dev/installer/<schematic>:<version>   # then .12, .13
+talosctl -n 10.10.30.11 upgrade --image factory.talos.dev/installer/<schematic>:<version>   # then .12, .13, then the workers (.14, ...)
 talosctl -n 10.10.30.11 upgrade-k8s --to <version>
 ```
 

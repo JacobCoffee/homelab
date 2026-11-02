@@ -1,0 +1,17 @@
+# Control-plane-only documents (Talos rejects them on workers), applied after cluster.yaml to
+# nodes with role controlplane (ansible/roles/talos).
+
+# Cilium replaces kube-proxy (installed right after bootstrap).
+apiVersion: v1alpha1
+kind: KubeProxyConfig
+enabled: false
+---
+# Talos API access from Kubernetes (v1.14+ document): lets the etcd-backup CronJob
+# (kubernetes/apps/backup/etcd-backup, namespace `backup`) take authenticated etcd snapshots via
+# talosctl, scoped to the minimum role needed. Owner: Backups.
+apiVersion: v1alpha1
+kind: KubeTalosAPIAccessConfig
+allowedRoles:
+  - os:etcd:backup
+allowedKubernetesNamespaces:
+  - backup

@@ -1,7 +1,8 @@
-# OPNsense (hnfw01) runs os-node_exporter on :9100 (ansible/roles/opnsense/tasks/node_exporter.yml,
-# which also opens it to the K8S zone). It isn't a Kubernetes Service, so it's a static target,
-# scraped via its K8S-zone gateway address. The release label is what this Prometheus's
-# scrapeConfigSelector matches.
+# The OPNsense pair (hnfw01/hnfw02, CARP) runs os-node_exporter on :9100
+# (ansible/roles/opnsense/tasks/node_exporter.yml, which also opens it to the K8S zone). They
+# aren't Kubernetes Services, so they're static targets, scraped on each firewall's own K8S-zone
+# address (not the CARP .1, which only reaches the master). The release label is what this
+# Prometheus's scrapeConfigSelector matches.
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: ScrapeConfig
 metadata:
@@ -13,6 +14,9 @@ spec:
   jobName: opnsense
   scrapeInterval: 30s
   staticConfigs:
-    - targets: ["10.10.30.1:9100"]
+    - targets: ["10.10.30.2:9100"]
       labels:
         instance: hnfw01
+    - targets: ["10.10.30.3:9100"]
+      labels:
+        instance: hnfw02

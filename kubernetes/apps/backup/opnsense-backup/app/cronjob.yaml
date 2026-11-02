@@ -1,6 +1,7 @@
-# Nightly: fetch config.xml from OPNsense's core backup API (reachable from the K8S zone through
-# OPNsense's own routing; 10.10.10.1 is its stable INT address, see ansible/README.md#opnsense),
-# then restic-backup it to R2 (repo s3://homelab-backups/opnsense, see secret.sops.yaml).
+# Nightly: fetch config.xml from each OPNsense firewall's core backup API (hnfw01/hnfw02, on their
+# own K8S-zone addresses: same subnet as the nodes, so no asymmetric route through the CARP
+# master; see ansible/README.md#opnsense), then restic-backup both to R2 (repo
+# s3://homelab-backups/opnsense, see secret.sops.yaml).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -21,9 +22,15 @@ spec:
               image: curlimages/curl:8.11.1
               command: ["/bin/sh", "-c"]
               args:
-                - >-
-                  curl -fsSk -u "$OPNSENSE_API_KEY:$OPNSENSE_API_SECRET"
-                  "https://$OPNSENSE_HOST/api/core/backup/download/this" -o /backup/config.xml
+                - |
+                  set -e
+                  for host in $OPNSENSE_HOSTS; do
+                    curl -fsSk -u "$OPNSENSE_API_KEY:$OPNSENSE_API_SECRET" \
+                      "https://$host/api/core/backup/download/this" -o "/backup/config-$host.xml"
+                  done
+              env:
+                - name: OPNSENSE_HOSTS
+                  value: "10.10.30.2 10.10.30.3"
               envFrom:
                 - secretRef:
                     name: opnsense-backup-restic

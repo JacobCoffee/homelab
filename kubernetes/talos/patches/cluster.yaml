@@ -1,8 +1,8 @@
-# Cluster policy applied to every node (all are control plane + workers), Talos 1.14
-# multi-document config. Per-node network, VIP, hostname and installer image come from
-# ansible/roles/talos/templates/machine.yaml.j2, applied after this file.
+# Cluster policy applied to every node (control planes and workers), Talos 1.14 multi-document
+# config. Control planes also get controlplane.yaml. Per-node network, VIP, hostname and
+# installer image come from ansible/roles/talos/templates/machine.yaml.j2, applied last.
 
-# The default node config taints control planes NoSchedule and keeps them out of
+# The default control plane node config taints it NoSchedule and keeps it out of
 # LoadBalancer announcements; every node here runs workloads, so it is deleted and the
 # per-node patch adds a fresh one (a merge can't drop map keys).
 apiVersion: v1alpha1
@@ -15,14 +15,11 @@ kind: KubeletConfig
 config:
   serverTLSBootstrap: true
 ---
-# Cilium replaces Flannel and kube-proxy (installed right after bootstrap).
+# Cilium replaces Flannel and kube-proxy (installed right after bootstrap; kube-proxy is off in
+# controlplane.yaml).
 apiVersion: v1alpha1
 kind: KubeFlannelCNIConfig
 $patch: delete
----
-apiVersion: v1alpha1
-kind: KubeProxyConfig
-enabled: false
 ---
 # Spegel (peer-to-peer image cache) needs containerd to keep unpacked layers.
 apiVersion: v1alpha1
@@ -31,16 +28,6 @@ name: spegel
 content: |
   [plugins."io.containerd.cri.v1.images"]
     discard_unpacked_layers = false
----
-# Talos API access from Kubernetes (v1.14+ document): lets the etcd-backup CronJob
-# (kubernetes/apps/backup/etcd-backup, namespace `backup`) take authenticated etcd snapshots via
-# talosctl, scoped to the minimum role needed. Owner: Backups.
-apiVersion: v1alpha1
-kind: KubeTalosAPIAccessConfig
-allowedRoles:
-  - os:etcd:backup
-allowedKubernetesNamespaces:
-  - backup
 ---
 # Service logs (machined, kubelet, containerd, etc.) pushed as json_lines to the Alloy DaemonSet
 # pod on this same node (kubernetes/apps/observability/alloy: hostNetwork: true, so 127.0.0.1
