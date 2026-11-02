@@ -1,0 +1,22 @@
+# GitHub webhook path only: cabotage.z7x.org/github/hooks is the sole piece of Cabotage's
+# ingress Flux manages. Everything else (UI, registry, tenant apps under apps.z7x.org) is
+# internal/tailnet-only and reached through the AdGuard wildcard rewrite instead. The
+# traefik/cabotage namespaces are created by Terraform, not Flux.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cabotage-ingress
+  namespace: flux-system
+spec:
+  targetNamespace: traefik
+  path: ./kubernetes/apps/cabotage/cabotage-ingress/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: envoy-gateway-config
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - ./kube-system
   - ./cert-manager
+  - ./cabotage
   - ./network
   - ./home
   - ./default

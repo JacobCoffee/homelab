@@ -1,0 +1,28 @@
+# Only /github/hooks on cabotage.z7x.org is exposed to the internet, rewritten to Cabotage's
+# internal UI hostname and forwarded to its Traefik Service. Everything else at this hostname
+# 404s from Envoy Gateway: Cabotage itself lives at cabotage.apps.z7x.org (tailnet-only, via
+# the AdGuard wildcard rewrite), this route exists solely so GitHub can reach the webhook.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: cabotage-github-hooks
+  namespace: traefik
+spec:
+  parentRefs:
+    - name: external
+      namespace: network
+      sectionName: https
+  hostnames:
+    - cabotage.z7x.org
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /github/hooks
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            hostname: cabotage.apps.z7x.org
+      backendRefs:
+        - name: traefik
+          port: 80
