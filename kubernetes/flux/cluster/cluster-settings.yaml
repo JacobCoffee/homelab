@@ -7,8 +7,8 @@ metadata:
   name: cluster-settings
   namespace: flux-system
 data:
-  # Set once `cloudflared tunnel create` has run; consumed by the cloudflared ConfigMap and by the
+  # Cloudflare tunnel `homelab` (locally managed); consumed by the cloudflared ConfigMap and by the
   # external Gateway's external-dns.alpha.kubernetes.io/target annotation.
-  CLOUDFLARE_TUNNEL_ID: "REPLACE_ME"
+  CLOUDFLARE_TUNNEL_ID: "cab61fbe-b69d-454d-a3fd-df123f30e0cc"
   # Contact address for Let's Encrypt expiry/revocation notices (cert-manager ClusterIssuer).
   ACME_EMAIL: "admin@z7x.org"

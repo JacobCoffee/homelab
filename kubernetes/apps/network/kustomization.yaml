@@ -5,6 +5,5 @@ resources:
   - ./envoy-gateway/ks.yaml
   - ./envoy-gateway-config/ks.yaml
   - ./external-dns-adguard/ks.yaml
-  # Enabled once the Cloudflare API token and tunnel credentials are in place:
-  # - ./external-dns-cloudflare/ks.yaml
-  # - ./cloudflared/ks.yaml
+  - ./external-dns-cloudflare/ks.yaml
+  - ./cloudflared/ks.yaml

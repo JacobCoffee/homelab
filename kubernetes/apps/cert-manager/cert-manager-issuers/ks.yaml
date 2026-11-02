@@ -1,6 +1,5 @@
-# Isolated from the cert-manager Kustomization above so the controller itself reconciles green even
-# before the cloudflare-api-token Secret exists; only this Kustomization (and anything that explicitly
-# dependsOn it) is blocked while the secret is missing.
+# Separate from the cert-manager Kustomization so the controller (and its CRDs) reconcile before the
+# ClusterIssuer and its sops-encrypted Cloudflare token.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

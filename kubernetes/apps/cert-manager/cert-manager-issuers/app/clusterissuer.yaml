@@ -1,6 +1,5 @@
-# Needs a `cloudflare-api-token` Secret (key `api-token`) in the cert-manager namespace -- cert-manager's
-# cluster resource namespace -- added later by the cluster operator. Not referenced by anything until
-# that secret exists, so the rest of the cluster stays green in the meantime.
+# DNS-01 via the Cloudflare API token in secret.sops.yaml (cert-manager namespace = cert-manager's
+# cluster resource namespace, where ClusterIssuers look up secrets).
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:

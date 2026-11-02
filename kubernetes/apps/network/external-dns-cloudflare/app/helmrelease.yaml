@@ -3,9 +3,7 @@
 # (kubernetes-sigs/external-dns#6840) had not shipped yet. No image.tag override exists in this chart,
 # so this tracks v0.23.0 until the chart catches up.
 #
-# Needs a `cloudflare-api-token` Secret (key `api-token`) in this namespace, added later by the cluster
-# operator (see FluxApps' report) -- the Deployment will crash-loop until it exists, but nothing else
-# depends on this Kustomization.
+# CF_API_TOKEN comes from secret.sops.yaml next to this file.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

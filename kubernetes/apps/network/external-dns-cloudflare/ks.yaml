@@ -1,5 +1,4 @@
-# Isolated from external-dns-adguard: needs its own cloudflare-api-token secret, added by the cluster
-# operator after this lands, without blocking anything else (nothing dependsOn this).
+# Publishes HTTPRoutes on the external Gateway to Cloudflare as proxied CNAMEs to the tunnel.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

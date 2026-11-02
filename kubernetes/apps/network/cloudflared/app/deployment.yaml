@@ -1,6 +1,4 @@
-# Needs a `cloudflared-tunnel` Secret (key credentials.json) in this namespace, added later by the
-# cluster operator (locally-managed, created via `cloudflared tunnel create`, not sops-encrypted since
-# it is a machine-specific credential file rather than a reusable API token).
+# Tunnel credentials come from secret.sops.yaml (Secret cloudflared-tunnel, key credentials.json).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
