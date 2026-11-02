@@ -1,0 +1,131 @@
+# One firewall (homepage_fw): a scrambled-password user (no GUI login) with only
+# homepage_opnsense_privs, and a fresh API key. OPNsense shows a key's secret once, so any older
+# keys of this user are deleted first: they're unrecoverable and would only pile up.
+# Same derivation as the opnsense role: the zone's /24 network with lan_host as the last octet.
+- name: "Homepage | {{ homepage_fw.name }} address"
+  vars:
+    homepage_zone_net: "{{ (lab_zones | selectattr('name', 'equalto', homepage_opnsense_zone) | first).cidr.split('/')[0].rsplit('.', 1)[0] }}"
+  ansible.builtin.set_fact:
+    homepage_fw_url: "https://{{ homepage_zone_net }}.{{ homepage_fw.lan_host }}"
+
+- name: "Homepage | {{ homepage_fw.name }} users"
+  ansible.builtin.uri:
+    url: "{{ homepage_fw_url }}/api/auth/user/search"
+    url_username: "{{ vault_opnsense_api_key }}"
+    url_password: "{{ vault_opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: homepage_fw_users
+
+- name: "Homepage | {{ homepage_fw.name }} {{ homepage_opnsense_user }} user"
+  ansible.builtin.set_fact:
+    homepage_fw_uuid: >-
+      {{ homepage_fw_users.json.rows | selectattr('name', 'equalto', homepage_opnsense_user)
+      | map(attribute='uuid') | first | default('') }}
+
+- name: "Homepage | {{ homepage_fw.name }} create {{ homepage_opnsense_user }}"
+  ansible.builtin.uri:
+    url: "{{ homepage_fw_url }}/api/auth/user/add"
+    url_username: "{{ vault_opnsense_api_key }}"
+    url_password: "{{ vault_opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      user:
+        name: "{{ homepage_opnsense_user }}"
+        scrambled_password: "1"
+        descr: Homepage start page, read-only widget
+        priv: "{{ homepage_opnsense_privs | join(',') }}"
+  delegate_to: localhost
+  register: homepage_fw_add
+  when: homepage_fw_uuid == ''
+  failed_when: homepage_fw_add.json.result | default('') != 'saved'
+  changed_when: true
+
+- name: "Homepage | {{ homepage_fw.name }} {{ homepage_opnsense_user }} privileges"
+  ansible.builtin.uri:
+    url: "{{ homepage_fw_url }}/api/auth/user/get/{{ homepage_fw_uuid }}"
+    url_username: "{{ vault_opnsense_api_key }}"
+    url_password: "{{ vault_opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: homepage_fw_user
+  when: homepage_fw_uuid != ''
+
+- name: "Homepage | {{ homepage_fw.name }} set {{ homepage_opnsense_user }} privileges"
+  ansible.builtin.uri:
+    url: "{{ homepage_fw_url }}/api/auth/user/set/{{ homepage_fw_uuid }}"
+    url_username: "{{ vault_opnsense_api_key }}"
+    url_password: "{{ vault_opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      user:
+        name: "{{ homepage_opnsense_user }}"
+        priv: "{{ homepage_opnsense_privs | join(',') }}"
+  delegate_to: localhost
+  register: homepage_fw_set
+  when:
+    - homepage_fw_uuid != ''
+    - >-
+      homepage_fw_user.json.user.priv | dict2items | selectattr('value.selected', 'equalto', 1)
+      | map(attribute='key') | sort != homepage_opnsense_privs | sort
+  failed_when: homepage_fw_set.json.result | default('') != 'saved'
+  changed_when: true
+
+- name: "Homepage | {{ homepage_fw.name }} API keys (no_log: lists keys)"
+  ansible.builtin.uri:
+    url: "{{ homepage_fw_url }}/api/auth/user/search_api_key"
+    url_username: "{{ vault_opnsense_api_key }}"
+    url_password: "{{ vault_opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: homepage_fw_keys
+  no_log: true
+
+- name: "Homepage | {{ homepage_fw.name }} delete {{ homepage_opnsense_user }}'s old API keys (no_log: keys)"
+  ansible.builtin.uri:
+    url: "{{ homepage_fw_url }}/api/auth/user/del_api_key/{{ item.id }}"
+    url_username: "{{ vault_opnsense_api_key }}"
+    url_password: "{{ vault_opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body: {}
+  delegate_to: localhost
+  loop: "{{ homepage_fw_keys.json.rows | selectattr('username', 'equalto', homepage_opnsense_user) | list }}"
+  changed_when: true
+  no_log: true
+
+- name: "Homepage | {{ homepage_fw.name }} new API key for {{ homepage_opnsense_user }} (no_log: captures the secret)"
+  ansible.builtin.uri:
+    url: "{{ homepage_fw_url }}/api/auth/user/add_api_key/{{ homepage_opnsense_user }}"
+    url_username: "{{ vault_opnsense_api_key }}"
+    url_password: "{{ vault_opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body: {}
+  delegate_to: localhost
+  register: homepage_fw_key
+  failed_when: homepage_fw_key.json.result | default('') != 'ok'
+  changed_when: true
+  no_log: true
+
+- name: "Homepage | keep it (no_log: secret)"
+  ansible.builtin.set_fact:
+    homepage_new: >-
+      {{ homepage_new | combine({
+        'HOMEPAGE_VAR_OPNSENSE_' ~ homepage_fw.name | upper ~ '_KEY': homepage_fw_key.json.key,
+        'HOMEPAGE_VAR_OPNSENSE_' ~ homepage_fw.name | upper ~ '_SECRET': homepage_fw_key.json.secret
+      }) }}
+  no_log: true

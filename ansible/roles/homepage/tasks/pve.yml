@@ -1,0 +1,54 @@
+# PVEAuditor is built in and read-only (Sys.Audit, VM.Audit, Datastore.Audit, ...): enough for the
+# node/VM/LXC counts and per-guest CPU/memory Homepage shows.
+- name: Homepage | Proxmox users
+  ansible.builtin.command: pveum user list --output-format json
+  register: homepage_pve_users
+  changed_when: false
+
+- name: "Homepage | create {{ homepage_pve_user }}"
+  ansible.builtin.command: >-
+    pveum user add {{ homepage_pve_user }} --comment "Read-only API access for the Homepage start page"
+  when: homepage_pve_user not in (homepage_pve_users.stdout | from_json | map(attribute='userid') | list)
+  changed_when: true
+
+- name: Homepage | Proxmox ACLs
+  ansible.builtin.command: pveum acl list --output-format json
+  register: homepage_pve_acls
+  changed_when: false
+
+- name: "Homepage | grant {{ homepage_pve_role }} to {{ homepage_pve_user }} on /"
+  ansible.builtin.command: pveum aclmod / -user {{ homepage_pve_user }} -role {{ homepage_pve_role }}
+  when: >-
+    homepage_pve_acls.stdout | from_json
+    | selectattr('ugid', 'equalto', homepage_pve_user)
+    | selectattr('roleid', 'equalto', homepage_pve_role)
+    | selectattr('path', 'equalto', '/') | list | length == 0
+  changed_when: true
+
+- name: "Homepage | tokens of {{ homepage_pve_user }} (no_log: lists token ids)"
+  ansible.builtin.command: pveum user token list {{ homepage_pve_user }} --output-format json
+  register: homepage_pve_tokens
+  changed_when: false
+  no_log: true
+
+- name: Homepage | drop a stale token (its secret isn't in the Secret, so it's unrecoverable)
+  ansible.builtin.command: pveum user token remove {{ homepage_pve_user }} {{ homepage_pve_token_name }}
+  when: homepage_pve_token_name in (homepage_pve_tokens.stdout | from_json | map(attribute='tokenid') | list)
+  changed_when: true
+
+# privsep 0: the token carries the user's PVEAuditor grant instead of needing its own ACL.
+- name: "Homepage | create token {{ homepage_pve_user }}!{{ homepage_pve_token_name }} (no_log: captures the secret)"
+  ansible.builtin.command: >-
+    pveum user token add {{ homepage_pve_user }} {{ homepage_pve_token_name }} -privsep 0 --output-format json
+  register: homepage_pve_token
+  changed_when: true
+  no_log: true
+
+- name: "Homepage | keep it (no_log: secret)"
+  ansible.builtin.set_fact:
+    homepage_new: >-
+      {{ homepage_new | combine({
+        'HOMEPAGE_VAR_PVE_TOKEN_ID': homepage_pve_user ~ '!' ~ homepage_pve_token_name,
+        'HOMEPAGE_VAR_PVE_TOKEN_SECRET': (homepage_pve_token.stdout | from_json).value
+      }) }}
+  no_log: true

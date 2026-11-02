@@ -3,6 +3,8 @@ kind: Kustomization
 resources:
   - ./helmrelease.yaml
   - ./httproute.yaml
+  - ./rbac.yaml
+  - ./secret.sops.yaml
 # Mounted as a directory (not subPath), so edits reach the pod on kubelet's next sync with no
 # restart; a fixed name because the HelmRelease refers to it.
 configMapGenerator:

@@ -1,0 +1,77 @@
+# Play: hosts pve[0] (pveum runs there; everything else runs on localhost).
+- name: Homepage | does the Secret exist?
+  ansible.builtin.stat:
+    path: "{{ homepage_secret_path }}"
+  register: homepage_secret_stat
+  delegate_to: localhost
+
+# Must succeed when the file exists: treating a decrypt failure as "empty" would rotate the
+# Proxmox token and OPNsense keys for nothing.
+- name: "Homepage | current Secret values (no_log: decrypted)"
+  ansible.builtin.command: >-
+    {{ homepage_mise }} sops -d --extract '["stringData"]' --output-type json {{ homepage_secret_path }}
+  register: homepage_current_raw
+  when: homepage_secret_stat.stat.exists
+  delegate_to: localhost
+  changed_when: false
+  no_log: true
+
+- name: "Homepage | start from them (no_log: secrets)"
+  ansible.builtin.set_fact:
+    homepage_current: "{{ (homepage_current_raw.stdout | from_json) if homepage_secret_stat.stat.exists else {} }}"
+    homepage_new: {}
+  no_log: true
+
+- name: Homepage | Proxmox token
+  ansible.builtin.import_tasks: pve.yml
+  when: "'HOMEPAGE_VAR_PVE_TOKEN_SECRET' not in homepage_current"
+
+- name: Homepage | OPNsense user and API key per firewall
+  ansible.builtin.include_tasks:
+    file: opnsense.yml
+    apply:
+      tags: [homepage]
+  loop: "{{ firewalls }}"
+  loop_control:
+    loop_var: homepage_fw
+    label: "{{ homepage_fw.name }}"
+  when: "('HOMEPAGE_VAR_OPNSENSE_' ~ homepage_fw.name | upper ~ '_SECRET') not in homepage_current"
+
+- name: Homepage | app keys and logins
+  ansible.builtin.import_tasks: apps.yml
+
+- name: "Homepage | desired Secret values (no_log: secrets)"
+  ansible.builtin.set_fact:
+    homepage_desired: "{{ homepage_current | combine(homepage_new) }}"
+  no_log: true
+
+- name: Homepage | write the SOPS-encrypted Secret
+  when: homepage_desired != homepage_current
+  delegate_to: localhost
+  no_log: true
+  block:
+    - name: Homepage | write the plaintext Secret manifest (sops matches creation_rules on this path)
+      ansible.builtin.copy:
+        dest: "{{ homepage_secret_path }}"
+        mode: "0644"
+        content: |
+          # Written by ansible/roles/homepage (ansible-playbook playbooks/site.yml --tags homepage);
+          # don't edit by hand, re-run the role.
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: {{ homepage_secret_name }}
+            namespace: {{ homepage_namespace }}
+          type: Opaque
+          stringData:
+          {{ homepage_desired | to_nice_yaml(indent=2, width=4096) | indent(2, first=True) }}
+
+    - name: Homepage | encrypt it in place with SOPS
+      ansible.builtin.command: "{{ homepage_mise }} sops -e -i {{ homepage_secret_path }}"
+      changed_when: true
+
+- name: Homepage | report
+  ansible.builtin.debug:
+    msg: >-
+      {{ homepage_secret_path | basename }}: {{ homepage_desired | length }} keys,
+      {{ 'rewritten: commit it, Flux applies it and Homepage picks it up' if homepage_desired != homepage_current else 'unchanged' }}.

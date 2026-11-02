@@ -1,5 +1,6 @@
-# Homepage (gethomepage.dev) start page at start.z7x.org: links to every lab app with an up/down
-# dot per link. Internal-only (tailnet/lab); no secrets, no Kubernetes RBAC.
+# Homepage (gethomepage.dev) start page at start.z7x.org: every lab app with status, pod and VM
+# stats, app widgets and news feeds. Internal-only (tailnet/lab). Credentials come from
+# ansible/roles/homepage (app/secret.sops.yaml); app/rbac.yaml is a read-only ClusterRole.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -19,6 +20,10 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

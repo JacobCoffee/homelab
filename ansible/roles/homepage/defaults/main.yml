@@ -1,0 +1,31 @@
+# Credentials for the Homepage start page (kubernetes/apps/status/homepage), all in one
+# SOPS-encrypted Secret of HOMEPAGE_VAR_* keys that Homepage substitutes into its config files.
+#
+# Created here, once (re-created only if their keys vanish from the Secret, since neither secret
+# can be read back): a read-only Proxmox token (built-in PVEAuditor role) and, on each firewall
+# (no config sync between them), an OPNsense user limited to the two pages the Homepage widget
+# reads, with its own API key. Copied in on every run: the *arr/SABnzbd keys from arr-api-keys,
+# Bazarr's and Seerr's keys from their config files, and the qBittorrent, AdGuard and Jellyfin
+# logins from the vault. The file is only rewritten when a value actually changed.
+homepage_repo: "{{ playbook_dir }}/../.."
+homepage_mise: "mise -C {{ homepage_repo }} exec --"
+homepage_namespace: status
+homepage_secret_name: homepage-secrets
+homepage_secret_path: "{{ homepage_repo }}/kubernetes/apps/status/homepage/app/secret.sops.yaml"
+homepage_arr_keys_path: "{{ homepage_repo }}/kubernetes/apps/media/arr-api-keys/app/secret.sops.yaml"
+
+homepage_pve_user: homepage@pve
+homepage_pve_role: PVEAuditor
+homepage_pve_token_name: homepage
+
+homepage_opnsense_user: homepage
+# OPNsense privilege ids (System > Access > Users > Effective privileges): what the Homepage
+# opnsense widget calls (CPU/memory from system activity, WAN rates from the traffic graph).
+homepage_opnsense_privs:
+  - page-diagnostics-system-activity
+  - page-status-trafficgraph
+# Each firewall's own address in the K8S zone: the API key is per firewall, so the widget talks to
+# one specific firewall rather than the CARP address, and pods reach the K8S zone directly.
+homepage_opnsense_zone: k8s
+
+homepage_adguard_user: admin

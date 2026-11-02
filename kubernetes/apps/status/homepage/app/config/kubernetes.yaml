@@ -1,2 +1,3 @@
 ---
-# Unused. Present because Homepage exits if it is missing and /app/config is read-only.
+# In-cluster: the pod's service account (read-only ClusterRole in ../rbac.yaml).
+mode: cluster

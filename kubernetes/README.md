@@ -43,7 +43,7 @@ flux get kustomizations
 | adguard-dot | `apps/network/adguard-dot`: cert-manager cert for `dns.z7x.org`/`*.dns.z7x.org` (AdGuard's own DoT/HTTPS TLS, separate from `z7x-org-tls`) plus a CronJob pushing it into both AdGuard instances -- see `fire-tv/DECISIONS.md` "DNS" |
 | theme-catalog | `apps/network/theme-catalog`: public static site at `themes.z7x.org`, built from a pinned commit of the public `github.com/JacobCoffee/hearth` mirror |
 | uptime-kuma | `apps/status/uptime-kuma` (namespace `status`): admin UI internal-only at `kuma.z7x.org`, public read-only status API at `status.z7x.org` -- see `fire-tv/DECISIONS.md` "Homelab services" |
-| homepage | `apps/status/homepage`: start page at `start.z7x.org` (internal only) linking every app, with an up/down dot per link. Edit `app/config/services.yaml` to add one; changes reach the pod within a minute, no restart |
+| homepage | `apps/status/homepage`: start page at `start.z7x.org` (internal only): every app with an up/down dot, pod CPU/memory, Proxmox VM/LXC stats, the apps' own widgets, and news feeds. Edit `app/config/services.yaml`; changes reach the pod within a minute, no restart. Credentials are `app/secret.sops.yaml`, written by `ansible-playbook playbooks/site.yml --tags homepage` (`../ansible/roles/homepage`); after it changes, `kubectl -n status rollout restart deploy/homepage` |
 | firetv-reapply | `apps/firetv/reapply` (namespace `firetv`): CronJob re-running the Fire TV debloat/tweaks after a reboot -- see `fire-tv/DECISIONS.md` |
 | metrics-server, kubelet-csr-approver | `kubectl top`; approves kubelet serving certificates |
 | Spegel | nodes share pulled images with each other |
@@ -156,9 +156,10 @@ HelmRelease here.
   itself is still maintained), Swaparr (bundled with Huntarr, narrower than Cleanuparr), Ombi
   (superseded by Seerr), Organizr/Homarr-style dashboards (the lab-wide start page is Homepage,
   `apps/status/homepage`).
-- **API keys:** `apps/media/secrets` holds one `arr-api-keys` Secret with pre-generated keys for
+- **API keys:** `apps/media/arr-api-keys` holds one `arr-api-keys` Secret with pre-generated keys for
   Sonarr/Radarr/Lidarr/Prowlarr, injected via `<APP>__AUTH__APIKEY` env vars (the Servarr config
-  override convention) so Recyclarr and Unpackerr already know them. Bazarr (Python, no such env
+  override convention) so Recyclarr and Unpackerr already know them, plus SABnzbd's (its image
+  writes `SABNZBD__API_KEY` into `sabnzbd.ini` on start). Bazarr (Python, no such env
   override) and the Prowlarr "Apps"/Bazarr "Settings" links to Sonarr/Radarr have no declarative
   equivalent upstream -- those stay manual UI steps, along with indexer/Usenet provider accounts,
   the Jellyfin admin account, and Seerr's first-run wizard (which needs that Jellyfin account).

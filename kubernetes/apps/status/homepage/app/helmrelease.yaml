@@ -4,6 +4,12 @@
 # /app/config is the read-only homepage-config ConfigMap. Homepage copies a skeleton for any
 # config file that's missing (and exits if it can't), so every file it looks for is in config/,
 # even the empty ones. LOG_TARGETS=stdout keeps it from writing config/logs/.
+#
+# Credentials: homepage-secrets (secret.sops.yaml, written by ansible/roles/homepage) as
+# HOMEPAGE_VAR_* env vars, which Homepage substitutes into {{HOMEPAGE_VAR_...}} in the config.
+# Env is read at start: after the Secret changes, kubectl -n status rollout restart deploy/homepage.
+# A variable that doesn't exist yet only breaks the widget using it. The service account's
+# read-only ClusterRole (rbac.yaml) feeds the Kubernetes widget and per-app pod stats.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -17,6 +23,8 @@ spec:
   values:
     controllers:
       homepage:
+        serviceAccount:
+          identifier: homepage
         containers:
           app:
             image:
@@ -26,6 +34,9 @@ spec:
               TZ: America/Chicago
               HOMEPAGE_ALLOWED_HOSTS: start.z7x.org
               LOG_TARGETS: stdout
+            envFrom:
+              - secretRef:
+                  name: homepage-secrets
             probes:
               liveness: &probe
                 enabled: true
@@ -51,12 +62,15 @@ spec:
               limits:
                 memory: 384Mi
         pod:
+          automountServiceAccountToken: true
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
             runAsGroup: 1000
             seccompProfile:
               type: RuntimeDefault
+    serviceAccount:
+      homepage: {}
     service:
       app:
         controller: homepage

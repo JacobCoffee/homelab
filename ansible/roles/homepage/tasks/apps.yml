@@ -1,0 +1,53 @@
+# Keys that already live elsewhere, copied in on every run so a rotation there reaches Homepage on
+# the next run. Bazarr and Seerr generate theirs on first boot (no env override), so they're read
+# from the apps' own config files.
+- name: "Homepage | *arr and SABnzbd keys from arr-api-keys (no_log: decrypted)"
+  ansible.builtin.command: >-
+    {{ homepage_mise }} sops -d --extract '["stringData"]' --output-type json {{ homepage_arr_keys_path }}
+  register: homepage_arr_keys
+  delegate_to: localhost
+  changed_when: false
+  no_log: true
+
+- name: "Homepage | Bazarr config (no_log: contains its key)"
+  ansible.builtin.command: >-
+    {{ homepage_mise }} kubectl -n media exec deploy/bazarr -- cat /config/config/config.yaml
+  register: homepage_bazarr_config
+  delegate_to: localhost
+  changed_when: false
+  no_log: true
+
+- name: "Homepage | Seerr settings (no_log: contains its key)"
+  ansible.builtin.command: >-
+    {{ homepage_mise }} kubectl -n media exec deploy/seerr -- cat /app/config/settings.json
+  register: homepage_seerr_settings
+  delegate_to: localhost
+  changed_when: false
+  no_log: true
+
+- name: "Homepage | collect them (no_log: secrets)"
+  vars:
+    arr: "{{ homepage_arr_keys.stdout | from_json }}"
+  ansible.builtin.set_fact:
+    homepage_new: >-
+      {{ homepage_new | combine({
+        'HOMEPAGE_VAR_SONARR_KEY': arr.SONARR_API_KEY,
+        'HOMEPAGE_VAR_RADARR_KEY': arr.RADARR_API_KEY,
+        'HOMEPAGE_VAR_LIDARR_KEY': arr.LIDARR_API_KEY,
+        'HOMEPAGE_VAR_PROWLARR_KEY': arr.PROWLARR_API_KEY,
+        'HOMEPAGE_VAR_SABNZBD_KEY': arr.SABNZBD_API_KEY,
+        'HOMEPAGE_VAR_BAZARR_KEY': (homepage_bazarr_config.stdout | from_yaml).auth.apikey,
+        'HOMEPAGE_VAR_SEERR_KEY': (homepage_seerr_settings.stdout | from_json).main.apiKey,
+        'HOMEPAGE_VAR_QBITTORRENT_USER': vault_qbittorrent_username,
+        'HOMEPAGE_VAR_QBITTORRENT_PASSWORD': vault_qbittorrent_password,
+        'HOMEPAGE_VAR_ADGUARD_USER': homepage_adguard_user,
+        'HOMEPAGE_VAR_ADGUARD_PASSWORD': vault_adguard_password
+      }) }}
+  no_log: true
+
+# Created by hand in Jellyfin (Dashboard > API Keys), then scripts/vault-set.py vault_jellyfin_api_key.
+- name: "Homepage | Jellyfin key from the vault, once it's there (no_log: secret)"
+  ansible.builtin.set_fact:
+    homepage_new: "{{ homepage_new | combine({'HOMEPAGE_VAR_JELLYFIN_KEY': vault_jellyfin_api_key}) }}"
+  when: vault_jellyfin_api_key | default('') | length > 0
+  no_log: true

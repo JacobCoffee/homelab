@@ -1,2 +1,12 @@
 ---
-# Unused. Present because Homepage exits if it is missing and /app/config is read-only.
+# One entry per Proxmox node, named exactly as the node (services.yaml proxmoxNode). Both use the
+# same read-only token (homepage@pve, PVEAuditor; ansible/roles/homepage). By IP: the
+# *.internal.z7x.org names are tailnet addresses pods can't reach; Homepage skips TLS checks.
+hnhv01:
+  url: https://192.168.1.220:8006
+  token: "{{HOMEPAGE_VAR_PVE_TOKEN_ID}}"
+  secret: "{{HOMEPAGE_VAR_PVE_TOKEN_SECRET}}"
+hnhv02:
+  url: https://192.168.1.192:8006
+  token: "{{HOMEPAGE_VAR_PVE_TOKEN_ID}}"
+  secret: "{{HOMEPAGE_VAR_PVE_TOKEN_SECRET}}"

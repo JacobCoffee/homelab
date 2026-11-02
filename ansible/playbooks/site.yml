@@ -69,6 +69,12 @@
   roles:
     - monitoring_pve
 
+- name: "Homepage credentials (Proxmox token, OPNsense API users, app keys -> SOPS secret in kubernetes/apps/status)"
+  hosts: pve[0]
+  tags: [homepage]
+  roles:
+    - homepage
+
 - name: "Proxmox host syslog -> Alloy (kubernetes/apps/observability/alloy)"
   hosts: pve
   tags: [syslog]
