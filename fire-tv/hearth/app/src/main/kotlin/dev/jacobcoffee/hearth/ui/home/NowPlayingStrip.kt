@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -102,7 +101,7 @@ fun NowPlayingStrip(np: NowPlaying, source: NowPlayingSource, type: HomeType, mo
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(3.dp))
                 TrackProgress(np, type)
             }
         }
@@ -140,8 +139,9 @@ private fun Cover(np: NowPlaying, source: NowPlayingSource) {
 }
 
 /**
- * Artist and app over a time bar. Sessions report position only on changes, so while playing
- * this ticks once a second from the last report, and only while Home is resumed.
+ * Artist and app, then a time bar with the time beside it. Sessions report position only on
+ * changes, so while playing this ticks once a second from the last report, and only while
+ * Home is resumed.
  */
 @Composable
 private fun TrackProgress(np: NowPlaying, type: HomeType) {
@@ -164,28 +164,29 @@ private fun TrackProgress(np: NowPlaying, type: HomeType) {
         position > 0 -> formatTrackTime(position)
         else -> ""
     }
+    Text(
+        listOfNotNull(np.artist, np.appLabel).joinToString("  \u00b7  ").uppercase(),
+        style = type.label,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    if (time.isEmpty()) return
+    Spacer(Modifier.height(4.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            listOfNotNull(np.artist, np.appLabel).joinToString("  \u00b7  ").uppercase(),
-            style = type.label,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (time.isNotEmpty()) Text(time, style = type.label, modifier = Modifier.padding(start = 12.dp))
-    }
-    if (np.durationMs > 0) {
-        Spacer(Modifier.height(6.dp))
-        val fraction = (position.toFloat() / np.durationMs).coerceIn(0f, 1f)
-        Canvas(Modifier.fillMaxWidth().height(4.dp)) {
-            val y = size.height / 2
-            val track = 1.dp.toPx()
-            val fill = 2.dp.toPx()
-            drawLine(colors.line, Offset(0f, y), Offset(size.width, y), track)
-            val x = size.width * fraction
-            drawLine(colors.accent, Offset(0f, y), Offset(x, y), fill, StrokeCap.Round)
-            drawRoundRect(colors.accent, Offset(x - fill, y - fill), Size(fill * 2, fill * 2), CornerRadius(fill))
+        if (np.durationMs > 0) {
+            val fraction = (position.toFloat() / np.durationMs).coerceIn(0f, 1f)
+            Canvas(Modifier.weight(1f).height(4.dp)) {
+                val y = size.height / 2
+                val track = 1.dp.toPx()
+                val fill = 2.dp.toPx()
+                drawLine(colors.line, Offset(0f, y), Offset(size.width, y), track)
+                val x = size.width * fraction
+                drawLine(colors.accent, Offset(0f, y), Offset(x, y), fill, StrokeCap.Round)
+                drawRoundRect(colors.accent, Offset(x - fill, y - fill), Size(fill * 2, fill * 2), CornerRadius(fill))
+            }
+            Spacer(Modifier.width(10.dp))
         }
+        Text(time, style = type.label)
     }
 }
 

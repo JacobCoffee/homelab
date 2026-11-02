@@ -27,7 +27,7 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 /** The strip under the header. Height is fixed so loading, empty and error states never move the app grid. */
-val STRIP_HEIGHT = 54.dp
+val STRIP_HEIGHT = 58.dp
 
 /**
  * The guild's next quests in the home strip: a gold quest mark, the title in display type,
