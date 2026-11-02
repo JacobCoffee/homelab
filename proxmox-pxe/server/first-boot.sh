@@ -78,6 +78,46 @@ if vgs vmdata >/dev/null 2>&1; then
   note "storage: vmdata holds VM/CT disks; local (USB) holds iso,vztmpl,backup"
 fi
 
+# --- 4. HA services: only useful in a cluster, and they write to the stick constantly
+if [ -f /etc/pve/corosync.conf ]; then
+  note "ha: node is clustered; HA services left as they are"
+else
+  systemctl disable --now pve-ha-lrm pve-ha-crm >/dev/null 2>&1
+  note "ha: pve-ha-lrm/crm disabled (single node). After joining a cluster: systemctl enable --now pve-ha-lrm pve-ha-crm"
+fi
+
+# --- 5. "No valid subscription" pop-up ------------------------------------------
+# Patch only the login/update check's condition, so the UI proceeds without the
+# dialog. A dpkg hook re-applies it whenever proxmox-widget-toolkit is upgraded.
+cat > /usr/local/sbin/pxe-no-nag <<'EOF'
+#!/bin/sh
+f=/usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
+[ -f "$f" ] && perl -0pi -e "s/res\.data\.status\.toLowerCase\(\) !== 'active'(\s*\)\s*\{)/false\1/" "$f"
+exit 0
+EOF
+chmod 0755 /usr/local/sbin/pxe-no-nag
+echo 'DPkg::Post-Invoke { "/usr/local/sbin/pxe-no-nag"; };' > /etc/apt/apt.conf.d/86pxe-no-nag
+/usr/local/sbin/pxe-no-nag
+if grep -Pzq '\|\|\s*false\s*\)\s*\{' /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js; then
+  note "ui: subscription pop-up removed (re-applied after each upgrade)"
+else
+  note "ui: subscription pop-up NOT removed - proxmoxlib.js changed; check /usr/local/sbin/pxe-no-nag"
+fi
+
+# --- 6. Updates --------------------------------------------------------------------
+export DEBIAN_FRONTEND=noninteractive
+if apt-get -q update >/dev/null && apt-get -yq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+  dist-upgrade >/var/log/pxe-first-boot-upgrade.log 2>&1; then
+  newest=$(ls /boot/vmlinuz-*-pve 2>/dev/null | sed 's|.*/vmlinuz-||' | sort -V | tail -n1)
+  if [ -n "$newest" ] && [ "$newest" != "$(uname -r)" ]; then
+    note "apt: upgraded; reboot to run kernel $newest (now $(uname -r))"
+  else
+    note "apt: upgraded; no reboot needed"
+  fi
+else
+  note "apt: upgrade FAILED - see /var/log/pxe-first-boot-upgrade.log"
+fi
+
 curl -fsS -m 10 -X POST --data-binary "$REPORT" "$SERVER/first-boot-report?host=$(hostname -s)" >/dev/null \
   || echo "could not report to $SERVER"
 exit 0

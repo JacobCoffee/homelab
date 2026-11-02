@@ -31,7 +31,10 @@ sequenceDiagram
 | IP | whatever the router's DHCP gave it during install, written as static config |
 | root password | `secrets/root-password`: generated on first build as `xxxxx-xxxxx-xxxxx-xxxxx` (no lookalike characters); change it from the dashboard |
 | root SSH keys | your SSH agent's keys (Secretive) + `secrets/automation_ed25519` for Ansible; refreshed on every `./build.sh` |
-| VM/CT storage | `vmdata`: LVM-thin on the internal drive, if it is the only internal drive **and blank** |
+| VM/CT storage | `vmdata`: LVM-thin on the internal drive, if it is the only internal drive **and blank**; otherwise skipped (set up by hand or Ansible) |
+| HA services | `pve-ha-lrm`/`pve-ha-crm` disabled while the node is not clustered (they write to the stick constantly); re-enable after joining a cluster |
+| UI | "No valid subscription" pop-up removed; a dpkg hook re-applies the patch after upgrades |
+| Updates | `apt dist-upgrade` on first boot; the report says if a reboot is needed for a new kernel |
 | `local` storage (USB) | `iso,vztmpl,backup` only, so VM disks never land on the stick |
 | USB wear | journal kept in RAM (lost on reboot), root mounted `noatime` |
 | apt | enterprise repos disabled, `pve-no-subscription` enabled |
@@ -107,7 +110,7 @@ The dashboard's Reinstall button does the same as `forget`.
   On the node: `wipefs -a /dev/sdX && pxe-first-boot` (destroys that drive's data).
 - Cluster: on `hnhv01` run `pvecm create homelab`, then join the rest via Datacenter →
   Cluster → Join. Every node uses the same storage ID `vmdata`, so the cluster-wide
-  storage config works unchanged.
+  storage config works unchanged. Then on every node: `systemctl enable --now pve-ha-lrm pve-ha-crm`.
 - Installer failure: the PC drops to a shell. Logs: `/tmp/fetch_answer.log`,
   `/tmp/auto_installer`, `/tmp/install-low-level-start-session.log`.
 
