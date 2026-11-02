@@ -400,9 +400,14 @@ Model fields read from `opnsense/core` `stable/26.7` and the live `get`/`get_ite
 - **Moving a VIP:** `vip_settings/set_item` refuses a new address while any rule still names
   the old one (`whereUsed`), so `wan_vip.yml` runs after the outbound NAT rules and every WAN
   forward have been pointed at the new address; one run moved 192.168.1.250 -> .189.
-- **Spectrum WAN address:** the router can't exclude addresses from its pool, and a static
-  `.250` never showed up in the app's device list. A placeholder DHCP client with its own MAC
-  (requested `.250`, offered `.189`; lease 43200 s) does show up and holds the address.
+- **Spectrum WAN address:** the router can't exclude addresses from its pool, and the My
+  Spectrum app lists neither the CARP MAC nor the placeholder (it misses many wired devices),
+  so nothing on the WAN can be reserved from it. A placeholder DHCP client with its own MAC
+  (requested `.250`, offered `.189`; lease 43200 s) holds an active lease instead. Renew fails
+  (`bind(UDP): Cannot assign requested address`, then the broadcast renews get no answer
+  because the router unicasts the ACK to `.189`, i.e. to the CARP master); after the
+  `lease lost` the DISCOVER/REQUEST gets `.189` again within ~9 s. Restarting the client every
+  4 h (`RuntimeMaxSec`) re-requests it before T1, so the lease never lapses.
   `dhclient` failed there: Debian's AppArmor profile blocked its `-sf /bin/true` script and its
   lease/pid paths; busybox `udhcpc -s /bin/true` is unconfined and needs no state files.
 - **CARP over the SDN vnets works:** the VXLAN head-end replication carries the multicast

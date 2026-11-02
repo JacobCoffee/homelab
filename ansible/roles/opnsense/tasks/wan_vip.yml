@@ -10,10 +10,9 @@
         descr: CARP WAN
   ansible.builtin.include_tasks: carp_vips.yml
 
-# The Spectrum router can't exclude addresses from its pool, so a placeholder DHCP client with
-# its own MAC holds the address (templates/wan-vip-lease.service.j2), on the first firewall's
-# node only (one MAC, one place). It appears in the My Spectrum app as "hnfw-vip", where the
-# address is reserved for it.
+# The Spectrum router can't exclude or (from the app) reserve the address, so a placeholder DHCP
+# client with its own MAC keeps an active lease on it (templates/wan-vip-lease.service.j2), on
+# the first firewall's node only (one MAC, one place).
 - name: WAN VIP | placeholder DHCP lease
   when: inventory_hostname == firewalls[0].host
   block:
@@ -48,6 +47,6 @@
         that: opnsense_vip_lease_addr.stdout == firewall_wan_vip
         fail_msg: >-
           The placeholder (MAC {{ firewall_wan_vip_mac }}, "hnfw-vip") got {{ opnsense_vip_lease_addr.stdout }},
-          not {{ firewall_wan_vip }}. Set firewall_wan_vip to {{ opnsense_vip_lease_addr.stdout }} (or reserve
-          {{ firewall_wan_vip }} for it in the My Spectrum app) and re-run.
+          not {{ firewall_wan_vip }}. Set firewall_wan_vip to {{ opnsense_vip_lease_addr.stdout }} and re-run
+          (then the cloudflare tag, for the dns.z7x.org records).
         quiet: true

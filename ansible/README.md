@@ -84,14 +84,17 @@ untested; the plugin only passes the auth key when tailscaled has no logged-in p
 
 Two firewalls (`firewalls` in `group_vars/all/main.yml`): `hnfw01` on `hnhv01` and `hnfw02` on
 `hnhv02`. Each play run ends by printing the firewall's WAN IP and MAC: **reserve both in the My
-Spectrum app**, plus the WAN CARP address `192.168.1.189` (`firewall_wan_vip`) for the device
-`hnfw-vip` (MAC `02:fa:00:00:01:fa`).
+Spectrum app**.
 
-The Spectrum router can't keep an address out of its DHCP pool, so `hnhv01` runs a placeholder
-DHCP client for the CARP address (`wan-vip-lease.service`: busybox `udhcpc` on a macvlan
-`wanvip0` with that MAC, script `/bin/true`, no ARP). It holds the lease and makes the address
-show up as a device the app can reserve; the address itself is only ever configured as the CARP
-VIP. The play stops (`wan_vip.yml`) if the router hands the placeholder anything else.
+The WAN CARP address `192.168.1.189` (`firewall_wan_vip`) can't be reserved: the router can't
+keep an address out of its pool, and the app doesn't list the CARP MAC (it misses plenty of
+wired devices). Instead `hnhv01` holds an active lease on it with a placeholder DHCP client
+(`wan-vip-lease.service`: busybox `udhcpc` on a macvlan `wanvip0`, MAC `02:fa:00:00:01:fa`,
+hostname `hnfw-vip`, script `/bin/true`, no ARP), and the router won't offer a leased address
+to anyone else. Renewals can't reach the placeholder (the router unicasts them to the address,
+i.e. to the CARP master), so the service restarts every 4 h and re-requests the address, which
+refreshes the 12 h lease. The play stops (`wan_vip.yml`) if the router hands the placeholder
+anything else. Gap: if `hnhv01` is down for more than 12 h, the lease can expire.
 
 - WebGUI: `https://<wan-ip>/`, user `root`, password `vault_opnsense_root_password`
   (`ansible-vault view inventory/group_vars/all/vault.yml`).

@@ -105,8 +105,7 @@
     msg: >-
       {{ opnsense_hostname }} is up: https://{{ opnsense_wan_ip }}/ (OPNsense
       {{ opnsense_api.json.product.CORE_VERSION | default('?') }}).
-      Reserve {{ opnsense_wan_ip }} for MAC {{ opnsense_wan_mac }} in the My Spectrum app, and
-      {{ firewall_wan_vip }} for "hnfw-vip" ({{ firewall_wan_vip_mac }}).
+      Reserve {{ opnsense_wan_ip }} for MAC {{ opnsense_wan_mac }} in the My Spectrum app.
 
 # Last: the WAN CARP address can only move once no rule points at the old one, and the
 # placeholder lease check stops the run until the router has given it that address.

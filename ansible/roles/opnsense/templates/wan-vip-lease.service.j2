@@ -1,10 +1,15 @@
 # {{ ansible_managed }}
-# Placeholder DHCP client for the firewalls' WAN CARP address ({{ firewall_wan_vip }}): keeps a
-# lease (and the My Spectrum reservation) on MAC {{ firewall_wan_vip_mac }} so the router never
-# hands the address to another device. The script is /bin/true, so the address is never
-# configured here; the CARP master answers for it. arp_ignore=1: this interface answers no ARP.
+# Placeholder DHCP client for the firewalls' WAN CARP address ({{ firewall_wan_vip }}): keeps an
+# active lease on MAC {{ firewall_wan_vip_mac }} so the router never hands the address to
+# another device (the My Spectrum app can't reserve it: it doesn't list this client). The script
+# is /bin/true, so the address is never configured here; the CARP master answers for it.
+# arp_ignore=1: this interface answers no ARP.
 # busybox udhcpc, not dhclient: Debian's AppArmor profile for dhclient only allows its own
 # script, lease and pid paths.
+# Renewals can't work: the router unicasts the reply to the leased address, which is the CARP
+# master's, so the lease would lapse at expiry before udhcpc rediscovers it. Instead the service
+# restarts every 4 h (well before T1 at 6 h of the 12 h lease): a fresh DISCOVER/REQUEST for the
+# same address refreshes the full lease without ever releasing it.
 [Unit]
 Description=Spectrum DHCP lease holder for the firewalls' WAN CARP address
 After=network-online.target
@@ -19,6 +24,7 @@ ExecStart=/usr/bin/busybox udhcpc -f -i wanvip0 -s /bin/true -r {{ firewall_wan_
 ExecStopPost=-/usr/sbin/ip link del wanvip0
 Restart=always
 RestartSec=30
+RuntimeMaxSec=4h
 
 [Install]
 WantedBy=multi-user.target
