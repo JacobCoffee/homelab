@@ -46,4 +46,15 @@ spec:
     # the lab-gateway client allows as https://*.z7x.org/oauth2/callback.
     logoutPath: /oauth2/logout
     refreshToken: true
+    # Only page loads go to the sign-in. A page's background requests (fetch/XHR, websockets) get
+    # a 401 instead: each redirect starts a sign-in flow with its own nonce/verifier cookies, and
+    # an open start page polling dozens of widget APIs piled up >100 cookies, which Envoy rejects
+    # (http2.too_many_headers), resetting every request to that host.
+    denyRedirect:
+      headers:
+        - name: Sec-Fetch-Mode
+          type: RegularExpression
+          value: "^(cors|no-cors|same-origin|websocket)$"
+    # Unfinished sign-in flows' cookies expire after this (default 10m).
+    csrfTokenTTL: 5m
   # Pocket ID lets only lab-admins into the lab-gateway client, so any valid ID token is enough.
