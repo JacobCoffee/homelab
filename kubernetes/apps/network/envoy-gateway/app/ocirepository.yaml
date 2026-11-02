@@ -8,3 +8,6 @@ spec:
   url: oci://docker.io/envoyproxy/gateway-helm
   ref:
     tag: v1.9.3
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
