@@ -9,6 +9,9 @@ sops = "3.13.3"
 age = "1.3.2"
 # Restores / snapshot inspection for the R2 backup repos (kubernetes/apps/backup, VolSync, pve_backup).
 restic = "0.19.1"
+# Cabotage PaaS infra (terraform/cabotage/): OpenTofu, not Terraform, to keep a public repo
+# clear of the BSL.
+opentofu = "1.9.4"
 
 [env]
 # Written by the talos role (git-ignored); reachable over Tailscale via OPNsense's lab routes.
