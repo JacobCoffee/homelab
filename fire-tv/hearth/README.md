@@ -44,6 +44,9 @@ tools/install.sh           # builds, installs, grants READ_LOGS, sets Hearth as 
 tools/push-config.sh ../config/hearth.local.json
 ```
 
+From `fire-tv/`, the same steps are `make setup`, `make install` and `make push-config`
+(`make` lists the rest).
+
 `install.sh` points `enabled_accessibility_services` at Hearth's `HomeRedirectService` only.
 Unset widgets (weather, guild events, Uptime Kuma, AdGuard, TV controls) stay hidden.
 

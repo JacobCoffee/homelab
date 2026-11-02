@@ -21,6 +21,7 @@ t() { adb -s "$TCL" shell "$@"; }
 
 # The [x] bracket keeps each pattern from matching the shell that runs it.
 stop() {
+  # shellcheck disable=SC2016 # $(cat …) must expand on the TV, not here
   t 'kill $(cat /data/local/tmp/tcl-keys.pid 2>/dev/null) 2>/dev/null; pkill -f "[t]cl-keys.sh"; pkill -f "[l]ogcat -v raw -s InputReader"; pkill -f "[t]cl-listen.sh"; pkill -f "[n]c -L -p '"$LISTEN_PORT"'"; true'
 }
 status() {
