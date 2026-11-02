@@ -128,6 +128,10 @@ spec:
         storageClassName: proxmox-vmdata
         accessModes: ["ReadWriteOnce"]
         size: 2Gi
+      # RWO volume: a rolling update deadlocks when the new pod lands on another node, because the
+      # volume stays attached to the old pod. Recreate stops the old pod first.
+      deploymentStrategy:
+        type: Recreate
       resources:
         requests: { cpu: 50m, memory: 192Mi }
         limits: { memory: 640Mi }
