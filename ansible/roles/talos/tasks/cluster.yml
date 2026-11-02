@@ -7,6 +7,7 @@
     state: directory
     suffix: talos
   register: talos_tmp
+  changed_when: false
 
 - name: Render and apply
   block:
@@ -26,6 +27,7 @@
       loop_control:
         loop_var: node
         label: "{{ node.name }}"
+      changed_when: false   # scratch copy, rendered fresh every run
 
     - name: Per-node machine config
       ansible.builtin.command: >-
@@ -40,22 +42,23 @@
         label: "{{ node.name }}"
       changed_when: false
 
-    - name: talosconfig (endpoints = every node; never the VIP, which needs etcd)
-      ansible.builtin.shell: >-
+    # Written once (a new client cert each time would rewrite it every run); the endpoint
+    # list is refreshed every run so new nodes appear.
+    - name: talosconfig (git-ignored)
+      ansible.builtin.command: >-
         {{ talos_mise }} talosctl gen config {{ k8s_cluster_name }} https://{{ k8s_vip }}:6443
         --with-secrets {{ talos_tmp.path }}/secrets.yaml --output-types talosconfig
-        --output {{ talos_tmp.path }}/talosconfig --force &&
-        {{ talos_mise }} talosctl --talosconfig {{ talos_tmp.path }}/talosconfig config endpoint
-        {{ k8s_nodes | map(attribute='ip') | join(' ') }} &&
-        {{ talos_mise }} talosctl --talosconfig {{ talos_tmp.path }}/talosconfig config node
-        {{ k8s_nodes[0].ip }}
-      changed_when: false
+        --output {{ talos_config }}
+      args:
+        creates: "{{ talos_config }}"
 
-    - name: Keep talosconfig in the repo (git-ignored)
-      ansible.builtin.copy:
-        src: "{{ talos_tmp.path }}/talosconfig"
-        dest: "{{ talos_config }}"
-        mode: "0600"
+    - name: talosconfig endpoints = every node (never the VIP, which needs etcd)
+      ansible.builtin.shell: >-
+        {{ talos_mise }} talosctl --talosconfig {{ talos_config }} config endpoint
+        {{ k8s_nodes | map(attribute='ip') | join(' ') }} &&
+        {{ talos_mise }} talosctl --talosconfig {{ talos_config }} config node {{ k8s_nodes[0].ip }} &&
+        chmod 600 {{ talos_config }}
+      changed_when: false
 
     - name: Node state (installed = answers the authenticated API)
       ansible.builtin.command: >-
@@ -101,7 +104,8 @@
       loop: "{{ talos_drift.results }}"
       loop_control:
         label: "{{ item.item.node.name }}"
-      when: item is not skipped and 'No changes' not in item.stdout
+      # talosctl prints the dry-run summary on stderr.
+      when: item is not skipped and 'No changes' not in (item.stdout ~ item.stderr)
       changed_when: true
 
   always:
@@ -109,6 +113,7 @@
       ansible.builtin.file:
         path: "{{ talos_tmp.path }}"
         state: absent
+      changed_when: false
 
 - name: Wait for every node to come up installed
   ansible.builtin.command: >-
