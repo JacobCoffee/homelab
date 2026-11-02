@@ -135,17 +135,16 @@ your GitHub account, so this is a manual step:
    want it public.
 10. Create the app. Generate a **private key** (downloads a `.pem`). Note the **App ID** and
     generate a **client secret** (OAuth tab).
-11. Store the four values in the vault (never print them back out):
+11. Store the four values in the vault (never print them back out; this prompts interactively
+    and writes directly -- avoids `ansible-vault edit`, which opens `$EDITOR` and can silently
+    fail to save). Works from any shell, including fish:
     ```sh
-    cd ansible
-    ansible-vault edit inventory/group_vars/all/vault.yml
-    # set:
-    #   vault_cabotage_github_app_id: "<App ID>"
-    #   vault_cabotage_github_app_client_id: "<OAuth Client ID>"
-    #   vault_cabotage_github_app_client_secret: "<OAuth Client secret>"
-    #   vault_cabotage_github_app_private_key: |
-    #     <paste full contents of the downloaded .pem, as a YAML block scalar>
+    bash terraform/cabotage/set-github-app-secrets.sh
+    # prompts for: App ID, OAuth Client ID, OAuth Client secret (hidden), then paste the full
+    # .pem private key and press Ctrl-D on its own line.
     ```
+    Tell the integrator once this is done -- re-apply and the admin SQL step are handled from
+    here.
 12. Re-apply so the module picks up `github_app_id` and `tf.sh` materializes the new secret files:
     ```sh
     cd terraform/cabotage
