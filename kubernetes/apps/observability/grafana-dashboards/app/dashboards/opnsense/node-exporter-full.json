@@ -15551,7 +15551,7 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "OPNsense (Node Exporter)",
-  "uid": "rYdddlPWk",
+  "uid": "opnsense-node-exporter",
   "version": 105,
   "weekStart": "",
   "gnetId": 1860

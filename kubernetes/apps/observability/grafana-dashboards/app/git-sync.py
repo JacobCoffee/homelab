@@ -106,9 +106,11 @@ def main():
         state = sync.get("state")
         print(f"healthy={health.get('healthy')} sync={state} {sync.get('message') or health.get('message') or ''}",
               flush=True)
-        if state == "error" or health.get("healthy") is False:
-            sys.exit(f"sync failed: {json.dumps(st)}")
-        if health.get("healthy") and state in ("success", "warning"):
+        # "warning" means some files were skipped (unparseable, UID owned by another provisioner):
+        # those dashboards are missing, so fail rather than report a partial sync as done.
+        if state in ("error", "warning") or health.get("healthy") is False:
+            sys.exit(f"sync {state or 'unhealthy'}: {json.dumps(st)}")
+        if health.get("healthy") and state == "success":
             print("stats:", json.dumps(st.get("stats", [])), flush=True)
             return
     sys.exit("sync did not finish within 5 minutes")
