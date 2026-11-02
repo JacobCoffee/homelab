@@ -1,0 +1,20 @@
+# Nothing outside these callers reaches status pods, so the gateway's passkey check can't be
+# bypassed by going to a pod directly (Homepage calls Kuma in-namespace; Prometheus scrapes).
+# Ingress only; egress is unrestricted. kubelet probes come from the node (entity host).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: lab-sso-ingress
+  namespace: status
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: status
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: envoy-gateway-system
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+    - fromEntities:
+        - host

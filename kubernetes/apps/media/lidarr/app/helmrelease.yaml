@@ -19,10 +19,10 @@ spec:
               tag: "3.1.2.4902"
             env:
               TZ: America/Chicago
-              LIDARR__AUTH__METHOD: Forms
-              # Enabled, not DisabledForLocalAddresses: every request arrives from the gateway's
-              # pod IP, which counts as local, so that setting meant no login at all.
-              LIDARR__AUTH__REQUIRED: Enabled
+              # External: the login is the gateway's passkey check (network/lab-sso), and pods can
+              # only be reached through the gateway or from the lab's own namespaces. /api still
+              # requires the API key.
+              LIDARR__AUTH__METHOD: External
               LIDARR__AUTH__APIKEY:
                 valueFrom:
                   secretKeyRef:

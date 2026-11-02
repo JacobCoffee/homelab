@@ -22,10 +22,10 @@ spec:
               tag: "2.1.5.5216"
             env:
               TZ: America/Chicago
-              PROWLARR__AUTH__METHOD: Forms
-              # Enabled, not DisabledForLocalAddresses: every request arrives from the gateway's
-              # pod IP, which counts as local, so that setting meant no login at all.
-              PROWLARR__AUTH__REQUIRED: Enabled
+              # External: the login is the gateway's passkey check (network/lab-sso), and pods can
+              # only be reached through the gateway or from the lab's own namespaces. /api still
+              # requires the API key.
+              PROWLARR__AUTH__METHOD: External
               PROWLARR__AUTH__APIKEY:
                 valueFrom:
                   secretKeyRef:

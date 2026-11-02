@@ -21,10 +21,10 @@ spec:
               tag: "5.0.0.2838"
             env:
               TZ: America/Chicago
-              SONARR__AUTH__METHOD: Forms
-              # Enabled, not DisabledForLocalAddresses: every request arrives from the gateway's
-              # pod IP, which counts as local, so that setting meant no login at all.
-              SONARR__AUTH__REQUIRED: Enabled
+              # External: the login is the gateway's passkey check (network/lab-sso), and pods can
+              # only be reached through the gateway or from the lab's own namespaces. /api still
+              # requires the API key.
+              SONARR__AUTH__METHOD: External
               SONARR__AUTH__APIKEY:
                 valueFrom:
                   secretKeyRef:

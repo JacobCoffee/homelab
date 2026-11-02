@@ -3,5 +3,7 @@ kind: Kustomization
 resources:
   - ./securitypolicy-media.yaml
   - ./securitypolicy-status.yaml
+  - ./networkpolicy-media.yaml
+  - ./networkpolicy-status.yaml
   - ./secret-media.sops.yaml
   - ./secret-status.sops.yaml

@@ -21,13 +21,14 @@ spec:
     controllers:
       qbittorrent:
         initContainers:
-          # The image's default config skips web UI auth for every RFC1918 client
-          # (AuthSubnetWhitelist), and all traffic arrives from Envoy's pod IPs, so anyone on the
-          # tailnet/lab was logged in automatically. qBittorrent can't take these settings as flags,
-          # so this rewrites [WebUI] on every start: no subnet bypass, localhost auth and CSRF
-          # protection on, and the login from gluetun-secret. It also drops the image's legacy
-          # [Preferences] WebUI\* defaults so a fresh PVC can't migrate the bypass back in.
-          # (No ${...} in the script: Flux postBuild substitution would rewrite it.)
+          # Sign-in is the gateway's passkey check (network/lab-sso), so the web UI skips its own
+          # login for the pod network only (AuthSubnetWhitelist 10.244.0.0/16: Envoy's pod IPs, and
+          # the media/status/observability pods the lab-sso-ingress policy lets in). The image's
+          # default bypassed every RFC1918 client, including the whole tailnet/lab; this rewrites
+          # [WebUI] on every start because qBittorrent can't take these settings as flags. The
+          # admin login from gluetun-secret stays for anything outside that subnet. It also drops
+          # the image's legacy [Preferences] WebUI\* defaults so a fresh PVC can't migrate the old
+          # bypass back in. (No ${...} in the script: Flux postBuild substitution would rewrite it.)
           harden-webui:
             image:
               repository: ghcr.io/home-operations/qbittorrent
@@ -39,7 +40,8 @@ spec:
                 f=/config/qBittorrent/qBittorrent.conf
                 mkdir -p /config/qBittorrent
                 [ -f "$f" ] || cp /defaults/qBittorrent.conf "$f"
-                WANT="AuthSubnetWhitelistEnabled=false
+                WANT="AuthSubnetWhitelistEnabled=true
+                AuthSubnetWhitelist=10.244.0.0/16
                 LocalHostAuth=true
                 CSRFProtection=true
                 Username=admin
@@ -57,7 +59,7 @@ spec:
                         if (!web) { print ""; print "[WebUI]"; for (j = 1; j <= n; j++) print ord[j] "=" v[ord[j]] } }
                 ' "$f" > "$f.new"
                 mv "$f.new" "$f"
-                grep -E '^(AuthSubnetWhitelistEnabled|LocalHostAuth|CSRFProtection|Username)=' "$f"
+                grep -E '^(AuthSubnetWhitelist|AuthSubnetWhitelistEnabled|LocalHostAuth|CSRFProtection|Username)=' "$f"
             env:
               QBT_WEBUI_PASSWORD_PBKDF2:
                 valueFrom:
