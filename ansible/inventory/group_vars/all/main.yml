@@ -1,6 +1,10 @@
 # Site-wide settings. Secrets live in vault.yml (ansible-vault, Keychain password).
 site_code: hn
 domain_int: int.z7x.org
+# Public zone (Cloudflare). Tailnet devices resolve it through AdGuard (split DNS), which adds
+# internal-gateway services and <host>.<domain_tailnet> names for tagged tailnet nodes.
+domain: z7x.org
+domain_tailnet: internal.z7x.org
 timezone: America/Chicago
 
 house_lan_cidr: 192.168.1.0/24

@@ -7,3 +7,6 @@ tailscale_lab_routes: "{{ lab_zones | map(attribute='cidr') | list }}"
 
 # Auth keys minted for a join are single-use, pre-approved and short-lived.
 tailscale_authkey_ttl: 600
+
+# Split DNS: tailnet devices ask AdGuard (through OPNsense's subnet route) for these domains.
+tailscale_split_dns: "{{ {domain: [lab_dns]} }}"

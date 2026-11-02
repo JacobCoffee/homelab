@@ -67,3 +67,7 @@
 
 - name: Configure AdGuard Home through its API
   ansible.builtin.include_tasks: configure.yml
+
+- name: Tailnet host names
+  ansible.builtin.include_tasks: internal_names.yml
+  when: tailscale_api_key is defined

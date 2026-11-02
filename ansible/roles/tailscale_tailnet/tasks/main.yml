@@ -34,3 +34,24 @@
   when: tailscale_policy_current.content | trim != tailscale_policy | trim
   changed_when: true
   no_log: true
+
+- name: Read split DNS
+  ansible.builtin.uri:
+    url: "{{ tailscale_api }}/tailnet/{{ tailscale_tailnet }}/dns/split-dns"
+    headers:
+      Authorization: "Bearer {{ tailscale_api_key }}"
+  register: tailscale_split_current
+  no_log: true
+
+# PATCH only touches the listed domains; split DNS entries added in the console are left alone.
+- name: Split DNS to AdGuard
+  ansible.builtin.uri:
+    url: "{{ tailscale_api }}/tailnet/{{ tailscale_tailnet }}/dns/split-dns"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ tailscale_api_key }}"
+    body_format: json
+    body: "{{ tailscale_split_dns }}"
+  when: tailscale_split_current.json | combine(tailscale_split_dns) != tailscale_split_current.json
+  changed_when: true
+  no_log: true

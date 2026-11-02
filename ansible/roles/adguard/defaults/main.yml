@@ -22,6 +22,10 @@ adguard_filters:
 adguard_user: admin
 adguard_password: "{{ vault_adguard_password }}"
 
+# <host>.<domain_tailnet> names for tailnet devices with these tags (tasks/internal_names.yml).
+adguard_tailnet_tags: ["tag:pve", "tag:router"]
+adguard_tailscale_api: https://api.tailscale.com/api/v2
+
 # Derived from the zone; no need to change.
 adguard_zone_cfg: "{{ lab_zones | selectattr('name', 'equalto', adguard_zone) | first }}"
 adguard_upstream: "{{ adguard_zone_cfg.gateway }}"

@@ -8,7 +8,9 @@ ha_cores: 2
 ha_memory: 4096
 ha_disk_size: 64G
 ha_zone: "{{ lab_zones | selectattr('name', 'equalto', 'int') | first }}"
-ha_config: /mnt/data/supervisor/homeassistant/configuration.yaml   # on the HAOS host
+# HTTP settings live in HA's storage, not configuration.yaml (HA migrates a YAML http: block
+# once on first start and ignores it afterwards). On the HAOS host:
+ha_http_store: /mnt/data/supervisor/homeassistant/.storage/http
 # Envoy Gateway in Kubernetes proxies home.z7x.org; HA sees node IPs (Cilium masquerades pod
 # traffic leaving the cluster) and must trust them to read X-Forwarded-For.
 ha_trusted_proxies:

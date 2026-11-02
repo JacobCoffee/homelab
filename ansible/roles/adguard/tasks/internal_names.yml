@@ -1,0 +1,63 @@
+# <host>.<domain_tailnet> -> the node's Tailscale address, for every tailnet device carrying one
+# of adguard_tailnet_tags. Tailnet clients reach AdGuard through split DNS (tailscale_tailnet
+# role); the addresses only work on the tailnet, where Tailscale picks a direct LAN path when the
+# client is at home. Rewrites under domain_tailnet that no device matches any more are removed.
+- name: Tailnet devices
+  ansible.builtin.uri:
+    url: "{{ adguard_tailscale_api }}/tailnet/-/devices"
+    headers:
+      Authorization: "Bearer {{ tailscale_api_key }}"
+  delegate_to: localhost
+  run_once: true
+  register: adguard_ts_devices
+  no_log: true
+
+- name: Current rewrites
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -H, "{{ adguard_auth }}", "http://127.0.0.1/control/rewrite/list"]
+  register: adguard_rewrites
+  changed_when: false
+  no_log: true
+
+# The loops render JSON; a single-expression from_json turns it back into lists.
+- name: Names wanted vs present
+  vars:
+    wanted_json: >-
+      {%- set out = [] -%}
+      {%- for d in adguard_ts_devices.json.devices if d.tags | default([]) | intersect(adguard_tailnet_tags) -%}
+      {%-   set _ = out.append({'domain': d.name.split('.')[0] ~ '.' ~ domain_tailnet,
+                                'answer': d.addresses | select('match', '^100\.') | first}) -%}
+      {%- endfor -%}
+      {{- out | to_json -}}
+    present_json: >-
+      {%- set out = [] -%}
+      {%- for r in adguard_rewrites.stdout | from_json if r.domain.endswith('.' ~ domain_tailnet) -%}
+      {%-   set _ = out.append({'domain': r.domain, 'answer': r.answer}) -%}
+      {%- endfor -%}
+      {{- out | to_json -}}
+  ansible.builtin.set_fact:
+    adguard_names_wanted: "{{ wanted_json | from_json }}"
+    adguard_names_present: "{{ present_json | from_json }}"
+
+- name: Show them
+  ansible.builtin.debug:
+    msg: "{{ adguard_names_wanted | map(attribute='domain') | zip(adguard_names_wanted | map(attribute='answer')) | map('join', ' -> ') | list }}"
+
+# Bodies are {domain, answer}; the auth header is in argv, hence no_log.
+- name: Remove stale names
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}",
+           -H, "Content-Type: application/json", --data-binary, "@-", "http://127.0.0.1/control/rewrite/delete"]
+    stdin: "{{ item | to_json }}"
+  loop: "{{ adguard_names_present | difference(adguard_names_wanted) }}"
+  changed_when: true
+  no_log: true
+
+- name: Add names
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}",
+           -H, "Content-Type: application/json", --data-binary, "@-", "http://127.0.0.1/control/rewrite/add"]
+    stdin: "{{ item | combine({'enabled': true}) | to_json }}"
+  loop: "{{ adguard_names_wanted | difference(adguard_names_present) }}"
+  changed_when: true
+  no_log: true
