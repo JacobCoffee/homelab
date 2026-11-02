@@ -5,6 +5,7 @@ resources:
   - ./cert-manager
   - ./cabotage
   - ./network
+  - ./auth
   - ./home
   - ./default
   - ./media

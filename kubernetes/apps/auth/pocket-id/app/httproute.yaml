@@ -1,0 +1,18 @@
+# id.z7x.org, lab/tailnet only for now. The public route (Proxmox on the house LAN and Jellyfin's
+# browser sign-in from outside need the issuer) is added only after the first admin is claimed on
+# /setup, since that page is open to whoever reaches it first.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: pocket-id-internal
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - id.z7x.org
+  rules:
+    - backendRefs:
+        - name: pocket-id
+          port: 1411

@@ -1,0 +1,89 @@
+# Pocket ID: passkey-only OIDC provider for the lab (id.z7x.org). Users, groups and OIDC clients
+# are created by scripts/pocket-id.py through the REST API with STATIC_API_KEY; the first admin
+# and their passkey come from the /setup page in a browser.
+#
+# Settings come from env (UI_CONFIG_DISABLED) so they live in git. State (users, passkeys, clients,
+# signing keys encrypted with ENCRYPTION_KEY) is the SQLite database on the PVC.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: pocket-id
+  namespace: auth
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+    controllers:
+      pocket-id:
+        strategy: Recreate
+        containers:
+          app:
+            image:
+              repository: ghcr.io/pocket-id/pocket-id
+              tag: v2.19.1-distroless@sha256:d035c9c229304cfd25f97a79b2da00bde9cf942abbd70430d452a95420e2836b
+            env:
+              TZ: America/Chicago
+              APP_URL: https://id.z7x.org
+              # Envoy pods sit in the pod CIDR; nothing else reaches the Service.
+              TRUST_PROXY: 10.244.0.0/16
+              ANALYTICS_DISABLED: "true"
+              ALLOW_INSECURE_CALLBACK_URLS: "false"
+              UI_CONFIG_DISABLED: "true"
+              APP_NAME: Homelab
+              SESSION_DURATION: "720"
+              ALLOW_USER_SIGNUPS: disabled
+              # No SMTP: mark addresses verified so apps that check email_verified accept them.
+              EMAILS_VERIFIED: "true"
+            envFrom:
+              - secretRef:
+                  name: pocket-id-secret
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+            probes:
+              liveness: &probe
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: &port 1411
+                  periodSeconds: 15
+              readiness: *probe
+            resources:
+              requests:
+                cpu: 20m
+                memory: 64Mi
+              limits:
+                memory: 256Mi
+    service:
+      app:
+        controller: pocket-id
+        ports:
+          http:
+            port: *port
+    persistence:
+      data:
+        type: persistentVolumeClaim
+        storageClass: proxmox-vmdata
+        accessMode: ReadWriteOnce
+        size: 1Gi
+        globalMounts:
+          - path: /app/data
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
