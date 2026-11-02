@@ -102,10 +102,13 @@ patches:
       - op: add
         path: /metadata/annotations
         value: { grafana_folder: "Logs" }
+  # Not "General": that's Grafana's built-in root folder, and with foldersFromFilesStructure the
+  # provisioner tries to create it, fails ("A folder with that name already exists") and aborts
+  # the whole provisioning pass, so no other git dashboards load either.
   - target:
       kind: ConfigMap
       name: grafana-dashboards-general
     patch: |
       - op: add
         path: /metadata/annotations
-        value: { grafana_folder: "General" }
+        value: { grafana_folder: "Lab" }

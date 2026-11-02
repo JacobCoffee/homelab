@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: prometheus-pve-exporter
   namespace: observability
+  labels:
+    app.kubernetes.io/name: prometheus-pve-exporter  # what the ServiceMonitor selects on
 spec:
   selector:
     app.kubernetes.io/name: prometheus-pve-exporter
