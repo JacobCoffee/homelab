@@ -1,0 +1,16 @@
+# source/kustomize/helm/notification-controller all expose :8080/metrics (port "http-prom") on
+# the pod, not on their Services (which only carry the webhook/API ports), so this is a PodMonitor.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: flux
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [flux-system]
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: flux
+  podMetricsEndpoints:
+    - port: http-prom
+      interval: 30s

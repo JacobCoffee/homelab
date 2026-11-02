@@ -1,0 +1,25 @@
+# Proxmox user + read-only API token for prometheus-pve-exporter (kubernetes/apps/observability),
+# reusing the built-in PVEAuditor role (Datastore.Audit, Sys.Audit, VM.Audit, ... -- exactly what
+# the exporter and the blackbox ZFS-health probe need, nothing more). The token secret is only
+# ever shown once, so it's captured straight into two SOPS-encrypted Kubernetes Secrets. If either
+# file is ever missing (lost, or never committed), the role rotates the token (delete + recreate)
+# rather than failing with a secret it can't recover.
+monitoring_pve_role: PVEAuditor
+monitoring_pve_user: prometheus@pve
+monitoring_pve_token_name: monitoring
+
+# Any pve node answers cluster-wide API calls. Connect by IP (not <node>.internal.z7x.org): that
+# name only resolves over Tailscale/AdGuard split DNS, not from cluster pods (see pve_csi), so the
+# exporter and blackbox probes skip TLS verification / pin the cert's SAN instead of depending on it.
+monitoring_pve_api_host: hnhv01
+monitoring_pve_nodes:
+  - { name: hnhv01, host: hnhv01 }
+  - { name: hnhv02, host: hnhv02 }
+
+monitoring_pve_namespace: observability
+monitoring_pve_exporter_secret_name: prometheus-pve-exporter-config
+monitoring_pve_blackbox_secret_name: blackbox-exporter-config
+monitoring_pve_repo: "{{ playbook_dir }}/../.."
+monitoring_pve_exporter_secret_path: "{{ monitoring_pve_repo }}/kubernetes/apps/observability/prometheus-pve-exporter/app/secret.sops.yaml"
+monitoring_pve_blackbox_secret_path: "{{ monitoring_pve_repo }}/kubernetes/apps/observability/blackbox-exporter/app/secret.sops.yaml"
+monitoring_pve_mise: "mise -C {{ monitoring_pve_repo }} exec --"

@@ -1,0 +1,159 @@
+# kube-prometheus-stack over VictoriaMetrics: at this scale (3 nodes, ~30-50 pods, a handful of
+# exporters) the extra RAM/CPU of Prometheus+Alertmanager+Grafana is negligible against 12/12/8 GB
+# nodes, and the chart's CRDs (ServiceMonitor/PodMonitor/PrometheusRule/Probe), bundled alert
+# rules (kubernetes-mixin) and huge community-dashboard ecosystem are worth more here than the
+# smaller footprint VictoriaMetrics would buy. Retention and requests are trimmed to match.
+#
+# kubeControllerManager/kubeScheduler/kubeProxy/kubeEtcd are disabled: Talos doesn't expose them
+# the kubeadm way (no Service, no reachable metrics port), and Cilium replaces kube-proxy
+# entirely, so those default ServiceMonitors would just sit permanently down.
+#
+# Alertmanager: Discord only (no email -- see kubernetes/README.md). The webhook URL is mounted
+# from secret.sops.yaml next to this file (alertmanagerSpec.secrets) and referenced by file path,
+# so it never appears in this HelmRelease.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: observability
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "92.17.0"
+      sourceRef:
+        kind: HelmRepository
+        name: kube-prometheus-stack
+        namespace: observability
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
+  values:
+    crds:
+      enabled: true
+
+    kubeControllerManager: { enabled: false }
+    kubeScheduler: { enabled: false }
+    kubeProxy: { enabled: false }
+    kubeEtcd: { enabled: false }
+
+    defaultRules:
+      rules:
+        etcd: false
+        kubeProxy: false
+        kubeScheduler: false
+        kubeControllerManager: false
+
+    prometheus-node-exporter:
+      resources:
+        requests: { cpu: 20m, memory: 32Mi }
+        limits: { memory: 64Mi }
+
+    kube-state-metrics:
+      resources:
+        requests: { cpu: 20m, memory: 64Mi }
+        limits: { memory: 128Mi }
+
+    prometheus:
+      prometheusSpec:
+        retention: 10d
+        replicas: 1
+        resources:
+          requests: { cpu: 100m, memory: 512Mi }
+          limits: { memory: 1Gi }
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: proxmox-fast
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests: { storage: 20Gi }
+        # Pick up ServiceMonitors/PodMonitors/PrometheusRules/Probes from any namespace, not just
+        # ones carrying this release's Helm labels (extra-monitors, pve-exporter, adguard-exporter
+        # all live outside this chart's release).
+        serviceMonitorSelectorNilUsesHelmValues: false
+        serviceMonitorNamespaceSelector: {}
+        podMonitorSelectorNilUsesHelmValues: false
+        podMonitorNamespaceSelector: {}
+        probeSelectorNilUsesHelmValues: false
+        probeNamespaceSelector: {}
+        ruleSelectorNilUsesHelmValues: false
+        ruleNamespaceSelector: {}
+
+    alertmanager:
+      alertmanagerSpec:
+        replicas: 1
+        resources:
+          requests: { cpu: 10m, memory: 32Mi }
+          limits: { memory: 96Mi }
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: proxmox-fast
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests: { storage: 2Gi }
+        # discord-webhook-url key, mounted at /etc/alertmanager/secrets/alertmanager-discord-webhook/
+        secrets:
+          - alertmanager-discord-webhook
+      config:
+        route:
+          receiver: discord
+          group_by: ["alertname", "namespace"]
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
+          routes:
+            # Watchdog is the "alerting pipeline is alive" heartbeat, not an incident.
+            - receiver: "null"
+              matchers:
+                - alertname = "Watchdog"
+        receivers:
+          - name: "null"
+          - name: discord
+            discord_configs:
+              - webhook_url_file: /etc/alertmanager/secrets/alertmanager-discord-webhook/discord-webhook-url
+                send_resolved: true
+
+    grafana:
+      admin:
+        existingSecret: grafana-admin-credentials
+        userKey: admin-user
+        passwordKey: admin-password
+      persistence:
+        enabled: true
+        type: pvc
+        storageClassName: proxmox-vmdata
+        accessModes: ["ReadWriteOnce"]
+        size: 2Gi
+      resources:
+        requests: { cpu: 50m, memory: 128Mi }
+        limits: { memory: 256Mi }
+      grafana.ini:
+        server:
+          root_url: https://grafana.z7x.org
+      # Downloaded straight from grafana.com by the chart's dashboard sidecar init container.
+      dashboards:
+        default:
+          node-exporter-full:
+            gnetId: 1860
+            revision: 46
+            datasource: Prometheus
+          kubernetes-views-global:
+            gnetId: 15757
+            revision: 43
+            datasource: Prometheus
+          proxmox-via-prometheus:
+            gnetId: 10347
+            revision: 5
+            datasource: Prometheus
+          flux2:
+            gnetId: 16714
+            revision: 1
+            datasource: Prometheus
+          cilium-agent-metrics:
+            gnetId: 16611
+            revision: 1
+            datasource: Prometheus

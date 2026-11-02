@@ -1,0 +1,96 @@
+# Proxmox's own notification system (host/guest/backup/replication/package events) mirrored to
+# Discord, alongside the builtin default-matcher (still mails root). Skipped entirely until
+# vault_discord_webhook_url exists -- see kubernetes/README.md "Monitoring & alerting".
+#
+# Body uses Handlebars (Proxmox's notification templating), not Jinja: wrapped in {% raw %} so
+# Ansible passes the literal "{{ ... }}" through instead of trying to resolve it. The webhook URL
+# lives only in the secret `webhook_url`, referenced from the URL field as
+# `{{ secrets.webhook_url }}` so it's never written into the target's own (unencrypted) config.
+# --header/--secret/--body are property strings / base64 per `pvesh usage
+# /cluster/notifications/endpoints/webhook --verbose`.
+- name: "Notify | existing webhook endpoints (no_log: contains the rendered secret handlebars)"
+  ansible.builtin.command: pvesh get /cluster/notifications/endpoints/webhook --output-format json
+  register: pve_notify_webhooks
+  changed_when: false
+  run_once: true
+  no_log: true
+  when: vault_discord_webhook_url is defined
+
+- name: Notify | create the discord webhook endpoint
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - /cluster/notifications/endpoints/webhook
+      - --name
+      - discord
+      - --method
+      - post
+      - --url
+      - "{{ pve_notify_discord_url }}"
+      - --header
+      - "name=Content-Type,value={{ 'application/json' | b64encode }}"
+      - --secret
+      - "name=webhook_url,value={{ vault_discord_webhook_url | b64encode }}"
+      - --body
+      - "{{ pve_notify_discord_body | b64encode }}"
+      - --comment
+      - "Mirrors Proxmox notifications to Discord"
+  vars:
+    pve_notify_discord_url: "{% raw %}{{ secrets.webhook_url }}{% endraw %}"
+    pve_notify_discord_body: |-
+      {% raw %}{
+        "username": "Proxmox",
+        "embeds": [
+          {
+            "color": 14839040,
+            "title": "{{ escape title }}",
+            "description": "{{ escape message }}",
+            "fields": [
+              { "name": "Severity", "value": "{{ escape severity }}", "inline": true },
+              { "name": "Timestamp", "value": "<t:{{ timestamp }}>" }
+            ]
+          }
+        ]
+      }{% endraw %}
+  when: >-
+    vault_discord_webhook_url is defined and
+    'discord' not in (pve_notify_webhooks.stdout | from_json | map(attribute='name') | list)
+  changed_when: true
+  no_log: true
+  run_once: true
+
+- name: Notify | existing matchers
+  ansible.builtin.command: pvesh get /cluster/notifications/matchers --output-format json
+  register: pve_notify_matchers
+  changed_when: false
+  run_once: true
+  when: vault_discord_webhook_url is defined
+
+- name: Notify | route everything to Discord too (builtin default-matcher keeps mailing root)
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - /cluster/notifications/matchers
+      - --name
+      - discord
+      - --mode
+      - all
+      - --target
+      - discord
+      - --comment
+      - "Mirror every notification to Discord (host/guest/backup/replication events)"
+  when: >-
+    vault_discord_webhook_url is defined and
+    'discord' not in (pve_notify_matchers.stdout | from_json | map(attribute='name') | list)
+  changed_when: true
+  run_once: true
+
+- name: Notify | blocked on vault_discord_webhook_url
+  ansible.builtin.debug:
+    msg: >-
+      vault_discord_webhook_url is not in the vault yet; skipping the Discord webhook target and
+      matcher. Add it and re-run with --tags notify.
+  run_once: true
+  when: vault_discord_webhook_url is not defined

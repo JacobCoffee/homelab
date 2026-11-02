@@ -37,8 +37,20 @@ k8sClientRateLimit:   # L2 announcement leases add API traffic
 
 operator:
   replicas: 2
+  prometheus:
+    enabled: true
 rollOutCiliumPods: true
+prometheus:
+  enabled: true
 hubble:
   enabled: true
   relay:
     enabled: true
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - http

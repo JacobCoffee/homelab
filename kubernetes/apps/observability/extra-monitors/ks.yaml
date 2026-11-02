@@ -1,0 +1,25 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: extra-monitors
+  namespace: flux-system
+spec:
+  targetNamespace: observability
+  path: ./kubernetes/apps/observability/extra-monitors/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    # ServiceMonitor/PodMonitor/Probe/PrometheusRule CRDs.
+    - name: kube-prometheus-stack
+    # Probe CRs reference the blackbox-exporter Service by name.
+    - name: blackbox-exporter
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings

@@ -65,6 +65,10 @@
 - name: Tailscale subnet router for the lab zones
   ansible.builtin.include_tasks: tailscale.yml
 
+- name: Prometheus node_exporter plugin + firewall rule for the K8S zone
+  ansible.builtin.include_tasks: node_exporter.yml
+  tags: [monitoring]
+
 - name: DHCP options (MTU, AdGuard) and the WAN DNS port-forward
   ansible.builtin.include_tasks: lab_dns.yml
 

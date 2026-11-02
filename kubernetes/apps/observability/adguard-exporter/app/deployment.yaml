@@ -1,0 +1,33 @@
+# henrywhitaker3/adguard-exporter: actively maintained Prometheus exporter for AdGuard Home
+# (hndns01, 10.10.10.53). Credentials in secret.sops.yaml (vault_adguard_password).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adguard-exporter
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: adguard-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: adguard-exporter
+    spec:
+      containers:
+        - name: adguard-exporter
+          image: ghcr.io/henrywhitaker3/adguard-exporter:v1.2.1
+          env:
+            - name: ADGUARD_SERVERS
+              value: "http://10.10.10.53"
+            - name: ADGUARD_USERNAMES
+              value: "admin"
+            - name: INTERVAL
+              value: "30s"
+          envFrom:
+            - secretRef:
+                name: adguard-exporter-config
+          ports:
+            - name: http
+              containerPort: 9618

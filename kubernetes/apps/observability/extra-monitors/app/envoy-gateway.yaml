@@ -1,0 +1,17 @@
+# Control plane only (network/envoy-gateway's own Service already exposes "metrics" at 19001);
+# the data-plane Envoy proxies (envoy-internal/envoy-external) don't expose a metrics port on
+# their Services, so their per-request/listener stats aren't scraped here -- cheap coverage only.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: envoy-gateway
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [envoy-gateway-system]
+  selector:
+    matchLabels:
+      control-plane: envoy-gateway
+  endpoints:
+    - port: metrics
+      interval: 30s

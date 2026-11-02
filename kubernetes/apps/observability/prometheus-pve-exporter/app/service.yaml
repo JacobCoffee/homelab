@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-pve-exporter
+  namespace: observability
+spec:
+  selector:
+    app.kubernetes.io/name: prometheus-pve-exporter
+  ports:
+    - name: http
+      port: 9221
+      targetPort: http

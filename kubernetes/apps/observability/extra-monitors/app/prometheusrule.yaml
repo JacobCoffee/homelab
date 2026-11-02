@@ -1,0 +1,65 @@
+# Alerts not covered by kube-prometheus-stack's bundled kubernetes-mixin (which only knows about
+# this Kubernetes cluster): Proxmox hosts/guests/storage, Flux reconciliation, backup jobs, and
+# blackbox probes (public apps, Proxmox UI cert expiry, ZFS pool health).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-extra
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: proxmox
+      rules:
+        - alert: ProxmoxNodeDown
+          expr: pve_up{id=~"node/.+"} == 0
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "Proxmox node {{ $labels.id }} is down"
+        - alert: ProxmoxGuestDown
+          expr: pve_up{id=~"qemu/.+|lxc/.+"} == 0
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "Proxmox guest {{ $labels.id }} is down"
+        - alert: ProxmoxStorageAlmostFull
+          expr: pve_disk_usage_bytes{id=~"storage/.+"} / pve_disk_size_bytes{id=~"storage/.+"} > 0.85
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: "Proxmox storage {{ $labels.id }} is over 85% full"
+
+    - name: flux
+      rules:
+        - alert: FluxReconciliationFailure
+          expr: max by (namespace, name, kind) (gotk_reconcile_condition{status="False", type="Ready"} == 1)
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "Flux {{ $labels.kind }}/{{ $labels.name }} ({{ $labels.namespace }}) is not Ready"
+
+    - name: backups
+      rules:
+        - alert: BackupJobFailed
+          expr: kube_job_status_failed{namespace="backup"} > 0
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "Backup Job {{ $labels.job_name }} failed in namespace backup"
+
+    - name: blackbox
+      rules:
+        - alert: ProbeFailing
+          expr: probe_success == 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Blackbox probe {{ $labels.instance }} (job {{ $labels.job }}) is failing"
+        - alert: CertificateExpiringSoon
+          expr: probe_ssl_earliest_cert_expiry - time() < 14 * 86400
+          for: 1h
+          labels: { severity: warning }
+          annotations:
+            summary: "TLS certificate for {{ $labels.instance }} expires in under 14 days"

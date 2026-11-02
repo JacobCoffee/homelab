@@ -1,0 +1,76 @@
+# Blackbox probes (module config: blackbox-exporter/app/secret.sops.yaml). Cluster DNS resolves
+# z7x.org names to the internal Gateway (AdGuard split DNS), so these confirm the apps answer on
+# the lab/tailnet path, not a genuine external vantage point through the Cloudflare tunnel.
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: public-apps
+  namespace: observability
+spec:
+  jobName: blackbox-public-apps
+  interval: 1m
+  module: http_2xx
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://home.z7x.org
+        - https://media.z7x.org
+        - https://requests.z7x.org
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: proxmox-ui-hnhv02
+  namespace: observability
+spec:
+  jobName: blackbox-proxmox-ui
+  interval: 1m
+  module: pve_ui_hnhv02
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://192.168.1.192:8006/
+      labels:
+        pve_node: hnhv02
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: proxmox-ui-hnhv01
+  namespace: observability
+spec:
+  jobName: blackbox-proxmox-ui
+  interval: 1m
+  module: pve_ui_hnhv01
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://192.168.1.220:8006/
+      labels:
+        pve_node: hnhv01
+---
+# ZFS pool health (vmdata + fast on each node) via the Proxmox API's own `health` field --
+# official prometheus-pve-exporter has no ZFS collector; this module checks for anything
+# other than ONLINE using the same PVEAuditor token (Sys.Audit covers /nodes/*/disks/zfs).
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: proxmox-zfs-health
+  namespace: observability
+spec:
+  jobName: blackbox-proxmox-zfs-health
+  interval: 2m
+  module: pve_zfs_health
+  prober:
+    url: blackbox-exporter-prometheus-blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - https://192.168.1.220:8006/api2/json/nodes/hnhv01/disks/zfs
+        - https://192.168.1.192:8006/api2/json/nodes/hnhv02/disks/zfs

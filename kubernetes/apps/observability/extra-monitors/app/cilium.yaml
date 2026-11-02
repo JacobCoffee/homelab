@@ -1,0 +1,34 @@
+# kube-system/cilium's helm-values.yaml turns on prometheus.enabled/operator.prometheus.enabled
+# and hubble.metrics. Neither cilium-agent (hostNetwork DaemonSet) nor cilium-operator get a
+# metrics Service from the chart (just pod annotations), so both are PodMonitors.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cilium-agent
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [kube-system]
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  podMetricsEndpoints:
+    - port: prometheus
+      interval: 30s
+    - port: hubble-metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cilium-operator
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [kube-system]
+  selector:
+    matchLabels:
+      io.cilium/app: operator
+  podMetricsEndpoints:
+    - port: prometheus
+      interval: 30s

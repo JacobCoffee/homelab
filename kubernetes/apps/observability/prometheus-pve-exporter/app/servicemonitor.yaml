@@ -1,0 +1,36 @@
+# Multi-target exporter pattern: one endpoint per Proxmox node, each hitting /pve?target=<ip>
+# against the exporter itself, with __address__ relabeled to the node for readable series.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prometheus-pve-exporter
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus-pve-exporter
+  endpoints:
+    - port: http
+      path: /pve
+      interval: 1m
+      scrapeTimeout: 30s
+      params:
+        target: ["192.168.1.220"]
+        module: ["default"]
+      relabelings:
+        - targetLabel: instance
+          replacement: hnhv01
+        - targetLabel: pve_node
+          replacement: hnhv01
+    - port: http
+      path: /pve
+      interval: 1m
+      scrapeTimeout: 30s
+      params:
+        target: ["192.168.1.192"]
+        module: ["default"]
+      relabelings:
+        - targetLabel: instance
+          replacement: hnhv02
+        - targetLabel: pve_node
+          replacement: hnhv02

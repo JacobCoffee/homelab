@@ -1,0 +1,147 @@
+# os-node_exporter plugin, listening on all interfaces (:9100); plus a firewall pass rule so
+# Prometheus (K8S zone) can reach it. Field names: OPNsense.NodeExporter.* model
+# (github.com/opnsense/plugins sysutils/node_exporter); module/controller: nodeexporter.
+- name: node_exporter | plugin installed?
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/nodeexporter/general/get"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  delegate_to: localhost
+  register: opnsense_ne_settings
+
+- name: node_exporter | install os-node_exporter
+  when: opnsense_ne_settings.status == 404
+  block:
+    - name: node_exporter | queue the install
+      ansible.builtin.uri:
+        url: "https://{{ opnsense_wan_ip }}/api/core/firmware/install/os-node_exporter"
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        method: POST
+        body_format: json
+        body: {}
+      delegate_to: localhost
+      changed_when: true
+
+    - name: node_exporter | wait for the plugin's API
+      ansible.builtin.uri:
+        url: "https://{{ opnsense_wan_ip }}/api/nodeexporter/general/get"
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: [200, 404]
+      delegate_to: localhost
+      register: opnsense_ne_plugin_up
+      until: opnsense_ne_plugin_up.status == 200
+      retries: 60
+      delay: 5
+
+- name: node_exporter | current settings
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/nodeexporter/general/get"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_ne_get
+
+- name: node_exporter | enable on :9100 with cpu/filesystem/loadavg/meminfo/netdev/time/zfs collectors
+  vars:
+    wanted: {enabled: "1", listenaddress: "0.0.0.0", listenport: "9100", cpu: "1", filesystem: "1",
+             loadavg: "1", meminfo: "1", netdev: "1", time: "1", zfs: "1"}
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/nodeexporter/general/set"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      general: "{{ wanted }}"
+  delegate_to: localhost
+  register: opnsense_ne_set
+  when: >-
+    wanted.keys() | map('extract', opnsense_ne_get.json.general) | list != wanted.values() | list
+  changed_when: opnsense_ne_set.json.result == "saved"
+  failed_when: opnsense_ne_set.json.result is not defined or opnsense_ne_set.json.result == "failed"
+
+- name: node_exporter | reconfigure service
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/nodeexporter/service/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_ne_set is changed
+  changed_when: true
+
+# ---------------------------------------------------------------------------
+# Firewall: let Prometheus (K8S zone, 10.10.30.0/24) reach :9100 on the firewall itself.
+# ---------------------------------------------------------------------------
+- name: node_exporter | identify the K8S zone
+  ansible.builtin.set_fact:
+    opnsense_k8s_zone: "{{ opnsense_zones | selectattr('descr', 'equalto', 'K8S') | first }}"
+
+- name: node_exporter | list existing rules
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/filter/search_rule/"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_ne_rules
+
+- name: node_exporter | allow K8S -> this firewall, tcp/9100 (Prometheus scrape)
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/filter/add_rule/"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      rule:
+        enabled: "1"
+        sequence: "1"
+        action: pass
+        quick: "1"
+        interface: "{{ opnsense_k8s_zone.name }}"
+        direction: in
+        ipprotocol: inet
+        protocol: TCP
+        source_net: "{{ opnsense_k8s_zone.cidr }}"
+        destination_net: "(self)"
+        destination_port: "9100"
+        description: "Allow Prometheus (K8S) to scrape node_exporter"
+  delegate_to: localhost
+  register: opnsense_ne_rule_add
+  when: >-
+    opnsense_ne_rules.json.rows
+    | selectattr('description', 'equalto', 'Allow Prometheus (K8S) to scrape node_exporter')
+    | list | length == 0
+  changed_when: opnsense_ne_rule_add.json.result == "saved"
+  failed_when: opnsense_ne_rule_add.json.result is not defined or opnsense_ne_rule_add.json.result == "failed"
+
+- name: node_exporter | apply pending firewall changes
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/filter/apply"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_ne_rule_add is changed
+  changed_when: true

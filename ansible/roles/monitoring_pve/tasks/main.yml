@@ -1,0 +1,168 @@
+# PVEAuditor is a built-in role (Datastore.Audit, Mapping.Audit, Pool.Audit, SDN.Audit, Sys.Audit,
+# VM.Audit, VM.GuestAgent.Audit) -- read-only, no action/modify rights, so no `pveum role add` here.
+- name: Monitoring | do both encrypted secrets already exist?
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: monitoring_pve_secret_stat
+  loop:
+    - "{{ monitoring_pve_exporter_secret_path }}"
+    - "{{ monitoring_pve_blackbox_secret_path }}"
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+
+- name: Monitoring | Proxmox user, token and SOPS secrets
+  when: monitoring_pve_secret_stat.results | selectattr('stat.exists', 'equalto', false) | list | length > 0
+  run_once: true
+  block:
+    - name: Monitoring | existing users
+      ansible.builtin.command: pveum user list --output-format json
+      register: monitoring_pve_users
+      changed_when: false
+
+    - name: "Monitoring | create user {{ monitoring_pve_user }}"
+      ansible.builtin.command: >-
+        pveum user add {{ monitoring_pve_user }}
+        --comment "Read-only metrics scraping (prometheus-pve-exporter, blackbox ZFS-health probe)"
+      when: monitoring_pve_user not in (monitoring_pve_users.stdout | from_json | map(attribute='userid') | list)
+      changed_when: true
+
+    - name: Monitoring | existing ACLs
+      ansible.builtin.command: pveum acl list --output-format json
+      register: monitoring_pve_acls
+      changed_when: false
+
+    - name: "Monitoring | grant {{ monitoring_pve_role }} to {{ monitoring_pve_user }} on /"
+      ansible.builtin.command: pveum aclmod / -user {{ monitoring_pve_user }} -role {{ monitoring_pve_role }}
+      when: >-
+        monitoring_pve_acls.stdout | from_json
+        | selectattr('ugid', 'equalto', monitoring_pve_user)
+        | selectattr('roleid', 'equalto', monitoring_pve_role)
+        | selectattr('path', 'equalto', '/') | list | length == 0
+      changed_when: true
+
+    - name: "Monitoring | existing tokens for {{ monitoring_pve_user }} (no_log: lists token ids)"
+      ansible.builtin.command: pveum user token list {{ monitoring_pve_user }} --output-format json
+      register: monitoring_pve_tokens
+      changed_when: false
+      no_log: true
+
+    - name: "Monitoring | drop a stale token (a secret file is missing, so its secret is unrecoverable)"
+      ansible.builtin.command: pveum user token remove {{ monitoring_pve_user }} {{ monitoring_pve_token_name }}
+      when: monitoring_pve_token_name in (monitoring_pve_tokens.stdout | from_json | map(attribute='tokenid') | list)
+      changed_when: true
+
+    - name: "Monitoring | create token {{ monitoring_pve_user }}!{{ monitoring_pve_token_name }} (no_log: captures the secret)"
+      ansible.builtin.command: pveum user token add {{ monitoring_pve_user }} {{ monitoring_pve_token_name }} -privsep 0 --output-format json
+      register: monitoring_pve_token
+      changed_when: true
+      no_log: true
+
+    - name: Monitoring | write the SOPS-encrypted secrets
+      delegate_to: localhost
+      no_log: true
+      block:
+        - name: Monitoring | write the plaintext pve-exporter Secret manifest
+          ansible.builtin.copy:
+            dest: "{{ monitoring_pve_exporter_secret_path }}"
+            mode: "0644"
+            content: |
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: {{ monitoring_pve_exporter_secret_name }}
+                namespace: {{ monitoring_pve_namespace }}
+              type: Opaque
+              stringData:
+                pve.yml: |
+                  default:
+                    user: {{ monitoring_pve_user }}
+                    token_name: {{ monitoring_pve_token_name }}
+                    token_value: "{{ (monitoring_pve_token.stdout | from_json).value }}"
+                    verify_ssl: false
+
+        - name: Monitoring | encrypt the pve-exporter secret in place with SOPS
+          ansible.builtin.command: "{{ monitoring_pve_mise }} sops -e -i {{ monitoring_pve_exporter_secret_path }}"
+          changed_when: true
+
+        # blackbox_exporter's static module config can't read a Kubernetes Secret value at scrape
+        # time, so the token is baked into the rendered Authorization header here, once, alongside
+        # the module definitions. Re-run with a rotated token to refresh it (same gate as above).
+        # Built as a dict + to_nice_yaml (not hand-indented Jinja text) so nesting can't drift.
+        - name: "Monitoring | build the blackbox modules (no_log: contains the rendered Authorization header)"
+          ansible.builtin.set_fact:
+            monitoring_pve_blackbox_modules: >-
+              {{
+                {
+                  'http_2xx': {
+                    'prober': 'http',
+                    'timeout': '5s',
+                    'http': {
+                      'valid_http_versions': ['HTTP/1.1', 'HTTP/2.0'],
+                      'follow_redirects': true,
+                      'preferred_ip_protocol': 'ip4'
+                    }
+                  },
+                  'pve_zfs_health': {
+                    'prober': 'http',
+                    'timeout': '5s',
+                    'http': {
+                      'valid_http_versions': ['HTTP/1.1', 'HTTP/2.0'],
+                      'preferred_ip_protocol': 'ip4',
+                      'headers': {
+                        'Authorization': 'PVEAPIToken=' ~ monitoring_pve_user ~ '!' ~ monitoring_pve_token_name ~ '=' ~ (monitoring_pve_token.stdout | from_json).value
+                      },
+                      'fail_if_body_matches_regexp': ['"health":"(?!ONLINE)[A-Z]+"'],
+                      'tls_config': { 'insecure_skip_verify': true }
+                    }
+                  }
+                }
+              }}
+          no_log: true
+
+        - name: "Monitoring | blackbox pve_ui_<node> modules (no_log: not sensitive, kept quiet with the rest)"
+          ansible.builtin.set_fact:
+            monitoring_pve_blackbox_modules: >-
+              {{ monitoring_pve_blackbox_modules | combine({
+                'pve_ui_' ~ item.name: {
+                  'prober': 'http',
+                  'timeout': '5s',
+                  'http': {
+                    'valid_http_versions': ['HTTP/1.1', 'HTTP/2.0'],
+                    'preferred_ip_protocol': 'ip4',
+                    'tls_config': { 'server_name': item.name ~ '.' ~ domain_tailnet }
+                  }
+                }
+              }) }}
+          loop: "{{ monitoring_pve_nodes }}"
+          loop_control:
+            label: "{{ item.name }}"
+          no_log: true
+
+        - name: Monitoring | write the plaintext blackbox-exporter config Secret manifest
+          ansible.builtin.copy:
+            dest: "{{ monitoring_pve_blackbox_secret_path }}"
+            mode: "0644"
+            content: |
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: {{ monitoring_pve_blackbox_secret_name }}
+                namespace: {{ monitoring_pve_namespace }}
+              type: Opaque
+              stringData:
+                blackbox.yaml: |
+              {{ ({'modules': monitoring_pve_blackbox_modules} | to_nice_yaml(indent=2)) | indent(6, first=True) }}
+          no_log: true
+
+        - name: Monitoring | encrypt the blackbox-exporter secret in place with SOPS
+          ansible.builtin.command: "{{ monitoring_pve_mise }} sops -e -i {{ monitoring_pve_blackbox_secret_path }}"
+          changed_when: true
+
+- name: Monitoring | report
+  ansible.builtin.debug:
+    msg: >-
+      {{ monitoring_pve_user }}!{{ monitoring_pve_token_name }} (PVEAuditor, read-only) is ready;
+      prometheus-pve-exporter and blackbox's ZFS-health probe consume it from
+      {{ monitoring_pve_exporter_secret_path | basename }} / {{ monitoring_pve_blackbox_secret_path | basename }}.
+  run_once: true
