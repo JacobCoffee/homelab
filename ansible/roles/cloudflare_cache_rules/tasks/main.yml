@@ -1,0 +1,57 @@
+# Cache Rules (Rulesets API, http_request_cache_settings phase). Each change is checked first,
+# so a second run changes nothing: rules not listed in cloudflare_cache_rules (matched by
+# description) are read back from Cloudflare and resubmitted untouched; our own rules are
+# compared field-by-field (ignoring server-assigned id/version/ref and any action_parameters
+# Cloudflare defaults beyond `cache`) before deciding whether to PUT at all.
+- name: "Cloudflare cache rules | get the current http_request_cache_settings entrypoint ruleset"
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/rulesets/phases/http_request_cache_settings/entrypoint"
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+    status_code: [200, 404]
+  register: cloudflare_cache_get
+  no_log: true
+
+- name: "Cloudflare cache rules | rules currently in the phase (empty if the phase has none yet)"
+  ansible.builtin.set_fact:
+    cloudflare_cache_existing: "{{ (cloudflare_cache_get.json.result.rules | default([])) if cloudflare_cache_get.status == 200 else [] }}"
+
+- name: "Cloudflare cache rules | rules not managed here, kept exactly as Cloudflare returned them"
+  ansible.builtin.set_fact:
+    cloudflare_cache_kept: >-
+      {{ cloudflare_cache_existing
+         | rejectattr('description', 'in', cloudflare_cache_rules | map(attribute='description') | list)
+         | list }}
+
+- name: "Cloudflare cache rules | does each managed rule already match what's live?"
+  ansible.builtin.set_fact:
+    cloudflare_cache_matches: >-
+      {{ (cloudflare_cache_matches | default([])) + [
+           (cloudflare_cache_existing
+            | selectattr('description', 'equalto', item.description)
+            | selectattr('expression', 'equalto', item.expression)
+            | selectattr('action', 'equalto', item.action)
+            | selectattr('enabled', 'equalto', item.enabled)
+            | map(attribute='action_parameters')
+            | map(attribute='cache', default=none)
+            | select('equalto', item.action_parameters.cache)
+            | list
+            | length) > 0
+         ] }}
+  loop: "{{ cloudflare_cache_rules }}"
+  loop_control:
+    label: "{{ item.description }}"
+
+- name: "Cloudflare cache rules | update the phase ruleset (only our rules drifted)"
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/rulesets/phases/http_request_cache_settings/entrypoint"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+    body_format: json
+    body:
+      rules: "{{ cloudflare_cache_kept + cloudflare_cache_rules }}"
+    status_code: [200]
+  when: not (cloudflare_cache_matches | min)
+  no_log: true
+  changed_when: true

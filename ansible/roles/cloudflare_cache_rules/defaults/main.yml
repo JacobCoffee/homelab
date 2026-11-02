@@ -1,0 +1,12 @@
+# z7x.org zone.
+cloudflare_zone_id: "7782513f449b1678f12d876817168f2e"
+
+# Cache Rules (http_request_cache_settings phase). Matched/kept-or-replaced by `description`;
+# any other rules already in the phase are preserved untouched.
+cloudflare_cache_rules:
+  - description: "media.z7x.org: bypass cache (video streaming, avoid Cloudflare cache ToS risk)"
+    expression: '(http.host eq "media.z7x.org")'
+    action: set_cache_settings
+    action_parameters:
+      cache: false
+    enabled: true

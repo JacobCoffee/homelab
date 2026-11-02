@@ -64,6 +64,14 @@
   roles:
     - pve_notify
 
+- name: "Cloudflare cache rules (z7x.org): bypass cache for media.z7x.org video streaming"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [cloudflare]
+  roles:
+    - cloudflare_cache_rules
+
 - name: "Media NFS VM (temporary, on the K8S zone; see kubernetes README)"
   hosts: pve
   tags: [media-nfs]
