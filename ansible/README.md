@@ -15,7 +15,10 @@ which every node trusts from install.
 | `opnsense` | `core` | VM 100 `hnfw01`: OPNsense 26.7 nano, bootstrapped unattended, kept patched, sharing the lab subnets on Tailscale (see below) |
 | `adguard` | `core` | CT 101 `hndns01` (10.10.10.53): AdGuard Home, the DNS server for INT and K8S |
 | `homeassistant` | node in `home_assistant.host` (`hnhv02`) | VM 301 `hnha01` (10.10.10.20): Home Assistant OS on INT with the Aeotec Z-Wave/Zigbee stick passed through |
+| `pve_csi` | all nodes | Proxmox user/role/token for the Proxmox CSI plugin, captured straight into `kubernetes/apps/storage/proxmox-csi-plugin/app/secret.sops.yaml`; skipped once that file exists, rotates the token if it's ever missing |
+| `media_nfs` | node in `media_nfs.host` (`hnhv01`) | VM 401 `hnnfs01` (10.10.30.20): Debian 13 + cloud-init, nfs-kernel-server exporting `/srv/media` to the K8S zone (temporary, until a NAS takes over) |
 | `talos` | nodes in `k8s_nodes`, then the Mac | VMs 201–203 `hnk8s01`–`03` (10.10.30.11–13, VIP .10): Talos Kubernetes, Cilium, then Flux takes over from [`../kubernetes`](../kubernetes) |
+| `pve_backup` | all nodes | ZFS dataset `vmdata/backups` registered as `dir` storage `backup`, plus one cluster-wide nightly vzdump job (snapshot mode, zstd, keep-daily 7/keep-weekly 4) for VMs/CTs 100/101/102/301/401 -- see "Backups" below |
 | `netboot` | `hnhv01` | CT 102 `hnpxe01` (house LAN): the [`../proxmox-pxe`](../proxmox-pxe) installer, always on, so new PCs install without the Mac |
 
 ## Network
@@ -181,6 +184,34 @@ renews it whenever it's within 30 days of expiring, using the same Cloudflare pl
 timer of ours needed. The Cloudflare API token lives in `/etc/pve/priv/acme/plugins.cfg`
 on the cluster (same vault secret as everywhere else, `cloudflare_api_token`).
 
+## Backups
+
+`pve_backup` creates `vmdata/backups` (a ZFS dataset on the cluster-wide mirror, local to each
+node) and registers it as `dir` storage `backup`, then creates one cluster-wide vzdump job
+(id `nightly`, 02:30 daily, snapshot mode, zstd, `keep-daily=7,keep-weekly=4`) covering OPNsense
+(100), AdGuard (101), netboot (102), Home Assistant (301) and the media NFS VM's root disk (401
+-- its data disk is `backup=0`, set by the `media_nfs` role, so only the OS disk is backed up).
+Talos VMs 201-203 are excluded: they're rebuilt from git (`../kubernetes`), and etcd has its own
+offsite backup (see below). The job runs locally only -- no restic/extra daemons on the Proxmox
+hosts themselves, keeping them minimal.
+
+Offsite (Cloudflare R2, bucket `homelab-backups`, kept lean for the 10 GB free tier) covers what
+local vzdump can't survive a lost node: etcd, the OPNsense config, and every app's config PVC
+(VolSync). See [`../kubernetes/README.md#backups-and-restore`](../kubernetes/README.md#backups-and-restore)
+for all restore commands, R2 layout and retention.
+
+```sh
+# List/inspect local vzdump backups
+ssh -i proxmox-pxe/secrets/automation_ed25519 root@<node> pvesh get /cluster/backup
+ssh -i proxmox-pxe/secrets/automation_ed25519 root@<node> ls -la /vmdata/backups/dump/
+
+# Restore a VM/CT from the most recent local backup (run on the node that holds it)
+ssh -i proxmox-pxe/secrets/automation_ed25519 root@<node> \
+  qmrestore /vmdata/backups/dump/vzdump-qemu-<vmid>-<timestamp>.vma.zst <vmid> --storage vmdata
+ssh -i proxmox-pxe/secrets/automation_ed25519 root@<node> \
+  pct restore <vmid> /vmdata/backups/dump/vzdump-lxc-<vmid>-<timestamp>.tar.zst --storage vmdata
+```
+
 ## Secrets
 
 `inventory/group_vars/all/vault.yml` is ansible-vault encrypted; the vault password lives in
@@ -190,4 +221,8 @@ vault can't be decrypted.
 
 Also in the vault: `cloudflare_api_token` (z7x.org DNS edit + tunnel edit) and
 `vault_sops_age_key`, the age key that decrypts every `*.sops.yaml` under `../kubernetes`
-(the Mac's copy is `~/.config/sops/age/keys.txt`).
+(the Mac's copy is `~/.config/sops/age/keys.txt`). `vault_r2_access_key_id` /
+`vault_r2_secret_access_key` are the Cloudflare R2 S3 API credentials (account
+`0346e28e1f2af422c32c0c37e9f7f363`, derived from `vault_r2_api_token`, an account API token with
+Admin Read & Write on R2) used by every offsite backup in
+[`../kubernetes/README.md#backups-and-restore`](../kubernetes/README.md#backups-and-restore).

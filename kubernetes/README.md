@@ -23,7 +23,9 @@ flux get kustomizations
 | `talos/secrets.sops.yaml` | cluster CA and keys, fully encrypted |
 | `flux/cluster/flux-system/` | written by `flux bootstrap`; don't edit |
 | `flux/cluster/apps.yaml` | `cluster-apps`: applies `apps/` with SOPS decryption and `${VAR}` substitution |
-| `flux/cluster/cluster-settings.yaml` | non-secret variables (`CLOUDFLARE_TUNNEL_ID`, `ACME_EMAIL`) |
+| `flux/cluster/cluster-settings.yaml` | non-secret variables (`CLOUDFLARE_TUNNEL_ID`, `ACME_EMAIL`, `R2_ENDPOINT`, `R2_BUCKET`, ...) |
+| `flux/cluster/cluster-secrets.sops.yaml` | secret counterpart to `cluster-settings.yaml`, same `substituteFrom` mechanism (R2 keys, shared VolSync restic password) |
+| `components/volsync/` | reusable kustomize Component: restic-to-R2 `ReplicationSource` for an app's config PVC, see "Backups and restore" |
 | `apps/<namespace>/<app>/ks.yaml` | one Flux Kustomization per app, with `dependsOn` ordering |
 | `apps/<namespace>/<app>/app/` | the app's manifests / HelmRelease |
 
@@ -42,6 +44,7 @@ flux get kustomizations
 | echo | smoke test at `echo.z7x.org` on the internal gateway |
 | home-assistant | `home.z7x.org` on both gateways, backed by the HA VM (selector-less Service + EndpointSlice to 10.10.10.20:80) |
 | media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
+| VolSync, etcd-backup, opnsense-backup | `apps/backup/`: restic-to-R2 offsite backups -- see "Backups and restore" below |
 
 ## Publishing an app
 
@@ -130,6 +133,117 @@ HelmRelease here.
   for `media.z7x.org` is not yet created -- add `Zone > Cache Rules > Edit` to that token (or
   create the rule by hand in the dashboard: Caching → Cache Rules → bypass cache when hostname
   equals `media.z7x.org`).
+
+## Backups and restore
+
+Everything offsite goes to Cloudflare R2, bucket `homelab-backups` (account
+`0346e28e1f2af422c32c0c37e9f7f363`), as restic repositories under one prefix per source so they
+can share the bucket safely. Retention (`keep-daily 7, keep-weekly 4` everywhere) is tuned to
+stay well under the 10 GB free tier. Credentials: `R2_ENDPOINT`/`R2_BUCKET` in
+`cluster-settings.yaml`, `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`VOLSYNC_RESTIC_PASSWORD` in
+`cluster-secrets.sops.yaml` -- both substituted into every backup app's manifests via
+`postBuild.substituteFrom`. Each restic repository password is generated once and stored only in
+SOPS (recoverable with the age key, `vault_sops_age_key` / `~/.config/sops/age/keys.txt`); losing
+it means losing that repository's data, same as any restic repo.
+
+Local Proxmox vzdump backups (full VM/CT images, no restic) are covered in
+[`../ansible/README.md#backups`](../ansible/README.md#backups) -- they're the fast path back for
+whole guests; R2 is the offsite path for the things a lost node/disk would otherwise need a full
+rebuild for (cluster state, firewall config, app config).
+
+### etcd (`apps/backup/etcd-backup`)
+
+Nightly (03:00) CronJob: an init container (`ghcr.io/siderolabs/talosctl`) takes an etcd snapshot
+via the Talos API, authenticated through [Talos API access from
+Kubernetes](https://docs.siderolabs.com/kubernetes-guides/advanced-guides/talos-api-access-from-k8s)
+(`talos/patches/cluster.yaml`'s `KubeTalosAPIAccessConfig`, role `os:etcd:backup`, namespace
+`backup` only -- the `etcd-backup-talos` `ServiceAccount` CR in the app mounts the short-lived
+talosconfig), then a restic container backs the snapshot file up to
+`s3:${R2_ENDPOINT}/${R2_BUCKET}/etcd`.
+
+```sh
+export RESTIC_REPOSITORY="s3:$(mise exec -- kubectl get cm cluster-settings -n flux-system -o jsonpath='{.data.R2_ENDPOINT}')/homelab-backups/etcd"
+export RESTIC_PASSWORD=$(mise exec -- sops -d --extract '["stringData"]["RESTIC_PASSWORD"]' kubernetes/apps/backup/etcd-backup/app/secret.sops.yaml)
+export AWS_ACCESS_KEY_ID=$(ansible-vault view ansible/inventory/group_vars/all/vault.yml | yq '.vault_r2_access_key_id')
+export AWS_SECRET_ACCESS_KEY=$(ansible-vault view ansible/inventory/group_vars/all/vault.yml | yq '.vault_r2_secret_access_key')
+mise exec -- restic snapshots
+mise exec -- restic restore latest --target ./etcd-restore
+# Verify the restored file before trusting it (does NOT touch the live cluster):
+etcdutl snapshot status ./etcd-restore/<path>/db.snapshot -w table
+# Disaster recovery (replaces the live cluster's etcd -- only when actually needed):
+#   talosctl -n <node> etcd snapshot <restored-file>  # copy it to the node first, then
+#   talosctl -n <node> bootstrap --recover-from=<path-on-node>
+```
+
+### OPNsense (`apps/backup/opnsense-backup`)
+
+Nightly (03:00) CronJob: fetches `config.xml` from OPNsense's core backup API
+(`/api/core/backup/download/this`, same `vault_opnsense_api_key`/`vault_opnsense_api_secret` as
+`ansible/roles/opnsense`, reachable at `10.10.10.1` from the K8S zone), then restic-backs it up to
+`s3:${R2_ENDPOINT}/${R2_BUCKET}/opnsense`.
+
+```sh
+# Same pattern as etcd above, repository .../opnsense, password from
+# kubernetes/apps/backup/opnsense-backup/app/secret.sops.yaml
+mise exec -- restic -r "s3:$R2_ENDPOINT/homelab-backups/opnsense" restore latest --target ./opnsense-restore
+# Restore: OPNsense webGUI -> System -> Configuration -> Backups -> Restore configuration,
+# upload ./opnsense-restore/config.xml (or POST it to /api/core/backup/restore).
+```
+
+### App config PVCs (`components/volsync`)
+
+A reusable kustomize Component, included by an app's own `kustomization.yaml` with three vars:
+`APP` (must match the PVC's name), `VOLSYNC_CAPACITY` (size of restic's metadata cache volume),
+and optionally `VOLSYNC_STORAGECLASS` (defaults to `proxmox-vmdata`). It adds a `${APP}-volsync-restic`
+Secret and a nightly (04:00) `ReplicationSource` backing `${APP}`'s PVC up to
+`s3:${R2_ENDPOINT}/${R2_BUCKET}/volsync/${APP}` with `copyMethod: Direct` (the Proxmox CSI driver
+doesn't support clone/snapshot, so the mover reads the PVC directly; safe because volumes are
+node-pinned and the mover lands on the same node). The including app's `ks.yaml` must list
+`cluster-settings` and `cluster-secrets` in `postBuild.substituteFrom` alongside its own vars, and
+VolSync (the controller, `apps/backup/volsync`) must be installed first. Media files (NFS) are
+never in scope -- only PVCs opted into this component are backed up.
+
+```sh
+# Restore <app>'s PVC into a scratch PVC to inspect/diff before touching the real one:
+cat <<EOF | mise exec -- kubectl apply -n <namespace> -f -
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: <app>-restore-scratch}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: <size>}}}
+---
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata: {name: <app>-restore}
+spec:
+  trigger: {manual: restore-once}
+  restic:
+    repository: <app>-volsync-restic
+    destinationPVC: <app>-restore-scratch
+    copyMethod: Direct
+EOF
+mise exec -- kubectl diff -n <namespace> ... # compare the scratch PVC's contents to the live one
+```
+
+### Home Assistant
+
+HAOS 2026.2+ ships a built-in **Cloudflare R2** backup agent (Settings -> Devices & services ->
+Add Integration -> *Cloudflare R2*) -- no supervisor add-on, no network-mount detour needed. It
+needs a UI step and credentials the agent running this task doesn't have (an HA login): once in
+HA,
+
+1. Settings -> Devices & services -> Add Integration -> **Cloudflare R2**.
+2. Access key ID / Secret access key: reuse `vault_r2_access_key_id` /
+   `vault_r2_secret_access_key` (`ansible-vault view ansible/inventory/group_vars/all/vault.yml`),
+   or create a bucket-scoped token instead (Cloudflare dashboard -> R2 -> Manage API tokens ->
+   Create User API token -> Object Read & Write, limited to `homelab-backups`) if you'd rather not
+   reuse the account-wide one.
+3. Bucket name: `homelab-backups`. Endpoint URL: `https://0346e28e1f2af422c32c0c37e9f7f363.r2.cloudflarestorage.com`.
+   Folder prefix: `homeassistant`.
+4. Settings -> System -> Backups -> add a schedule and pick the new Cloudflare R2 location as a
+   target (in addition to local, so you still have a fast local restore path).
+
+Restores are built in too: Settings -> System -> Backups -> pick the R2 backup -> Restore (or
+from the onboarding screen on a freshly reinstalled HAOS).
 
 ## Updates
 
