@@ -29,13 +29,20 @@ Edit zones in `inventory/group_vars/all/main.yml` (`lab_zones`) before the first
 cd ansible
 ansible-playbook playbooks/discover-nics.yml        # find hnhv01's card ports
 echo 'pve_trunk_nic: enp1s0f0' > inventory/host_vars/hnhv01.yml   # card port 1 (use the real name)
-ansible-vault edit inventory/group_vars/all/vault.yml   # add tailscale_authkey (reusable, pre-approved)
+ansible-vault edit inventory/group_vars/all/vault.yml   # add tailscale_authkey (reusable, tagged tag:pve)
 ansible-playbook playbooks/site.yml                     # or --skip-tags tailscale until the key is in
 ```
 
 Re-run `site.yml` after every new node: it joins the cluster on the next run. With two
 nodes the cluster has no quorum while either is down (running guests keep running, but
 nothing can be started or changed); a third node or a QDevice fixes that.
+
+The Tailscale key comes from **Settings → Keys** in the tailnet's admin console: reusable,
+not ephemeral, tagged `tag:pve` (create the tag first under **Access controls → Tags**,
+owner `autogroup:admin`). Tagged nodes never hit node-key expiry; the key itself lasts at
+most 90 days, after which new nodes need a fresh key in the vault. The role skips nodes
+that are already connected, so to move nodes to another tailnet run `tailscale logout` on
+each, swap the key, then `ansible-playbook playbooks/site.yml --tags tailscale`.
 
 The play ends by printing OPNsense's WAN IP and MAC: **reserve that IP in the My Spectrum
 app**, since the management rules and later port-forwards point at it.
