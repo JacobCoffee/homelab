@@ -41,6 +41,7 @@ flux get kustomizations
 | Spegel | nodes share pulled images with each other |
 | echo | smoke test at `echo.z7x.org` on the internal gateway |
 | home-assistant | `home.z7x.org` on both gateways, backed by the HA VM (selector-less Service + EndpointSlice to 10.10.10.20:80) |
+| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
 
 ## Publishing an app
 
@@ -75,6 +76,60 @@ Flux decrypts with the `flux-system/sops-age` secret (the same age key as
 `~/.config/sops/age/keys.txt` and `vault_sops_age_key` in the Ansible vault). The Cloudflare
 token in `cert-manager-issuers` and `external-dns-cloudflare` is the vault's
 `cloudflare_api_token`; if you rotate it, update both files.
+
+## Media stack
+
+`apps/media/`: Jellyfin, Seerr (the project formerly called Jellyseerr), Sonarr, Radarr,
+Lidarr, Prowlarr, Bazarr, [Bindery](https://github.com/vavallee/bindery) (Readarr replacement),
+qBittorrent+gluetun, SABnzbd, Recyclarr, Unpackerr, FlareSolverr and Cleanuparr. One shared
+`app-template` OCIRepository (`apps/media/app-template`) is the chart source for every
+HelmRelease here.
+
+- **Why Bindery, not Chaptarr/Bookshelf/LazyLibrarian:** Readarr is retired. Bindery is a single
+  Go binary with no single point of failure for metadata (OpenLibrary first, Google
+  Books/Hardcover/DNB/Audnex/Audible behind it), imports a dead `readarr.db` directly, and ships
+  frequent releases (v1.46.1 as of 2026-11-01). Chaptarr (a Readarr fork) is also active but
+  still beta with its own incompatible metadata pipeline; Bookshelf needs separate instances for
+  ebooks and audiobooks; LazyLibrarian's GitHub mirror is stale (the live project is on GitLab).
+- **Companions kept:** Recyclarr (TRaSH Guides quality profiles synced into Sonarr/Radarr by a
+  CronJob, YAML in git -- chosen over Profilarr, which is a stateful GUI app with no clean
+  GitOps story), Unpackerr (extracts rar/zip downloads for Sonarr/Radarr/Lidarr), FlareSolverr
+  (Cloudflare/DDoS-Guard challenge solver for Prowlarr indexers that need it -- still actively
+  released, kept over Byparr), Cleanuparr (removes stalled/blocked downloads, the maintained
+  successor to Decluttarr).
+- **Skipped:** Profilarr (overlaps with Recyclarr, GUI-only config), Huntarr (automatic
+  missing/upgrade searching -- the user drives searches manually here), Byparr/Trawl (FlareSolverr
+  itself is still maintained), Swaparr (bundled with Huntarr, narrower than Cleanuparr), Ombi
+  (superseded by Seerr), Organizr/Homarr-style dashboards (not requested).
+- **API keys:** `apps/media/secrets` holds one `arr-api-keys` Secret with pre-generated keys for
+  Sonarr/Radarr/Lidarr/Prowlarr, injected via `<APP>__AUTH__APIKEY` env vars (the Servarr config
+  override convention) so Recyclarr and Unpackerr already know them. Bazarr (Python, no such env
+  override) and the Prowlarr "Apps"/Bazarr "Settings" links to Sonarr/Radarr have no declarative
+  equivalent upstream -- those stay manual UI steps, along with indexer/Usenet provider accounts,
+  the Jellyfin admin account, and Seerr's first-run wizard (which needs that Jellyfin account).
+- **Shared media volume:** every app that touches files mounts the NFS export from
+  `MEDIA_NFS_SERVER`/`MEDIA_NFS_PATH` (`cluster-settings.yaml`, owned by Storage) at `/media`,
+  TRaSH-style (`/media/downloads/...`, `/media/library/...`) so imports hardlink instead of copy.
+- **qBittorrent + gluetun:** one Pod (`apps/media/gluetun-qbittorrent`), so the two containers
+  share a network namespace -- gluetun owns it, firewalls it (kill switch: only the WireGuard
+  tunnel, DNS, and the cluster's pod/service subnets get through) and qBittorrent rides inside
+  with no network config of its own. AirVPN, static port forwarding: gluetun's
+  `FIREWALL_VPN_INPUT_PORTS` and qBittorrent's `--torrenting-port` both read the same
+  `FORWARDED_PORT` secret key, so they can't drift apart. `secret.sops.yaml` has placeholder
+  values until `vault_vpn_wireguard_private_key`, `vault_vpn_wireguard_preshared_key`,
+  `vault_vpn_wireguard_addresses` and `vault_vpn_forwarded_port` exist in the Ansible vault (the
+  AirVPN account doesn't exist yet) -- this is the only Kustomization under `media/` waiting on a
+  secret; everything else applies and runs without it.
+- **Node pinning:** config PVCs use `proxmox-vmdata` (RWO, `WaitForFirstConsumer`). The first pod
+  for each app picks a node, Proxmox CSI provisions the volume on that node's local ZFS pool, and
+  the resulting PV's node affinity pins every future pod for that app to the same node -- there's
+  no cross-node migration for these volumes.
+- **Cloudflare cache bypass:** `media.z7x.org` streams video through the Cloudflare tunnel, and
+  Cloudflare caches `.mp4`/`.mkv` etc. by default, which risks violating its ToS for video
+  delivery. `cloudflare_api_token` only has DNS + Tunnel edit, not Cache Rules, so the bypass rule
+  for `media.z7x.org` is not yet created -- add `Zone > Cache Rules > Edit` to that token (or
+  create the rule by hand in the dashboard: Caching → Cache Rules → bypass cache when hostname
+  equals `media.z7x.org`).
 
 ## Updates
 

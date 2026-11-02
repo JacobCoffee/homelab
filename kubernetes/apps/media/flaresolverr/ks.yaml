@@ -1,0 +1,25 @@
+# Cloudflare/DDoS-Guard challenge solver, used as a proxy by Prowlarr indexers that need it
+# (configured per-indexer in Prowlarr's UI -- which indexers need it is account/tracker specific).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flaresolverr
+  namespace: flux-system
+spec:
+  targetNamespace: media
+  path: ./kubernetes/apps/media/flaresolverr/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: media-app-template
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: flaresolverr
+      namespace: media

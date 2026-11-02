@@ -1,0 +1,18 @@
+# Shared chart source for every bjw-s app-template HelmRelease under media/. One pull,
+# reused by every app's HelmRelease via chartRef (same namespace, no values here).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: media-app-template
+  namespace: flux-system
+spec:
+  targetNamespace: media
+  path: ./kubernetes/apps/media/app-template/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

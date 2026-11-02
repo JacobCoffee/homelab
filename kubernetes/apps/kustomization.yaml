@@ -6,3 +6,7 @@ resources:
   - ./network
   - ./home
   - ./default
+  - ./media
+  - ./storage
+  - ./backup
+  - ./observability

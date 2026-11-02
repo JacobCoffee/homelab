@@ -1,0 +1,87 @@
+# Bindery: the user's choice to replace retired Readarr (see kubernetes/README.md for the full
+# comparison against Chaptarr/Bookshelf/LazyLibrarian). Single Go binary, ghcr.io/vavallee/bindery,
+# v1.46.1 is the latest release as of 2026-11-01. Root folder (/media/library/books) and download
+# client paths are set in its UI/API after first boot -- it has no env-based config for those yet.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: bindery
+  namespace: media
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      bindery:
+        containers:
+          app:
+            image:
+              repository: ghcr.io/vavallee/bindery
+              tag: "v1.46.1"
+            env:
+              TZ: America/Chicago
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: &port 8787
+                  initialDelaySeconds: 10
+                  periodSeconds: 10
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: *port
+                  initialDelaySeconds: 10
+                  periodSeconds: 10
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+    service:
+      app:
+        controller: bindery
+        ports:
+          http:
+            port: *port
+    persistence:
+      config:
+        type: persistentVolumeClaim
+        storageClass: proxmox-vmdata
+        accessMode: ReadWriteOnce
+        size: 2Gi
+        globalMounts:
+          - path: /config
+      media:
+        type: nfs
+        server: "${MEDIA_NFS_SERVER}"
+        path: "${MEDIA_NFS_PATH}"
+        globalMounts:
+          - path: /media
+    route:
+      app:
+        hostnames: ["bindery.z7x.org"]
+        parentRefs:
+          - name: internal
+            namespace: network
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: app
+                port: *port

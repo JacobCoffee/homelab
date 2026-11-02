@@ -1,0 +1,78 @@
+# ghcr.io/unpackerr/unpackerr:1.0.1, latest as of 2026-11-01. Fully declarative via env vars,
+# pre-wired to Sonarr/Radarr/Lidarr using arr-api-keys (kubernetes/apps/media/secrets) and their
+# in-cluster Service DNS names. No config file/PVC needed; v1.0.0 added a web UI on :5656.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: unpackerr
+  namespace: media
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      unpackerr:
+        containers:
+          app:
+            image:
+              repository: ghcr.io/unpackerr/unpackerr
+              tag: "1.0.1"
+            env:
+              TZ: America/Chicago
+              UN_SONARR_0_URL: http://sonarr.media.svc.cluster.local:8989
+              UN_SONARR_0_API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: arr-api-keys
+                    key: SONARR_API_KEY
+              UN_RADARR_0_URL: http://radarr.media.svc.cluster.local:7878
+              UN_RADARR_0_API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: arr-api-keys
+                    key: RADARR_API_KEY
+              UN_LIDARR_0_URL: http://lidarr.media.svc.cluster.local:8686
+              UN_LIDARR_0_API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: arr-api-keys
+                    key: LIDARR_API_KEY
+            resources:
+              requests:
+                cpu: 25m
+                memory: 64Mi
+              limits:
+                memory: 256Mi
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+    service:
+      app:
+        controller: unpackerr
+        ports:
+          http:
+            port: &port 5656
+    persistence:
+      media:
+        type: nfs
+        server: "${MEDIA_NFS_SERVER}"
+        path: "${MEDIA_NFS_PATH}"
+        globalMounts:
+          - path: /media
+    route:
+      app:
+        hostnames: ["unpackerr.z7x.org"]
+        parentRefs:
+          - name: internal
+            namespace: network
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: app
+                port: *port
