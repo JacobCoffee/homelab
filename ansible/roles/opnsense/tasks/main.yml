@@ -26,8 +26,18 @@
   delay: 5
   no_log: true
 
+- name: Patch OPNsense (reboots if the update needs it)
+  ansible.builtin.include_tasks: firmware.yml
+  when: opnsense_update | bool
+
 - name: Configure OPNsense via the REST API
   ansible.builtin.include_tasks: api.yml
+
+- name: Tailscale subnet router for the lab zones
+  ansible.builtin.include_tasks: tailscale.yml
+
+- name: Lab DNS (AdGuard) via DHCP and a WAN port-forward
+  ansible.builtin.include_tasks: lab_dns.yml
 
 - name: Report
   ansible.builtin.debug:

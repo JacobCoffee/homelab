@@ -1,0 +1,9 @@
+# Tailnet-level settings, applied through the Tailscale API with tailscale_api_key (vault).
+tailscale_api: https://api.tailscale.com/api/v2
+tailscale_tailnet: "-"   # "-" = the tailnet that owns the API key
+
+# Lab subnets OPNsense shares with the tailnet; their routes are auto-approved for tag:router.
+tailscale_lab_routes: "{{ lab_zones | map(attribute='cidr') | list }}"
+
+# Auth keys minted for a join are single-use, pre-approved and short-lived.
+tailscale_authkey_ttl: 600

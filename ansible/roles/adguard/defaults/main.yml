@@ -1,0 +1,28 @@
+# AdGuard Home in an unprivileged Debian LXC on the INT zone. Lab DHCP hands it out as DNS;
+# it asks OPNsense's Unbound (DNSSEC, lab names) for everything it doesn't block.
+adguard_ctid: 101
+adguard_hostname: "{{ site_code }}dns01"
+adguard_zone: int
+adguard_ip: "{{ lab_dns }}"
+
+adguard_template: debian-13-standard_13.6-1_amd64.tar.zst
+adguard_storage: vmdata
+adguard_cores: 1
+adguard_memory: 512
+adguard_disk_gb: 4
+adguard_bridge: vmbr1
+
+adguard_version: v0.107.79
+adguard_sha256: c48f4a43000665484c5ec28177de11a004759b620dae8f77b2aabefc9ef3687f  # AdGuardHome_linux_amd64.tar.gz
+adguard_url: "https://github.com/AdguardTeam/AdGuardHome/releases/download/{{ adguard_version }}/AdGuardHome_linux_amd64.tar.gz"
+
+# Short and low-false-positive; AdGuard DNS filter is on by default.
+adguard_filters:
+  - { name: AdAway Default Blocklist, url: "https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt" }
+
+adguard_user: admin
+adguard_password: "{{ vault_adguard_password }}"
+
+# Derived from the zone; no need to change.
+adguard_zone_cfg: "{{ lab_zones | selectattr('name', 'equalto', adguard_zone) | first }}"
+adguard_upstream: "{{ adguard_zone_cfg.gateway }}"

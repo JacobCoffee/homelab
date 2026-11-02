@@ -1,0 +1,24 @@
+// Tailnet policy, managed by ansible/roles/tailscale_tailnet.
+// site.yml overwrites edits made in the admin console: change this file instead.
+{
+	// Tags are what non-human devices log in as. Only admins (and keys they mint) can apply them.
+	"tagOwners": {
+		"tag:pve":    ["autogroup:admin"], // Proxmox hosts
+		"tag:router": ["autogroup:admin"], // OPNsense, sharing the lab subnets
+	},
+
+	// OPNsense's lab routes go live without a click in the admin console.
+	"autoApprovers": {
+		"routes": {
+{% for cidr in tailscale_lab_routes %}
+			"{{ cidr }}": ["tag:router"],
+{% endfor %}
+		},
+	},
+
+	"grants": [
+		// You and anyone you invite reach every device and every lab subnet.
+		// Tagged devices start nothing on their own; replies to your connections still flow.
+		{"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
+	],
+}

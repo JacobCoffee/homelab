@@ -121,8 +121,10 @@
   ansible.builtin.command: qm set {{ opnsense_vmid }} --delete args
   changed_when: true
 
-- name: Remove bootstrap material (contains password hashes)
+# The VM disk is its own copy; the images (3.5 GB) would only fill the USB root. A rebuild
+# downloads again, checksum-verified.
+- name: Remove bootstrap material (password hashes) and the images
   ansible.builtin.file:
     path: "{{ opnsense_workdir }}/{{ item }}"
     state: absent
-  loop: [config.img, import]
+  loop: [config.img, import, "{{ opnsense_image }}", "{{ opnsense_image }}.bz2"]

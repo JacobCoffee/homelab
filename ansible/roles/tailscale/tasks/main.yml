@@ -1,9 +1,4 @@
 # Tailscale on each Proxmox host: remote management that doesn't depend on OPNsense.
-- name: Require a Tailscale auth key
-  ansible.builtin.assert:
-    that: tailscale_authkey is defined
-    fail_msg: "Add tailscale_authkey to inventory/group_vars/all/vault.yml (ansible-vault edit)."
-
 - name: Tailscale apt key
   ansible.builtin.get_url:
     url: "https://pkgs.tailscale.com/stable/debian/{{ ansible_facts.distribution_release }}.noarmor.gpg"
@@ -33,10 +28,19 @@
   failed_when: false
 
 - name: Join the tailnet
-  # --accept-dns=false: keep the node's resolver as Proxmox configured it.
-  ansible.builtin.command: >-
-    tailscale up --auth-key={{ tailscale_authkey }} --hostname={{ inventory_hostname }}
-    --accept-dns=false
   when: (tailscale_status.stdout | default('{}', true) | from_json).BackendState | default('') != 'Running'
-  no_log: true
-  changed_when: true
+  block:
+    - name: Mint a single-use tag:pve key
+      ansible.builtin.include_role:
+        name: tailscale_tailnet
+        tasks_from: authkey
+      vars:
+        tailscale_key_tags: ["tag:pve"]
+
+    - name: tailscale up
+      # --accept-dns=false: keep the node's resolver as Proxmox configured it.
+      ansible.builtin.command: >-
+        tailscale up --auth-key={{ tailscale_join_key }} --hostname={{ inventory_hostname }}
+        --accept-dns=false
+      no_log: true
+      changed_when: true

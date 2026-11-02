@@ -42,3 +42,7 @@ opnsense_root_ssh_key: "{{ automation_ssh_pubkey }}"
 opnsense_root_password: "{{ vault_opnsense_root_password }}"
 opnsense_api_key: "{{ vault_opnsense_api_key }}"
 opnsense_api_secret: "{{ vault_opnsense_api_secret }}"
+
+# Install pending updates within the release series on every run (reboots OPNsense when
+# the update requires it). Plugins can't be installed on an out-of-date box.
+opnsense_update: true

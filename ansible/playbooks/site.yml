@@ -1,5 +1,5 @@
 # Everything, in order:  ansible-playbook playbooks/site.yml
-# Skip a part with --skip-tags, e.g. before tailscale_authkey is in the vault:
+# Skip a part with --skip-tags, e.g. before tailscale_api_key is in the vault:
 #   ansible-playbook playbooks/site.yml --skip-tags tailscale
 - name: Proxmox cluster (create, then join every node)
   hosts: pve
@@ -7,15 +7,24 @@
   roles:
     - pve_cluster
 
+- name: Tailnet policy (tags, route approval, access) from the repo
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [tailscale]
+  roles:
+    - tailscale_tailnet
+
 - name: All Proxmox nodes
   hosts: pve
   tags: [tailscale]
   roles:
     - tailscale
 
-- name: Core node (extra NICs, OPNsense)
+- name: Core node (extra NICs, OPNsense, lab DNS)
   hosts: core
   tags: [core]
   roles:
     - pve_network
     - opnsense
+    - adguard

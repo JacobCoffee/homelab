@@ -1,0 +1,30 @@
+# Create the LXC (only when it doesn't exist yet) and start it.
+- name: Debian template present
+  ansible.builtin.command: pveam download local {{ adguard_template }}
+  args:
+    creates: /var/lib/vz/template/cache/{{ adguard_template }}
+
+- name: Create {{ adguard_hostname }} (CT {{ adguard_ctid }})
+  ansible.builtin.command: >-
+    pct create {{ adguard_ctid }} local:vztmpl/{{ adguard_template }}
+    --hostname {{ adguard_hostname }}
+    --unprivileged 1 --features nesting=1
+    --cores {{ adguard_cores }} --memory {{ adguard_memory }} --swap {{ adguard_memory }}
+    --rootfs {{ adguard_storage }}:{{ adguard_disk_gb }}
+    --net0 name=eth0,bridge={{ adguard_bridge }},tag={{ adguard_zone_cfg.vlan }},ip={{ adguard_ip }}/{{ adguard_zone_cfg.cidr.split('/')[1] }},gw={{ adguard_zone_cfg.gateway }}
+    --nameserver {{ adguard_zone_cfg.gateway }} --searchdomain {{ adguard_zone_cfg.domain }}
+    --ssh-public-keys /root/.ssh/authorized_keys
+    --onboot 1 --startup order=2
+  changed_when: true
+
+- name: Start it
+  ansible.builtin.command: pct start {{ adguard_ctid }}
+  changed_when: true
+
+- name: Wait for its network (reach the gateway, resolve a name)
+  ansible.builtin.command: pct exec {{ adguard_ctid }} -- sh -c 'ping -c1 -W2 {{ adguard_zone_cfg.gateway }} && getent hosts deb.debian.org'
+  register: adguard_net
+  until: adguard_net.rc == 0
+  retries: 20
+  delay: 3
+  changed_when: false

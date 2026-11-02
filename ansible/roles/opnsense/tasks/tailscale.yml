@@ -1,0 +1,200 @@
+# Tailscale on OPNsense (os-tailscale plugin), sharing the lab subnets with the tailnet.
+# Routes are auto-approved for tag:router by the tailnet policy (roles/tailscale_tailnet).
+- name: Tailscale | plugin installed?
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/settings/get"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  delegate_to: localhost
+  register: opnsense_ts_settings
+
+- name: Tailscale | install os-tailscale
+  when: opnsense_ts_settings.status == 404
+  block:
+    - name: Tailscale | queue the install
+      ansible.builtin.uri:
+        url: "https://{{ opnsense_wan_ip }}/api/core/firmware/install/os-tailscale"
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        method: POST
+        body_format: json
+        body: {}
+      delegate_to: localhost
+      changed_when: true
+
+    - name: Tailscale | wait for the plugin's API
+      ansible.builtin.uri:
+        url: "https://{{ opnsense_wan_ip }}/api/tailscale/settings/get"
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: [200, 404]
+      delegate_to: localhost
+      register: opnsense_ts_plugin_up
+      until: opnsense_ts_plugin_up.status == 200
+      retries: 60
+      delay: 5
+
+- name: Tailscale | current settings
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/settings/get"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_ts_cfg
+
+- name: Tailscale | enable; keep OPNsense's own DNS; no exit node
+  vars:
+    wanted: {enabled: "1", acceptDNS: "0", acceptSubnetRoutes: "0", advertiseExitNode: "0"}
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/settings/set"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      settings: "{{ wanted }}"
+  delegate_to: localhost
+  register: opnsense_ts_set
+  when: wanted.keys() | map('extract', opnsense_ts_cfg.json.settings) | list != wanted.values() | list
+  changed_when: opnsense_ts_set.json.result == "saved"
+  failed_when: opnsense_ts_set.json.result is not defined or opnsense_ts_set.json.result == "failed"
+
+- name: Tailscale | advertised subnets
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/settings/search_subnet"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_ts_subnets
+
+- name: Tailscale | advertise each lab zone
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/settings/add_subnet"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      subnet4:
+        subnet: "{{ item.cidr }}"
+        description: "{{ item.descr }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_zones }}"
+  loop_control:
+    label: "{{ item.descr }} {{ item.cidr }}"
+  when: item.cidr not in opnsense_ts_subnets.json.rows | map(attribute='subnet') | list
+  register: opnsense_ts_subnet_add
+  changed_when: opnsense_ts_subnet_add.json.result == "saved"
+  failed_when: opnsense_ts_subnet_add.json.result is not defined or opnsense_ts_subnet_add.json.result == "failed"
+
+- name: Tailscale | current state
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/status/status"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_ts_status
+
+- name: Tailscale | log in with a single-use tag:router key
+  when: opnsense_ts_status.json.BackendState | default('') != 'Running'
+  block:
+    - name: Tailscale | mint the key
+      ansible.builtin.include_role:
+        name: tailscale_tailnet
+        tasks_from: authkey
+      vars:
+        tailscale_key_tags: ["tag:router"]
+        tailscale_key_name: "{{ opnsense_hostname }}"
+
+    - name: Tailscale | hand it to the plugin
+      ansible.builtin.uri:
+        url: "https://{{ opnsense_wan_ip }}/api/tailscale/authentication/set"
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        method: POST
+        body_format: json
+        body:
+          authentication:
+            preAuthKey: "{{ tailscale_join_key }}"
+      delegate_to: localhost
+      register: opnsense_ts_auth
+      changed_when: true
+      failed_when: opnsense_ts_auth.json.result | default('') != "saved"
+      no_log: true
+
+- name: Tailscale | apply (restarts tailscaled with the settings above)
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/service/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body: {}
+  delegate_to: localhost
+  when: >-
+    opnsense_ts_set is changed or opnsense_ts_subnet_add is changed or
+    opnsense_ts_status.json.BackendState | default('') != 'Running'
+  changed_when: true
+
+# os-tailscale 1.4 only passes --auth-key when tailscaled's state file already exists,
+# which it doesn't on the very first start; the first start creates it, so start again.
+- name: Tailscale | state after apply
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/status/status"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_ts_after_apply
+  until: opnsense_ts_after_apply.json.BackendState | default('') in ['Running', 'NeedsLogin']
+  retries: 10
+  delay: 3
+
+- name: Tailscale | restart so the first start's auth key is used
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/service/restart"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body: {}
+  delegate_to: localhost
+  when: opnsense_ts_after_apply.json.BackendState == 'NeedsLogin'
+  changed_when: true
+
+- name: Tailscale | wait until it is on the tailnet
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/tailscale/status/status"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_ts_status
+  until: opnsense_ts_status.json.BackendState | default('') == 'Running'
+  retries: 30
+  delay: 3

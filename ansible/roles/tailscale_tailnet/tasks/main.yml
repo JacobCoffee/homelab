@@ -1,0 +1,36 @@
+# Push the tailnet policy (tags, route auto-approval, access grants) from the repo.
+# Runs on the controller; everything goes through the Tailscale API.
+- name: Require a Tailscale API access token
+  ansible.builtin.assert:
+    that: tailscale_api_key is defined
+    fail_msg: >-
+      Add tailscale_api_key to inventory/group_vars/all/vault.yml (ansible-vault edit):
+      admin console -> Settings -> Keys -> Generate access token.
+
+- name: Render the policy
+  ansible.builtin.set_fact:
+    tailscale_policy: "{{ lookup('ansible.builtin.template', 'policy.hujson.j2') }}"
+
+- name: Read the current policy
+  ansible.builtin.uri:
+    url: "{{ tailscale_api }}/tailnet/{{ tailscale_tailnet }}/acl"
+    headers:
+      Authorization: "Bearer {{ tailscale_api_key }}"
+      Accept: application/hujson
+    return_content: true
+  register: tailscale_policy_current
+  no_log: true
+
+- name: Push the policy
+  ansible.builtin.uri:
+    url: "{{ tailscale_api }}/tailnet/{{ tailscale_tailnet }}/acl"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ tailscale_api_key }}"
+      Content-Type: application/hujson
+      If-Match: "{{ tailscale_policy_current.etag }}"
+    body_format: raw
+    body: "{{ tailscale_policy }}"
+  when: tailscale_policy_current.content | trim != tailscale_policy | trim
+  changed_when: true
+  no_log: true

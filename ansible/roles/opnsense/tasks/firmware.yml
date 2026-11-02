@@ -1,0 +1,96 @@
+# Keep OPNsense patched within its release series, rebooting if the update needs it.
+# Plugin installs are refused until the box is current, so this runs before them.
+# Skip for one run with -e opnsense_update=false.
+- name: Firmware | look for updates
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/core/firmware/check"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body: {}
+  delegate_to: localhost
+
+- name: Firmware | wait for the check to finish
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/core/firmware/upgradestatus"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_fw_check
+  until: opnsense_fw_check.json.status | default('') == 'done'
+  retries: 60
+  delay: 5
+
+- name: Firmware | status
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/core/firmware/status"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_fw
+
+- name: Firmware | update
+  when: opnsense_fw.json.status == 'update'
+  block:
+    - name: Firmware | {{ opnsense_fw.json.status_msg }}
+      ansible.builtin.uri:
+        url: "https://{{ opnsense_wan_ip }}/api/core/firmware/update"
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        method: POST
+        body_format: json
+        body: {}
+      delegate_to: localhost
+      changed_when: true
+
+    # upgradestatus still shows the finished check job until the update job starts, so wait
+    # for the update's own log; it ends at done/reboot, or the box drops off to reboot.
+    - name: Firmware | wait for the update to install
+      ansible.builtin.uri:
+        url: "https://{{ opnsense_wan_ip }}/api/core/firmware/upgradestatus"
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        timeout: 5
+      delegate_to: localhost
+      register: opnsense_fw_progress
+      until: >-
+        opnsense_fw_progress.status != 200 or
+        ('REQUEST TO UPDATE' in opnsense_fw_progress.json.log | default('') and
+         opnsense_fw_progress.json.status | default('') in ['done', 'reboot'])
+      failed_when: false
+      retries: 120
+      delay: 10
+
+    # The status payload's shape varies (top-level product_version only right after a
+    # check); product.product_version is always there.
+    - name: Firmware | wait for it to come back on the new version
+      ansible.builtin.uri:
+        url: "https://{{ opnsense_wan_ip }}/api/core/firmware/status"
+        url_username: "{{ opnsense_api_key }}"
+        url_password: "{{ opnsense_api_secret }}"
+        force_basic_auth: true
+        validate_certs: false
+        timeout: 5
+      delegate_to: localhost
+      register: opnsense_fw_after
+      until: >-
+        opnsense_fw_after.status == 200 and
+        (opnsense_fw.json.needs_reboot | default('0') != '1' or
+         opnsense_fw_after.json.product.product_version | default('') != opnsense_fw.json.product_version)
+      retries: 60
+      delay: 10
+
+    - name: Firmware | updated
+      ansible.builtin.debug:
+        msg: "OPNsense {{ opnsense_fw.json.product_version }} -> {{ opnsense_fw_after.json.product.product_version }}"

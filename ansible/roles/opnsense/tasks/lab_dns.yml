@@ -1,0 +1,106 @@
+# Point the lab at AdGuard Home (lab_dns) and let the house LAN use it through the WAN.
+# DMZ keeps its own gateway (Unbound) as DNS so it stays fully cut off from INT.
+- name: Lab DNS | zones that get AdGuard
+  ansible.builtin.set_fact:
+    opnsense_dns_zones: "{{ opnsense_zones | rejectattr('descr', 'equalto', 'DMZ') | list }}"
+
+- name: Lab DNS | existing DHCP options
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/search_option"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_dhcp_options
+
+# One option per zone: the option's interface field takes a single interface.
+- name: Lab DNS | DHCP option 6 (dns-server) per zone
+  vars:
+    descr: "Lab DNS: AdGuard Home ({{ item.descr }})"
+    existing: "{{ opnsense_dhcp_options.json.rows | selectattr('description', 'equalto', descr) | list }}"
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/settings/{{ 'set_option/' ~ existing[0].uuid if existing else 'add_option' }}"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      option:
+        type: set
+        option: "6"
+        interface: "{{ item.name }}"
+        value: "{{ lab_dns }}"
+        description: "{{ descr }}"
+  delegate_to: localhost
+  loop: "{{ opnsense_dns_zones }}"
+  loop_control:
+    label: "{{ item.descr }}"
+  register: opnsense_dhcp_option_set
+  when: not existing or existing[0].value != lab_dns or existing[0].interface != item.name
+  changed_when: opnsense_dhcp_option_set.json.result == "saved"
+  failed_when: opnsense_dhcp_option_set.json.result is not defined or opnsense_dhcp_option_set.json.result == "failed"
+
+- name: Lab DNS | reconfigure Dnsmasq
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/dnsmasq/service/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_dhcp_option_set is changed
+  changed_when: true
+
+- name: Lab DNS | existing port forwards
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/d_nat/search_rule"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_dnat_rules
+
+# "pass": "pass" makes OPNsense keep a matching WAN pass rule itself.
+- name: Lab DNS | forward WAN port 53 to AdGuard
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/d_nat/add_rule"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      rule:
+        interface: wan
+        ipprotocol: inet
+        protocol: TCP/UDP
+        destination: {network: wanip, port: "53"}
+        target: "{{ lab_dns }}"
+        local-port: "53"
+        descr: "Lab DNS: WAN 53 to AdGuard"
+        pass: pass
+  delegate_to: localhost
+  register: opnsense_dnat_add
+  when: >-
+    opnsense_dnat_rules.json.rows | selectattr('descr', 'equalto', 'Lab DNS: WAN 53 to AdGuard')
+    | list | length == 0
+  changed_when: opnsense_dnat_add.json.result == "saved"
+  failed_when: opnsense_dnat_add.json.result is not defined or opnsense_dnat_add.json.result == "failed"
+
+- name: Lab DNS | apply firewall/NAT changes
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/firewall/filter/apply"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_dnat_add is changed
+  changed_when: true

@@ -321,3 +321,39 @@ without a second network-attached guest. On real Proxmox hardware, running
 VLAN-tagged bridges is straightforward and should be done once before
 relying on this in production.
 
+
+## Firmware, Tailscale and lab DNS (`tasks/firmware.yml`, `tailscale.yml`, `lab_dns.yml`)
+
+Verified on the real `hnfw01` (Proxmox/KVM), 26.7 → 26.7.8_2.
+
+- **Plugins need a current box.** `POST /api/core/firmware/install/os-tailscale` on stock 26.7
+  returned `status: ok` but the job log said `Installation out of date. The update to
+  opnsense-26.7.8_2 is required.` and installed nothing.
+- **Update flow:** `POST firmware/check`, poll `GET firmware/upgradestatus` until `done`, read
+  `GET firmware/status` (`status: update`, `needs_reboot: "1"`), `POST firmware/update`.
+  `upgradestatus` keeps showing the finished *check* job until the update job starts, so wait
+  for the update's own marker `***GOT REQUEST TO UPDATE***` (written by
+  `scripts/firmware/config.sh`, `REQUEST="UPDATE"` in `update.sh`). 91 packages + reboot took
+  about 2 minutes. `firmware/status` without a fresh check has no top-level `product_version`;
+  `product.product_version` is always present.
+- **os-tailscale 1.4:** settings `{"settings": {enabled, acceptDNS, acceptSubnetRoutes,
+  advertiseExitNode, ...}}` (booleans as `"0"`/`"1"`), routes via `settings/add_subnet`
+  `{"subnet4": {subnet, description}}`, key via `authentication/set`
+  `{"authentication": {preAuthKey}}`, apply via `POST tailscale/service/reconfigure`.
+  `GET tailscale/status/status` is `tailscale status --json` (`BackendState`), or
+  `{"error": ...}` while stopped.
+- **os-tailscale first-start bug:** `/etc/rc.conf.d/tailscaled` adds `--auth-key` only if
+  `/var/db/tailscale/tailscaled.state` exists and has no `"_current-profile"`. On the first
+  start the file doesn't exist yet, so `tailscale up` runs keyless (`NeedsLogin`); the first
+  start creates it, so `POST tailscale/service/restart` logs in with the same key.
+- **Subnet routing works without assigning `tailscale0`:** with the default (SNAT on), a
+  tailnet client reached `10.10.10.1` and `10.10.10.53` with no interface assignment or rules.
+- **Dnsmasq DHCP options:** the `option` key for dns-server is `"6"` (`get_option` lists
+  `"6": "dns-server [6]"`). `interface` takes **one** interface: `"lan"` saves, a list
+  returns HTTP 500, `"lan,opt2"` fails validation. One option per zone. Rendered as
+  `dhcp-option=tag:vtnet1,6,10.10.10.53` in `/usr/local/etc/dnsmasq.conf`.
+- **Port forward (MVC DNAT)** `POST /api/firewall/d_nat/add_rule`, body `{"rule": {interface:
+  wan, ipprotocol: inet, protocol: "TCP/UDP", destination: {network: wanip, port: "53"},
+  target, "local-port", descr, pass: pass}}`. `wanip` reads back as "WAN address";
+  `pass: pass` keeps the matching WAN filter rule. Note `descr`, not `description`. Applied
+  with `POST /api/firewall/filter/apply`.

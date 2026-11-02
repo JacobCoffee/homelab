@@ -1,0 +1,99 @@
+# AdGuard Home API (v0.107): /control/install/* only exists until the first configure;
+# afterwards every /control/* call takes HTTP basic auth. Bodies go in on stdin.
+- name: API auth header
+  ansible.builtin.set_fact:
+    adguard_auth: "Authorization: Basic {{ (adguard_user ~ ':' ~ adguard_password) | b64encode }}"
+  no_log: true
+
+- name: Configured already?
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -s, -o, /dev/null, -w, "%{http_code}",
+           -H, "{{ adguard_auth }}", "http://127.0.0.1/control/status"]
+  register: adguard_status
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: First-run setup
+  when: adguard_status.stdout != '200'
+  block:
+    - name: Wait for the setup wizard on :3000
+      ansible.builtin.command: pct exec {{ adguard_ctid }} -- curl -fsS http://127.0.0.1:3000/control/install/get_addresses
+      register: adguard_wizard
+      until: adguard_wizard.rc == 0
+      retries: 20
+      delay: 3
+      changed_when: false
+
+    - name: Set admin login, web UI on :80, DNS on :53
+      ansible.builtin.command:
+        argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "Content-Type: application/json",
+               --data-binary, "@-", "http://127.0.0.1:3000/control/install/configure"]
+        stdin: >-
+          {{ {'web': {'ip': '0.0.0.0', 'port': 80}, 'dns': {'ip': '0.0.0.0', 'port': 53},
+              'username': adguard_user, 'password': adguard_password, 'language': 'en'} | to_json }}
+      changed_when: true
+      no_log: true
+
+    - name: Wait for the API on :80
+      ansible.builtin.command:
+        argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -s, -o, /dev/null, -w, "%{http_code}",
+               -H, "{{ adguard_auth }}", "http://127.0.0.1/control/status"]
+      register: adguard_up
+      until: adguard_up.stdout == '200'
+      retries: 20
+      delay: 3
+      changed_when: false
+      no_log: true
+
+# Unbound on OPNsense resolves (with DNSSEC) and knows the lab names, so it is the only
+# upstream; PTR lookups for lab addresses go there too, which names clients in the query log.
+- name: Current DNS settings
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -H, "{{ adguard_auth }}", "http://127.0.0.1/control/dns_info"]
+  register: adguard_dns_info
+  changed_when: false
+  no_log: true
+
+- name: Upstream to OPNsense
+  vars:
+    current: "{{ adguard_dns_info.stdout | from_json }}"
+    wanted:
+      upstream_dns: ["{{ adguard_upstream }}"]
+      bootstrap_dns: ["{{ adguard_upstream }}"]
+      use_private_ptr_resolvers: true
+      local_ptr_upstreams: ["{{ adguard_upstream }}"]
+      resolve_clients: true
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}",
+           -H, "Content-Type: application/json", --data-binary, "@-", "http://127.0.0.1/control/dns_config"]
+    stdin: "{{ wanted | to_json }}"
+  when: wanted.keys() | map('extract', current) | list != wanted.values() | list
+  changed_when: true
+  no_log: true
+
+- name: Current filter lists
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -H, "{{ adguard_auth }}", "http://127.0.0.1/control/filtering/status"]
+  register: adguard_filtering
+  changed_when: false
+  no_log: true
+
+# A fresh install ships some registry lists disabled: add missing ones, enable disabled ones.
+- name: Add or enable filter lists
+  vars:
+    current: "{{ (adguard_filtering.stdout | from_json).filters | default([], true) | selectattr('url', 'equalto', item.url) | list }}"
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}",
+           -H, "Content-Type: application/json", --data-binary, "@-",
+           "http://127.0.0.1/control/filtering/{{ 'set_url' if current else 'add_url' }}"]
+    stdin: >-
+      {{ ({'url': item.url, 'whitelist': false,
+           'data': {'name': item.name, 'url': item.url, 'enabled': true}} if current else
+          {'name': item.name, 'url': item.url, 'whitelist': false}) | to_json }}
+  loop: "{{ adguard_filters }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: not current or not current[0].enabled
+  no_log: true
+  changed_when: true
