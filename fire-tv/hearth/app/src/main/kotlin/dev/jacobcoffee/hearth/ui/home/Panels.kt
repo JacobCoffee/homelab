@@ -33,19 +33,18 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
 import androidx.tv.material3.Text
 import dev.jacobcoffee.hearth.apps.AppInfo
 import dev.jacobcoffee.hearth.config.AdGuardConfig
 import dev.jacobcoffee.hearth.config.TvConfig
 import dev.jacobcoffee.hearth.config.UptimeKumaConfig
 import dev.jacobcoffee.hearth.ui.theme.LocalHearthColors
+import dev.jacobcoffee.hearth.ui.toImageBitmap
 import dev.jacobcoffee.hearth.widgets.AdGuardRepository
 import dev.jacobcoffee.hearth.widgets.AdGuardState
 import dev.jacobcoffee.hearth.widgets.KumaMonitor
@@ -116,7 +115,7 @@ private fun IconTile(app: AppInfo, type: HomeType, onClick: () -> Unit, modifier
     val colors = LocalHearthColors.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val icon = remember(app.packageName) { app.icon.toBitmap().asImageBitmap() }
+    val icon = remember(app.packageName) { app.icon.toImageBitmap() }
     Column(
         modifier
             .width(118.dp)

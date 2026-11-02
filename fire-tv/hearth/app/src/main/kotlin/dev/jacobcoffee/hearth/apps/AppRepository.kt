@@ -69,9 +69,11 @@ class AppRepository(context: Context) {
             if (!activity.applicationInfo.enabled) return@mapNotNull null
             val component = ComponentName(activity.packageName, activity.name)
             val label = ri.loadLabel(pm)?.toString() ?: activity.packageName
+            // A banner with no intrinsic size (Fire OS 8.1's Troubleshooting app ships a bare
+            // gradient <shape>) has no artwork: the tile shows the icon and label instead.
             val banner = if (!withBanner) null else runCatching {
                 pm.getActivityBanner(component) ?: pm.getApplicationBanner(activity.applicationInfo)
-            }.getOrNull()
+            }.getOrNull()?.takeIf { it.intrinsicWidth > 0 && it.intrinsicHeight > 0 }
             val icon = runCatching { ri.loadIcon(pm) }.getOrNull() ?: activity.loadIcon(pm)
             val userInstalled = activity.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM == 0
             AppInfo(activity.packageName, component, label, banner, icon, userInstalled)

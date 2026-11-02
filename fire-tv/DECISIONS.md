@@ -1,7 +1,7 @@
 # Fire TV: decisions and state
 
 ## Device
-- Fire TV Stick 4K, model `AFTKRT` (codename karat), Fire OS 8.0 / Android 11 (SDK 30), build `RS8160.3380N`. Plugged into HDMI 2 of the TCL QM8L (`../tcl-tv`).
+- Fire TV Stick 4K, model `AFTKRT` (codename karat), Fire OS 8.1.8.5 / Android 11 (SDK 30), build `RS8185.3898N` (OTA 2026-11-02; set up on 8.0 `RS8160.3380N`). Plugged into HDMI 2 of the TCL QM8L (`../tcl-tv`).
 - ADB over Wi-Fi at `FIRETV_HOST:5555` (`config/site.env`); this Mac's key is authorized. **Reserve the stick's address in DHCP**: the TV bridge and Hearth's config use it, and Hearth reaches the TV at `TV_HOST`.
 - 1.7 GB RAM. Free memory before debloat: 414 MB MemAvailable, 304 processes. After: 538 MB, 288 processes.
 
@@ -16,7 +16,7 @@
 
 ## Tweaks (`./firetv.sh tweaks`)
 - Animation scales 0.5; `amz_limit_ad_tracking=1`, `limit_ad_tracking=1`, `non_amz_limit_ad_tracking=1`, `usage_metrics_marketing_enabled=0`. These persist.
-- Background process limit 2 via `service call activity 43 i32 2`. **Not persisted by Android**: run `./firetv.sh tweaks` after every reboot. Transaction codes 43/44 come from this device's `framework.jar`; re-check after a Fire OS update.
+- Background process limit 2 via `service call activity 43 i32 2`. **Not persisted by Android**: run `./firetv.sh tweaks` after every reboot. Transaction codes 43/44 come from this device's `framework.jar` (re-checked on `RS8185.3898N`: unchanged); re-check after a Fire OS update.
 
 ## Apps added
 - Jellyfin `org.jellyfin.androidtv` v0.19.10, sideloaded from GitHub (sha256 `8510a517…4628`, matches the release digest; `apk/`). 0.20 needs Jellyfin server 10.11+.
@@ -44,6 +44,8 @@
 ./firetv.sh status
 ```
 If Home goes back to Amazon's screen after an update, run `hearth/tools/install.sh` again.
+
+Fire OS 8.1.8.5 (2026-11-02) re-enabled Amazon Music, Shopping, Kindle connect and the Alexa media player, and added a "FireTV Troubleshooting" TV app whose banner is a sizeless gradient `<shape>`. Hearth crashed rasterizing it on every start; the crash took the accessibility service down with it, so Fire OS switched accessibility off (`accessibility_enabled=0`) and Home, Guide and the remote's app buttons all stopped reaching Hearth. Hearth now drops sizeless banners and gives sizeless icons a fallback size. If Home and the app buttons die together again, check `adb logcat -b crash` for Hearth first.
 
 ## Undo
 - `./firetv.sh revert` re-enables every package in `packages.txt`; `./firetv.sh untweak` restores the defaults.

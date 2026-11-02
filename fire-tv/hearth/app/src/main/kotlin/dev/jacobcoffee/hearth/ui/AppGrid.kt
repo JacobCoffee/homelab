@@ -1,5 +1,6 @@
 package dev.jacobcoffee.hearth.ui
 
+import android.graphics.drawable.Drawable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -132,7 +133,17 @@ fun AppGrid(
 }
 
 /** Banners rasterized once per app, not on every recomposition. */
-private fun rasterize(app: AppInfo): ImageBitmap = (app.banner ?: app.icon).toBitmap().asImageBitmap()
+private fun rasterize(app: AppInfo): ImageBitmap = (app.banner ?: app.icon).toImageBitmap()
+
+/**
+ * [toBitmap] throws for drawables with no intrinsic size (shapes, colors); those get
+ * [fallbackPx] square. An exception here would crash Hearth and the Home redirect with it.
+ */
+internal fun Drawable.toImageBitmap(fallbackPx: Int = 192): ImageBitmap =
+    toBitmap(
+        intrinsicWidth.takeIf { it > 0 } ?: fallbackPx,
+        intrinsicHeight.takeIf { it > 0 } ?: fallbackPx,
+    ).asImageBitmap()
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
