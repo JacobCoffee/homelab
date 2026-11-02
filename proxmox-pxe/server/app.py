@@ -19,6 +19,7 @@ Installer endpoints (open to the LAN; the PCs being installed call these):
   GET  /status               JSON node state
 
 Web UI (this Mac only): /  with live nodes, downloads and dnsmasq/installer activity.
+API reference (this Mac only): /api  (Scalar; schema at /api/openapi.json).
 Also starts dnsmasq (proxyDHCP + TFTP) from out/dnsmasq.conf and stops it on exit.
 """
 
@@ -40,10 +41,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from litestar import Litestar, Request, Response, get, post
+from litestar import Litestar, Request, Response, Router, get, post
 from litestar.connection import ASGIConnection
 from litestar.exceptions import NotFoundException, PermissionDeniedException
 from litestar.handlers import BaseRouteHandler
+from litestar.openapi import OpenAPIConfig
+from litestar.openapi.plugins import ScalarRenderPlugin
+from litestar.openapi.spec import Server
 from litestar.response import ServerSentEvent, ServerSentEventMessage, Stream
 from litestar.static_files import create_static_files_router
 
@@ -221,7 +225,8 @@ def nodes_context() -> dict:
         system = host.get("dmi", {}).get("system", {})
         vendor = system.get("manufacturer")
         model = system.get("name") or ""
-        if vendor and vendor not in ("System manufacturer", "To Be Filled By O.E.M."):
+        # HP-style DMI already starts the name with the vendor ("HP" + "HP EliteDesk ...").
+        if vendor and vendor not in ("System manufacturer", "To Be Filled By O.E.M.") and not model.startswith(vendor):
             model_full = f"{vendor} {model}".strip()
         else:
             model_full = model
@@ -328,14 +333,29 @@ def text(body: str, media_type: str = "text/plain; charset=utf-8") -> Response[s
     return Response(body, media_type=media_type)
 
 
-@get("/boot.ipxe", sync_to_thread=False)
+INSTALLER = ["Installer"]
+DASHBOARD = ["Dashboard"]
+
+
+@get(
+    "/boot.ipxe",
+    sync_to_thread=False,
+    tags=INSTALLER,
+    summary="iPXE entry script",
+    description="Chains to the installer for new MACs; returns `exit` (boot the USB stick) for installed nodes.",
+)
 def boot_ipxe(request: Request, mac: str = "") -> Response[str]:
     body, line = core.boot_ipxe(STATE, mac)
     HUB.add_log("install", f"{client_of(request)}: {line}")
     return text(body)
 
 
-@get("/pve/{path:path}")
+@get(
+    "/pve/{path:path}",
+    tags=INSTALLER,
+    summary="Installer images",
+    description="Kernel, initrd and ISO built by `build.sh`. Large files stream with a progress row in the dashboard.",
+)
 async def pve_file(request: Request, path: str) -> Stream:
     root = (core.HTTP_DIR / "pve").resolve()
     file = (root / path.lstrip("/")).resolve()
@@ -372,31 +392,49 @@ async def handle(request: Request, source: str, fn, *args) -> Response[str]:
     return text(body, "application/toml" if request.url.path == "/answer" else "text/plain; charset=utf-8")
 
 
-@post("/answer", status_code=200)
+@post(
+    "/answer",
+    status_code=200,
+    tags=INSTALLER,
+    summary="Answer file",
+    description="The Proxmox auto-installer POSTs its system info; the response is `answer.toml`. Assigns the next hostname by MAC.",
+)
 async def answer(request: Request) -> Response[str]:
     info = json.loads(await request.body())
     return await handle(request, "install", core.answer, STATE, CFG, info)
 
 
-@post("/installed", status_code=200)
+@post(
+    "/installed",
+    status_code=200,
+    tags=INSTALLER,
+    summary="Post-install webhook",
+    description="Marks the node installed and records its management IP and MAC for the DHCP reservation.",
+)
 async def installed(request: Request) -> Response[str]:
     info = json.loads(await request.body())
     return await handle(request, "install", core.installed, STATE, info)
 
 
-@get("/first-boot", sync_to_thread=False)
+@get("/first-boot", sync_to_thread=False, tags=INSTALLER, summary="First-boot script")
 def first_boot(request: Request) -> Response[str]:
     HUB.add_log("install", f"{client_of(request)} fetched the first-boot script")
     return text(core.render_first_boot(CFG))
 
 
-@post("/first-boot-report", status_code=200)
+@post(
+    "/first-boot-report",
+    status_code=200,
+    tags=INSTALLER,
+    summary="First-boot report",
+    description="Result lines from the first-boot script; marks the node ready.",
+)
 async def first_boot_report(request: Request, host: str = "") -> Response[str]:
     report = (await request.body()).decode(errors="replace")
     return await handle(request, "install", core.first_boot_report, STATE, host, report)
 
 
-@get("/status", sync_to_thread=False)
+@get("/status", sync_to_thread=False, tags=INSTALLER, summary="Node state", description="Every node as JSON.")
 def status() -> dict:
     return STATE.snapshot()
 
@@ -415,7 +453,7 @@ def html(body: str) -> Response[str]:
     return Response(body, media_type="text/html; charset=utf-8")
 
 
-@get("/", guards=[local_only], sync_to_thread=False)
+@get("/", guards=[local_only], sync_to_thread=False, include_in_schema=False)
 def index() -> Response[str]:
     return html(
         render(
@@ -430,7 +468,7 @@ def index() -> Response[str]:
     )
 
 
-@get("/ui/events", guards=[local_only])
+@get("/ui/events", guards=[local_only], include_in_schema=False)
 async def events() -> ServerSentEvent:
     queue: asyncio.Queue = asyncio.Queue(maxsize=500)
     HUB.subscribers.add(queue)
@@ -459,7 +497,15 @@ async def events() -> ServerSentEvent:
     return ServerSentEvent(stream())
 
 
-@post("/ui/nodes/{name:str}/forget", guards=[local_only], status_code=200, sync_to_thread=False)
+@post(
+    "/ui/nodes/{name:str}/forget",
+    guards=[local_only],
+    status_code=200,
+    sync_to_thread=False,
+    tags=DASHBOARD,
+    summary="Reinstall a node",
+    description="Forgets the node so its next network boot reinstalls it (wipes its USB stick).",
+)
 def forget(name: str) -> Response[str]:
     if not STATE.forget(name):
         raise NotFoundException(f"unknown node {name}")
@@ -468,7 +514,7 @@ def forget(name: str) -> Response[str]:
     return text("ok\n")
 
 
-@get("/ui/root-password", guards=[local_only], sync_to_thread=False)
+@get("/ui/root-password", guards=[local_only], sync_to_thread=False, tags=DASHBOARD, summary="Root password")
 def root_password() -> Response[str]:
     if not core.ROOT_PASSWORD.exists():
         raise NotFoundException("secrets/root-password missing; run ./build.sh")
@@ -488,8 +534,27 @@ app = Litestar(
         events,
         forget,
         root_password,
-        create_static_files_router(path="/static", directories=[SERVER_DIR / "static"], guards=[local_only]),
+        create_static_files_router(
+            path="/static", directories=[SERVER_DIR / "static"], guards=[local_only], include_in_schema=False
+        ),
     ],
+    openapi_config=OpenAPIConfig(
+        title="Proxmox netboot",
+        version="1",
+        description=(
+            "Unattended Proxmox VE installs over the network. **Installer** endpoints are called by "
+            "iPXE, the Proxmox auto-installer and each new node, and are open to the LAN. "
+            "**Dashboard** endpoints and this page are served to this Mac only."
+        ),
+        servers=[Server(url=core.base_url(CFG))],
+        render_plugins=[
+            ScalarRenderPlugin(
+                path="/",
+                options={"showDeveloperTools": "never", "agent": {"disabled": True}, "hideClientButton": True},
+            )
+        ],
+        openapi_router=Router(path="/api", guards=[local_only], include_in_schema=False, route_handlers=[]),
+    ),
     lifespan=[lifespan],
 )
 

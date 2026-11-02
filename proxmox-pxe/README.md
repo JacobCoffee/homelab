@@ -4,6 +4,8 @@ PXE-boot each PC, install Proxmox VE 9.2 unattended onto its USB stick, and turn
 internal drive into VM/container storage. Runs entirely from the Mac; the Spectrum
 router is left untouched.
 
+![Netboot dashboard: six nodes at different stages, two ISO downloads in flight, live activity log](docs/dashboard-dark.png)
+
 ```mermaid
 sequenceDiagram
   participant PC
@@ -40,7 +42,9 @@ Per PC, in the firmware setup:
 - Enable network boot (UEFI: "IPv4 PXE"; legacy BIOS works too).
 - **Disable Secure Boot**: the iPXE build is unsigned.
 - Plug in **only** its own USB stick (the installer wipes the first USB disk it finds).
-- Wired Ethernet to the router; PXE does not work over Wi-Fi.
+- Wired Ethernet to the router, plug clicked fully in: the port's link lights must be on.
+  A half-seated cable looks plugged in but gives no link, and the PC drops straight
+  back to the boot menu without sending anything.
 - RAM: the installer runs entirely from RAM. Tested with 6 GB.
 
 On the Mac: Docker (OrbStack), Homebrew `dnsmasq`, Python 3, `uv` (`brew install uv`). In the Spectrum app,
@@ -58,6 +62,14 @@ PXE IPv4 entry. Everything after that is unattended: the installer menu auto-sel
 "Automated" after 10 s, installs, reboots, and the server hands the PC back to its USB
 stick. Several PCs can install at once; each pulls ~1.7 GB over the Mac's Wi-Fi.
 
+**PC drops straight back to the boot menu?** See [Troubleshooting](#troubleshooting);
+start with the cable. If the firmware's own PXE is the problem, boot iPXE from the
+node's USB stick instead: `./make-usb.sh` lists external disks, `./make-usb.sh diskN`
+erases that stick and writes `out/tftp/ipxe.efi` as `EFI/BOOT/BOOTX64.EFI`. Boot the
+stick from the boot menu (UEFI, Secure Boot off) with `./run.sh` running; iPXE uses its
+own NIC driver, gets an address from the router, and chains to the Mac over HTTP. The
+installer then overwrites that same stick.
+
 Open **http://localhost:8070/** for the live dashboard: each node's status (installing →
 first boot → ready), IP, MAC, model, first-boot report, download progress, and an
 activity log (dnsmasq, installer, downloads) with filters. **Reserve each node's IP in
@@ -65,6 +77,17 @@ the My Spectrum app** (Advanced settings → IP reservations) right away — the
 has a copy button for each node's IP and MAC. The router's DHCP pool is all of
 `.2–.254` and cannot be changed, so an unreserved node IP can be handed to another
 device later.
+
+Expand a node for its MACs, boot disk, full model and first-boot report. The dashboard
+follows the system light/dark setting:
+
+![Light theme with hnhv01 expanded](docs/dashboard-light.png)
+
+API reference: **http://localhost:8070/api** (Scalar; raw schema at `/api/openapi.json`).
+Like the dashboard, it is served to this Mac only; the installer endpoints stay open to
+the LAN.
+
+![API reference at /api](docs/api-scalar.png)
 
 Web UI: `https://<node-ip>:8006`, user `root`, realm PAM, password from
 `secrets/root-password` (the dashboard has buttons to open this and to copy the
@@ -86,8 +109,34 @@ The dashboard's Reinstall button does the same as `forget`.
   storage config works unchanged.
 - Installer failure: the PC drops to a shell. Logs: `/tmp/fetch_answer.log`,
   `/tmp/auto_installer`, `/tmp/install-low-level-start-session.log`.
-- PC never gets a boot file: check the dashboard's Activity log filtered to `dnsmasq`
-  (run.sh output also shows the `dnsmasq` lines, e.g. `log-dhcp`).
+
+## Troubleshooting
+
+Note the PC's MAC first (firmware setup, system information) to match log lines.
+Walk the layers in order; the first one without evidence is where it fails.
+
+| # | Layer | Evidence | Missing means |
+|---|---|---|---|
+| 1 | Link | Port lights on; firmware shows "Media present"; iPXE does not print `Waiting for link-up on net0... Down` | Cable not seated, bad cable/port, or NIC disabled in firmware |
+| 2 | DHCP request | `dnsmasq` lines in the dashboard Activity log (or the responder log, below) for that MAC | Firmware PXE gives up before the network: check its network-boot settings, or use the USB stick |
+| 3 | Boot file | TFTP `sent ipxe.efi` to that IP | Secure Boot on, or firmware rejected the proxyDHCP offer |
+| 4 | iPXE | Activity: `install <ip>: <mac> gets the installer` | iPXE prints why (no address, server unreachable) |
+| 5 | Installer | Node status installing → first boot → ready | Installer logs above |
+
+The USB stick doubles as a link tester: iPXE prints the link state of every NIC.
+
+### Wired proxyDHCP responder (optional)
+
+If the Mac's Wi-Fi does not see PXE broadcasts, any wired machine can answer them while
+the Mac keeps serving HTTP. `responder/pxe-responder.py` is a stdlib proxyDHCP + TFTP
+server that also logs every DHCP request it hears (layer 2 above). Copy it with
+`out/tftp/ipxe.efi` and `out/tftp/undionly.kpxe` into one folder, open UDP 67, 69 and 4011
+inbound, then:
+
+```sh
+uv run pxe-responder.py --ip <that machine's IP> --root <folder>   # needs admin/root for port 67
+./run.sh --no-dnsmasq                                             # on the Mac
+```
 
 ## Layout
 
@@ -95,6 +144,8 @@ The dashboard's Reinstall button does the same as `forget`.
 |---|---|
 | `config.env` | site settings (interface, hostname prefix, timezone, ISO) |
 | `build.sh`, `builder/` | builds `out/` in a Debian container: prepared PXE installer, iPXE, password hash |
+| `make-usb.sh` | writes iPXE to a USB stick, for PCs whose firmware PXE fails |
+| `responder/pxe-responder.py` | optional proxyDHCP + TFTP responder for a wired machine |
 | `run.sh` | writes `out/dnsmasq.conf`, starts `server/app.py` (which runs dnsmasq) |
 | `server/app.py` | installer endpoints + web UI + dnsmasq supervisor; uv inline script (Litestar, Jinja2, embedded Granian) |
 | `server/core.py` | stdlib-only answer-file logic and CLI; state in `state/hosts.json` |
@@ -102,3 +153,4 @@ The dashboard's Reinstall button does the same as `forget`.
 | `server/first-boot.sh` | runs once on each node (installed as `/usr/local/sbin/pxe-first-boot`) |
 | `secrets/` | root password + hash (mode 600) |
 | `cache/` | ISO and iPXE source |
+| `docs/` | README screenshots (made-up fleet) |
