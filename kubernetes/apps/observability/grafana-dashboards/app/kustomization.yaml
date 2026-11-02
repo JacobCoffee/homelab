@@ -6,6 +6,8 @@
 # One ConfigMap per folder: the kube-prometheus-stack Grafana sidecar is configured
 # (kube-prometheus-stack/app/helmrelease.yaml, grafana.sidecar.dashboards.folderAnnotation) to
 # read the grafana_folder annotation on each ConfigMap and recreate it as a Grafana folder.
+# Folder names: no "/" (the sidecar makes it a nested directory) and never "General"
+# (Grafana's reserved root; creating it fails and aborts the whole provisioning pass).
 # The chart's own gnetId-downloaded defaults (Kubernetes, Node Exporter, Proxmox, Flux, Cilium
 # Agent) carry no such annotation, so they keep landing in Grafana's General folder, untouched.
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -52,7 +54,7 @@ patches:
     patch: |
       - op: add
         path: /metadata/annotations
-        value: { grafana_folder: "Cilium / Hubble" }
+        value: { grafana_folder: "Cilium" }
   - target:
       kind: ConfigMap
       name: grafana-dashboards-envoy-gateway
@@ -87,7 +89,7 @@ patches:
     patch: |
       - op: add
         path: /metadata/annotations
-        value: { grafana_folder: "Loki / Alloy" }
+        value: { grafana_folder: "Loki and Alloy" }
   - target:
       kind: ConfigMap
       name: grafana-dashboards-mimir
