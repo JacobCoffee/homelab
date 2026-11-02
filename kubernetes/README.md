@@ -110,8 +110,8 @@ push, its exporter, Homepage and the Fire TV app all log in with it), OPNsense `
 or GitHub logins of Jellyfin, Seerr (signs in with Jellyfin), Home Assistant and Cabotage.
 
 `../scripts/bw-sync.py` puts all of them, plus AdGuard and OPNsense, into Bitwarden's **Homelab**
-folder (one item per app with its URLs, so the extension autofills), copying from the vault and
-only rewrites items that differ; re-run it after any password change (`bw` is in `~/.local/bin`):
+folder (one item per app with its URLs, so the extension autofills), copied from the vault; a
+re-run only rewrites items that differ. Re-run it after any password change (`bw` is in `~/.local/bin`):
 
 ```fish
 bw login                               # once
