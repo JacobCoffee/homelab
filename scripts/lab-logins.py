@@ -3,23 +3,35 @@
 # requires-python = ">=3.12"
 # dependencies = ["requests>=2.32", "pyyaml>=6", "uptime-kuma-api==1.2.1"]
 # ///
-"""Give every lab app with a local login the same one: vault_lab_admin_username /
-vault_lab_admin_password from the Ansible vault.
+"""Keep the lab apps' own logins in line with the passkey sign-in.
 
     scripts/lab-logins.py           # apply; then commit the files it says it changed
-    scripts/lab-logins.py --check   # only report which apps take the shared login
+    scripts/lab-logins.py --check   # only report
 
-Covers Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, SABnzbd, Bindery, Cleanuparr, qBittorrent,
-Uptime Kuma, Grafana and Unpackerr. Not AdGuard (its login is wired into external-dns, the DoT
-cert push, its exporter, Homepage and the Fire TV app), not OPNsense/Proxmox root (recovery
-accounts), not Jellyfin/Home Assistant/Seerr/Cabotage (personal or GitHub accounts).
+The login for the apps behind the gateway is Pocket ID (id.z7x.org, passkeys): Envoy's OIDC filter
+(kubernetes/apps/network/lab-sso) sits in front of them, and their pods only take traffic from the
+gateway and the lab's own namespaces. So each app's own login is switched off, the safest way it
+offers:
+  Sonarr, Radarr, Lidarr, Prowlarr   AUTH__METHOD External in their HelmReleases (checked here)
+  Unpackerr                          UN_WEBSERVER_UI_PASSWORD noauth for the pod network (env)
+  qBittorrent                        subnet bypass for the pod network (its init container)
+  Bazarr                             auth type None
+  SABnzbd                            no username/password
+  Bindery                            auth mode local-only (pod IPs are private)
+  Cleanuparr                         "disable auth for local addresses", pod network trusted
+  Uptime Kuma                        disableAuth
 
-Changes are made live through each app's API (the *arrs, Bazarr and SABnzbd by API key; the rest
-by logging in), then the files that hand the login to an app on restart are kept in step:
-  arr-api-keys UNPACKERR_UI_LOGIN            Unpackerr reads its login from env only
+The shared login (vault_lab_admin_username / vault_lab_admin_password) stays on the accounts that
+still have a job: qBittorrent's, for anything outside the pod network; Grafana's local admin, the
+break-glass login next to "Sign in with Pocket ID" (and the Git Sync job's); and the Kuma, Bindery
+and Cleanuparr accounts this script uses to change their settings. The files that hand it to an
+app on restart are kept in step:
   gluetun-secret QBT_WEBUI_PASSWORD_PBKDF2   qBittorrent's login is rewritten on every start
   uptime-kuma secret KUMA_PASSWORD           the seed job logs in with it
   grafana-admin-credentials admin-password   the Git Sync job logs in with it
+
+Apps are reached with kubectl port-forward (the gateway would send this script to the passkey
+sign-in), except Grafana, which has no gateway check.
 
 Rotating: scripts/vault-set.py vault_lab_admin_previous_password vault_lab_admin_password (the
 current password, then the new one), then run this. Apps that need the current password to set a
@@ -37,7 +49,8 @@ import secrets
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,12 +65,13 @@ ARR_KEYS = K8S / "media/arr-api-keys/app/secret.sops.yaml"
 GLUETUN = K8S / "media/gluetun-qbittorrent/app/secret.sops.yaml"
 KUMA = K8S / "status/uptime-kuma/app/secret.sops.yaml"
 GRAFANA = K8S / "observability/kube-prometheus-stack/app/secret.sops.yaml"
+POD_NETWORK = "10.244.0.0/16"
 
-SERVARR = {  # name: (URL, API version, arr-api-keys key)
-    "Sonarr": ("https://sonarr.z7x.org", "v3", "SONARR_API_KEY"),
-    "Radarr": ("https://radarr.z7x.org", "v3", "RADARR_API_KEY"),
-    "Lidarr": ("https://lidarr.z7x.org", "v1", "LIDARR_API_KEY"),
-    "Prowlarr": ("https://prowlarr.z7x.org", "v1", "PROWLARR_API_KEY"),
+SERVARR = {  # name: (Service, port, API version, arr-api-keys key)
+    "Sonarr": ("sonarr", 8989, "v3", "SONARR_API_KEY"),
+    "Radarr": ("radarr", 7878, "v3", "RADARR_API_KEY"),
+    "Lidarr": ("lidarr", 8686, "v1", "LIDARR_API_KEY"),
+    "Prowlarr": ("prowlarr", 9696, "v1", "PROWLARR_API_KEY"),
 }
 TIMEOUT = 20
 NOT_SET = "FAILED: login still refused after setting it"
@@ -69,6 +83,7 @@ class Run:
     password: str
     previous: str
     check: bool
+    stack: ExitStack
     results: dict[str, str] = field(default_factory=dict)
     changed_files: set[Path] = field(default_factory=set)
 
@@ -79,6 +94,26 @@ class Run:
             if p and p != self.password and p not in seen:
                 seen.append(p)
         return seen
+
+    def url(self, ns: str, svc: str, port: int) -> str:
+        return self.stack.enter_context(forward(ns, svc, port))
+
+
+@contextmanager
+def forward(ns: str, svc: str, port: int) -> Iterator[str]:
+    """http://127.0.0.1:<free port> forwarded to the Service, for as long as the block runs."""
+    p = subprocess.Popen(
+        ["mise", "-C", str(ROOT), "exec", "--", "kubectl", "-n", ns, "port-forward", f"svc/{svc}", f":{port}"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+    )
+    try:
+        m = re.search(r"127\.0\.0\.1:(\d+)", p.stdout.readline())
+        if not m:
+            raise RuntimeError(f"port-forward to {ns}/{svc} didn't start")
+        yield f"http://127.0.0.1:{m.group(1)}"
+    finally:
+        p.terminate()
+        p.wait()
 
 
 def sh(*args: str, stdin: str | None = None) -> str:
@@ -107,7 +142,7 @@ def sops_put(run: Run, path: Path, key: str, value: str) -> None:
 
 
 def eventually(check: Callable[[], bool], tries: int = 15) -> bool:
-    """Apps may restart after an auth change: retry the post-change login for ~30s."""
+    """Apps may restart after an auth change: retry the check for ~30s."""
     for _ in range(tries):
         try:
             if check():
@@ -118,29 +153,15 @@ def eventually(check: Callable[[], bool], tries: int = 15) -> bool:
     return False
 
 
-# --- API-key apps: set the login outright --------------------------------------------------------
+# --- Login off -----------------------------------------------------------------------------------
 
-def forms_login(base: str, run: Run) -> bool:
-    # rememberMe as "true": Sonarr 5 binds it as a bool and answers "on" with a 400.
-    r = requests.post(f"{base}/login?returnUrl=%2F", allow_redirects=False, timeout=TIMEOUT,
-                      data={"username": run.user, "password": run.password, "rememberMe": "true"})
-    return r.status_code in (302, 303) and "loginFailed" not in r.headers.get("Location", "")
-
-
-def servarr(run: Run, base: str, ver: str, key: str) -> str:
-    s = requests.Session()
-    s.headers["X-Api-Key"] = key
-    host = s.get(f"{base}/api/{ver}/config/host", timeout=TIMEOUT)
+def servarr(run: Run, svc: str, port: int, ver: str, key: str) -> str:
+    # Set by env (AUTH__METHOD External), which overrides the API, so this only checks it.
+    host = requests.get(f"{run.url('media', svc, port)}/api/{ver}/config/host",
+                        headers={"X-Api-Key": key}, timeout=TIMEOUT)
     host.raise_for_status()
-    cfg = host.json()
-    if cfg["authenticationMethod"] == "forms" and cfg["username"] == run.user and forms_login(base, run):
-        return "ok"
-    if run.check:
-        return "needs update"
-    cfg.update(authenticationMethod="forms", authenticationRequired="enabled", username=run.user,
-               password=run.password, passwordConfirmation=run.password)
-    s.put(f"{base}/api/{ver}/config/host/{cfg['id']}", json=cfg, timeout=TIMEOUT).raise_for_status()
-    return "set" if eventually(lambda: forms_login(base, run)) else NOT_SET
+    method = host.json()["authenticationMethod"]
+    return "ok (off)" if method == "external" else f"FAILED: auth is {method}; check its HelmRelease"
 
 
 def bazarr(run: Run) -> str:
@@ -148,52 +169,41 @@ def bazarr(run: Run) -> str:
                              "cat", "/config/config/config.yaml"))
     s = requests.Session()
     s.headers["X-API-KEY"] = conf["auth"]["apikey"]
-    url = "https://bazarr.z7x.org/api/system/settings"
-    # Bazarr stores md5(password) and hashes whatever it's given.
-    want = hashlib.md5(run.password.encode()).hexdigest()
+    url = f"{run.url('media', 'bazarr', 6767)}/api/system/settings"
 
-    def matches() -> bool:
-        auth = s.get(url, timeout=TIMEOUT).json()["auth"]
-        return auth.get("type") == "form" and auth.get("username") == run.user and auth.get("password") == want
+    def off() -> bool:
+        return s.get(url, timeout=TIMEOUT).json()["auth"].get("type") in (None, "None")
 
-    if matches():
-        return "ok"
+    if off():
+        return "ok (off)"
     if run.check:
-        return "needs update"
-    s.post(url, timeout=TIMEOUT, data={
-        "settings-auth-type": "form", "settings-auth-username": run.user,
-        "settings-auth-password": run.password,
-    }).raise_for_status()
-    return "set" if eventually(matches) else NOT_SET
+        return "needs turning off"
+    s.post(url, timeout=TIMEOUT, data={"settings-auth-type": "None"}).raise_for_status()
+    return "turned off" if eventually(off) else "FAILED: still asks for a login"
 
 
 def sabnzbd(run: Run, key: str) -> str:
-    base = "https://sabnzbd.z7x.org"
-
-    def login() -> bool:
-        r = requests.post(f"{base}/login/", allow_redirects=False, timeout=TIMEOUT,
-                          data={"username": run.user, "password": run.password})
-        return r.status_code in (302, 303) and "login_cookie" in r.headers.get("Set-Cookie", "")
+    base = run.url("media", "sabnzbd", 8080)
 
     def api(**params: str) -> requests.Response:
         r = requests.get(f"{base}/api", timeout=TIMEOUT, params={**params, "output": "json", "apikey": key})
         r.raise_for_status()
         return r
 
-    misc = api(mode="get_config", section="misc").json()["config"]["misc"]
-    if misc.get("username") == run.user and login():
-        return "ok"
+    def off() -> bool:
+        return not api(mode="get_config", section="misc").json()["config"]["misc"].get("username")
+
+    if off():
+        return "ok (off)"
     if run.check:
-        return "needs update"
-    api(mode="set_config", section="misc", keyword="username", value=run.user)
-    api(mode="set_config", section="misc", keyword="password", value=run.password)
-    return "set" if eventually(login) else NOT_SET
+        return "needs turning off"
+    api(mode="set_config", section="misc", keyword="username", value="")
+    api(mode="set_config", section="misc", keyword="password", value="")
+    return "turned off" if eventually(off) else "FAILED: still asks for a login"
 
-
-# --- Apps that need the current password (or a first-run setup) ---------------------------------
 
 def bindery(run: Run) -> str:
-    base = "https://bindery.z7x.org/api/v1"
+    base = f"{run.url('media', 'bindery', 8787)}/api/v1"
 
     def login(pw: str) -> requests.Session | None:
         s = requests.Session()
@@ -201,28 +211,41 @@ def bindery(run: Run) -> str:
                    json={"username": run.user, "password": pw, "rememberMe": False})
         return s if r.ok else None
 
-    if requests.get(f"{base}/auth/status", timeout=TIMEOUT).json().get("setupRequired"):
+    def csrf(s: requests.Session) -> dict[str, str]:
+        token = s.get(f"{base}/auth/csrf", headers={"X-Requested-With": "bindery-ui"},
+                      timeout=TIMEOUT).json()["csrfToken"]
+        # Mutations need both: the double-submit token and Bindery's UI marker header.
+        return {"X-CSRF-Token": token, "X-Requested-With": "bindery-ui"}
+
+    status = requests.get(f"{base}/auth/status", timeout=TIMEOUT).json()
+    if status.get("setupRequired"):
         if run.check:
             return "needs setup (anyone can claim it)"
         requests.post(f"{base}/auth/setup", timeout=TIMEOUT,
                       json={"username": run.user, "password": run.password}).raise_for_status()
-        return "set (first-run setup)" if login(run.password) else NOT_SET
-    if login(run.password):
-        return "ok"
-    for old in run.candidates():
-        if (s := login(old)) is not None:
-            if run.check:
-                return "needs update"
-            csrf = s.get(f"{base}/auth/csrf", headers={"X-Requested-With": "bindery-ui"},
-                         timeout=TIMEOUT).json()["csrfToken"]
-            s.post(f"{base}/auth/password", timeout=TIMEOUT, headers={"X-CSRF-Token": csrf},
-                   json={"currentPassword": old, "newPassword": run.password}).raise_for_status()
-            return "set" if login(run.password) else NOT_SET
-    return "FAILED: neither the shared nor the previous password works"
+    s = login(run.password)
+    if s is None:
+        for old in run.candidates():
+            if (s := login(old)) is not None:
+                if run.check:
+                    return "needs a password update"
+                s.post(f"{base}/auth/password", timeout=TIMEOUT, headers=csrf(s),
+                       json={"currentPassword": old, "newPassword": run.password}).raise_for_status()
+                if (s := login(run.password)) is None:
+                    return NOT_SET
+                break
+        else:
+            return "FAILED: neither the shared nor the previous password works"
+    if status.get("mode") == "local-only":
+        return "ok (off)"
+    if run.check:
+        return "needs turning off"
+    s.put(f"{base}/auth/mode", timeout=TIMEOUT, headers=csrf(s), json={"mode": "local-only"}).raise_for_status()
+    return "turned off (local-only)"
 
 
 def cleanuparr(run: Run) -> str:
-    base = "https://cleanuparr.z7x.org/api"
+    base = f"{run.url('media', 'cleanuparr', 11011)}/api"
 
     def login(pw: str) -> str | None:
         r = requests.post(f"{base}/auth/login", timeout=TIMEOUT,
@@ -237,19 +260,65 @@ def cleanuparr(run: Run) -> str:
         if r.status_code != 409:  # 409: an account exists from an unfinished setup
             r.raise_for_status()
         requests.post(f"{base}/auth/setup/complete", timeout=TIMEOUT).raise_for_status()
-        return "set (first-run setup)" if login(run.password) else "FAILED: setup left a different account"
-    if login(run.password):
-        return "ok"
-    for old in run.candidates():
-        if (token := login(old)) is not None:
-            if run.check:
-                return "needs update"
-            requests.put(f"{base}/account/password", timeout=TIMEOUT,
-                         headers={"Authorization": f"Bearer {token}"},
-                         json={"currentPassword": old, "newPassword": run.password}).raise_for_status()
-            return "set" if login(run.password) else NOT_SET
-    return "FAILED: neither the shared nor the previous password works"
+    token = login(run.password)
+    if token is None:
+        for old in run.candidates():
+            if (token := login(old)) is not None:
+                if run.check:
+                    return "needs a password update"
+                requests.put(f"{base}/account/password", timeout=TIMEOUT,
+                             headers={"Authorization": f"Bearer {token}"},
+                             json={"currentPassword": old, "newPassword": run.password}).raise_for_status()
+                if (token := login(run.password)) is None:
+                    return NOT_SET
+                break
+        else:
+            return "FAILED: neither the shared nor the previous password works"
+    auth = {"Authorization": f"Bearer {token}"}
+    cfg = requests.get(f"{base}/configuration/general", headers=auth, timeout=TIMEOUT).json()
+    want = {"disableAuthForLocalAddresses": True, "trustForwardedHeaders": False,
+            "trustedNetworks": [POD_NETWORK]}
+    if all(cfg.get("auth", {}).get(k) == v for k, v in want.items()):
+        return "ok (off)"
+    if run.check:
+        return "needs turning off"
+    cfg["auth"] = {**cfg.get("auth", {}), **want}
+    requests.put(f"{base}/configuration/general", headers=auth, json=cfg, timeout=TIMEOUT).raise_for_status()
+    return "turned off (pod network trusted)"
 
+
+def uptime_kuma(run: Run) -> str:
+    from uptime_kuma_api import UptimeKumaApi, UptimeKumaException
+
+    base = run.url("status", "uptime-kuma", 3001)
+    for pw in [run.password, *run.candidates(sops_get(KUMA, "KUMA_PASSWORD"))]:
+        api = UptimeKumaApi(base, timeout=TIMEOUT)
+        try:
+            try:
+                api.login(run.user, pw)
+            except UptimeKumaException:
+                continue
+            if pw != run.password:
+                if run.check:
+                    return "needs a password update"
+                api.change_password(pw, run.password)
+            status = "ok (off)" if api.get_settings().get("disableAuth") else None
+            if status is None:
+                if run.check:
+                    return "needs turning off"
+                api.set_settings(run.password, disableAuth=True)
+                status = "turned off"
+            break
+        finally:
+            api.disconnect()
+    else:
+        return "FAILED: neither the shared, the previous nor the stored password works"
+    sops_put(run, KUMA, "KUMA_USERNAME", run.user)
+    sops_put(run, KUMA, "KUMA_PASSWORD", run.password)
+    return status
+
+
+# --- Shared login kept ---------------------------------------------------------------------------
 
 def qbt_hash(password: str, salt: bytes | None = None) -> str:
     """qBittorrent's WebUI\\Password_PBKDF2: PBKDF2-HMAC-SHA512, 100000 rounds, 16-byte salt."""
@@ -267,58 +336,14 @@ def qbt_hash_matches(stored: str, password: str) -> bool:
 
 
 def qbittorrent(run: Run) -> str:
-    base = "https://qbittorrent.z7x.org/api/v2"
-
-    def login(pw: str) -> requests.Session | None:
-        s = requests.Session()
-        r = s.post(f"{base}/auth/login", timeout=TIMEOUT, data={"username": run.user, "password": pw})
-        # 5.x answers 204 with no body; older versions 200 "Ok." (a refusal is 401 / "Fails.").
-        return s if r.status_code == 204 or (r.ok and r.text.strip() == "Ok.") else None
-
-    status = "ok"
-    if not login(run.password):
-        for old in run.candidates():
-            if (s := login(old)) is not None:
-                if run.check:
-                    return "needs update"
-                s.post(f"{base}/app/setPreferences", timeout=TIMEOUT,
-                       data={"json": json.dumps({"web_ui_password": run.password})}).raise_for_status()
-                status = "set" if login(run.password) else NOT_SET
-                break
-        else:
-            return "FAILED: neither the shared nor the previous password works"
-    # The init container rewrites the login from this hash on every start: keep it matching.
-    if not qbt_hash_matches(sops_get(GLUETUN, "QBT_WEBUI_PASSWORD_PBKDF2"), run.password):
-        sops_put(run, GLUETUN, "QBT_WEBUI_PASSWORD_PBKDF2", qbt_hash(run.password))
-    return status
-
-
-def uptime_kuma(run: Run) -> str:
-    from uptime_kuma_api import UptimeKumaApi, UptimeKumaException
-
-    status = None
-    for pw in [run.password, *run.candidates(sops_get(KUMA, "KUMA_PASSWORD"))]:
-        api = UptimeKumaApi("https://kuma.z7x.org", timeout=TIMEOUT)
-        try:
-            api.login(run.user, pw)
-        except UptimeKumaException:
-            continue
-        else:
-            if pw == run.password:
-                status = "ok"
-            elif run.check:
-                status = "needs update"
-            else:
-                api.change_password(pw, run.password)
-                status = "set"
-            break
-        finally:
-            api.disconnect()
-    if status is None:
-        return "FAILED: neither the shared, the previous nor the stored password works"
-    sops_put(run, KUMA, "KUMA_USERNAME", run.user)
-    sops_put(run, KUMA, "KUMA_PASSWORD", run.password)
-    return status
+    # The init container sets the login from this hash on every start, and the subnet bypass
+    # means port-forwarded requests (from the node) can't prove the password: keep the hash right.
+    if qbt_hash_matches(sops_get(GLUETUN, "QBT_WEBUI_PASSWORD_PBKDF2"), run.password):
+        return "ok (fallback login)"
+    sops_put(run, GLUETUN, "QBT_WEBUI_PASSWORD_PBKDF2", qbt_hash(run.password))
+    if run.check:
+        return "needs update"
+    return "set (after the push it applies on restart: kubectl -n media rollout restart deploy/gluetun-qbittorrent)"
 
 
 def grafana(run: Run) -> str:
@@ -327,7 +352,7 @@ def grafana(run: Run) -> str:
     def works(pw: str) -> bool:
         return requests.get(f"{base}/user", auth=(run.user, pw), timeout=TIMEOUT).ok
 
-    status = "ok" if works(run.password) else None
+    status = "ok (break-glass login)" if works(run.password) else None
     if status is None:
         for old in run.candidates(sops_get(GRAFANA, "admin-password")):
             if works(old):
@@ -345,48 +370,38 @@ def grafana(run: Run) -> str:
     return status
 
 
-def unpackerr(run: Run) -> str:
-    # Env only (UN_WEBSERVER_UI_PASSWORD, "user:pass"): takes effect when the pod restarts.
-    before = set(run.changed_files)
-    sops_put(run, ARR_KEYS, "UNPACKERR_UI_LOGIN", f"{run.user}:{run.password}")
-    if run.check:
-        return "needs update" if run.results.pop(f"{ARR_KEYS.name}:UNPACKERR_UI_LOGIN", None) else "ok"
-    if run.changed_files == before:
-        return "ok"
-    return "set (after the push: kubectl -n media rollout restart deploy/unpackerr)"
-
-
 def main(argv: list[str]) -> int:
     v = vault_get()
-    run = Run(user=v["vault_lab_admin_username"], password=v["vault_lab_admin_password"],
-              previous=v.get("vault_lab_admin_previous_password", ""), check="--check" in argv)
     arr = json.loads(sh("sops", "-d", "--extract", '["stringData"]', "--output-type", "json", str(ARR_KEYS)))
-    steps: dict[str, Callable[[], str]] = {
-        name: (lambda b=base, ver=ver, k=key: servarr(run, b, ver, arr[k]))
-        for name, (base, ver, key) in SERVARR.items()
-    }
-    steps |= {
-        "Bazarr": lambda: bazarr(run),
-        "SABnzbd": lambda: sabnzbd(run, arr["SABNZBD_API_KEY"]),
-        "Bindery": lambda: bindery(run),
-        "Cleanuparr": lambda: cleanuparr(run),
-        "qBittorrent": lambda: qbittorrent(run),
-        "Uptime Kuma": lambda: uptime_kuma(run),
-        "Grafana": lambda: grafana(run),
-        "Unpackerr": lambda: unpackerr(run),
-    }
     failed = False
-    for name, step in steps.items():
-        try:
-            result = step()
-        except Exception as e:  # noqa: BLE001 -- one app failing mustn't stop the others
-            if isinstance(e, requests.HTTPError) and e.response is not None:
-                detail = f"HTTP {e.response.status_code} from {e.response.url.split('?')[0]}"
-            else:  # strip query strings: SABnzbd's API key travels in one
-                detail = re.sub(r"\?\S*", "?…", str(e))[:200]
-            result = f"FAILED: {type(e).__name__}: {detail}"
-        failed |= result.startswith("FAILED")
-        print(f"{name:12} {result}")
+    with ExitStack() as stack:
+        run = Run(user=v["vault_lab_admin_username"], password=v["vault_lab_admin_password"],
+                  previous=v.get("vault_lab_admin_previous_password", ""), check="--check" in argv,
+                  stack=stack)
+        steps: dict[str, Callable[[], str]] = {
+            name: (lambda s=svc, p=port, ver=ver, k=key: servarr(run, s, p, ver, arr[k]))
+            for name, (svc, port, ver, key) in SERVARR.items()
+        }
+        steps |= {
+            "Bazarr": lambda: bazarr(run),
+            "SABnzbd": lambda: sabnzbd(run, arr["SABNZBD_API_KEY"]),
+            "Bindery": lambda: bindery(run),
+            "Cleanuparr": lambda: cleanuparr(run),
+            "Uptime Kuma": lambda: uptime_kuma(run),
+            "qBittorrent": lambda: qbittorrent(run),
+            "Grafana": lambda: grafana(run),
+        }
+        for name, step in steps.items():
+            try:
+                result = step()
+            except Exception as e:  # noqa: BLE001 -- one app failing mustn't stop the others
+                if isinstance(e, requests.HTTPError) and e.response is not None:
+                    detail = f"HTTP {e.response.status_code} from {e.response.url.split('?')[0]}"
+                else:  # strip query strings: SABnzbd's API key travels in one
+                    detail = re.sub(r"\?\S*", "?…", str(e))[:200]
+                result = f"FAILED: {type(e).__name__}: {detail}"
+            failed |= result.startswith("FAILED")
+            print(f"{name:12} {result}")
     for key, result in run.results.items():
         print(f"{key:12} {result}")
     if run.changed_files:

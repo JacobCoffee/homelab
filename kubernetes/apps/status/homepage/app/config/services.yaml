@@ -1,6 +1,8 @@
 # href is what your browser opens; siteMonitor is checked from the pod (dot next to each link).
-# *.z7x.org app names resolve in-cluster to the internal gateway. Proxmox and OPNsense are
-# checked by IP: their *.internal.z7x.org names are tailnet addresses pods can't reach.
+# Apps behind the passkey sign-in (network/lab-sso) are checked at their in-cluster Service: through
+# the gateway they'd always answer 302 to the sign-in, up or not. Other *.z7x.org names resolve
+# in-cluster to the internal gateway. Proxmox and OPNsense are checked by IP: their
+# *.internal.z7x.org names are tailnet addresses pods can't reach.
 #
 # namespace + app: pod status and CPU/memory (label app.kubernetes.io/name=<app>).
 # proxmoxNode + proxmoxVMID: the VM's or LXC's CPU/memory (nodes are defined in proxmox.yaml).
@@ -36,7 +38,7 @@
           fields: [pending, approved, available]
     - Sonarr:
         href: https://sonarr.z7x.org
-        siteMonitor: https://sonarr.z7x.org/ping
+        siteMonitor: http://sonarr.media.svc.cluster.local:8989/ping
         icon: sonarr.svg
         description: TV
         namespace: media
@@ -47,7 +49,7 @@
           key: "{{HOMEPAGE_VAR_SONARR_KEY}}"
     - Radarr:
         href: https://radarr.z7x.org
-        siteMonitor: https://radarr.z7x.org/ping
+        siteMonitor: http://radarr.media.svc.cluster.local:7878/ping
         icon: radarr.svg
         description: Movies
         namespace: media
@@ -58,7 +60,7 @@
           key: "{{HOMEPAGE_VAR_RADARR_KEY}}"
     - Lidarr:
         href: https://lidarr.z7x.org
-        siteMonitor: https://lidarr.z7x.org/ping
+        siteMonitor: http://lidarr.media.svc.cluster.local:8686/ping
         icon: lidarr.svg
         description: Music
         namespace: media
@@ -69,14 +71,14 @@
           key: "{{HOMEPAGE_VAR_LIDARR_KEY}}"
     - Bindery:
         href: https://bindery.z7x.org
-        siteMonitor: https://bindery.z7x.org
+        siteMonitor: http://bindery.media.svc.cluster.local:8787
         icon: mdi-book-open-variant
         description: Books
         namespace: media
         app: bindery
     - Bazarr:
         href: https://bazarr.z7x.org
-        siteMonitor: https://bazarr.z7x.org
+        siteMonitor: http://bazarr.media.svc.cluster.local:6767
         icon: bazarr.svg
         description: Subtitles
         namespace: media
@@ -89,7 +91,7 @@
 - Downloads:
     - Prowlarr:
         href: https://prowlarr.z7x.org
-        siteMonitor: https://prowlarr.z7x.org/ping
+        siteMonitor: http://prowlarr.media.svc.cluster.local:9696/ping
         icon: prowlarr.svg
         description: Indexers
         namespace: media
@@ -101,7 +103,7 @@
           fields: [numberOfGrabs, numberOfQueries, numberOfFailGrabs]
     - qBittorrent:
         href: https://qbittorrent.z7x.org
-        siteMonitor: https://qbittorrent.z7x.org
+        siteMonitor: http://gluetun-qbittorrent.media.svc.cluster.local:8080
         icon: qbittorrent.svg
         description: Torrents, via AirVPN
         namespace: media
@@ -113,7 +115,7 @@
           password: "{{HOMEPAGE_VAR_QBITTORRENT_PASSWORD}}"
     - SABnzbd:
         href: https://sabnzbd.z7x.org
-        siteMonitor: https://sabnzbd.z7x.org
+        siteMonitor: http://sabnzbd.media.svc.cluster.local:8080
         icon: sabnzbd.svg
         description: Usenet
         namespace: media
@@ -124,14 +126,14 @@
           key: "{{HOMEPAGE_VAR_SABNZBD_KEY}}"
     - Cleanuparr:
         href: https://cleanuparr.z7x.org
-        siteMonitor: https://cleanuparr.z7x.org
+        siteMonitor: http://cleanuparr.media.svc.cluster.local:11011
         icon: cleanuparr.svg
         description: Stalled and junk downloads
         namespace: media
         app: cleanuparr
     - Unpackerr:
         href: https://unpackerr.z7x.org
-        siteMonitor: https://unpackerr.z7x.org
+        siteMonitor: http://unpackerr.media.svc.cluster.local:5656
         icon: unpackerr.png
         description: Extracts archives
         namespace: media
@@ -147,7 +149,7 @@
         proxmoxVMID: 301
     - Uptime Kuma:
         href: https://kuma.z7x.org
-        siteMonitor: https://kuma.z7x.org
+        siteMonitor: http://uptime-kuma.status.svc.cluster.local:3001
         icon: uptime-kuma.svg
         description: Status monitors
         namespace: status

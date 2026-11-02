@@ -89,17 +89,31 @@ token in `cert-manager-issuers` and `external-dns-cloudflare` is the vault's
 
 ## Logins
 
-Every app with its own login uses the same one: `admin` and `vault_lab_admin_password` from the
-Ansible vault. That's Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, SABnzbd, Bindery, Cleanuparr,
-qBittorrent, Unpackerr, Uptime Kuma and Grafana. `../scripts/lab-logins.py` applies it through
-each app's API and keeps the secrets that hand it over on restart in step (Unpackerr's
-`UNPACKERR_UI_LOGIN` in `arr-api-keys`, qBittorrent's hash in `gluetun-secret`, Kuma's seed login,
-Grafana's admin secret); `--check` only reports. The *arrs require the login everywhere
-(`AUTH__REQUIRED: Enabled`): every request reaches them from the gateway's pod IP, so "not for
-local addresses" meant no login at all.
+You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/pocket-id`):
+
+- Grafana, Proxmox (realm `pocket-id`, Ansible `pve_oidc`) and Jellyfin in the browser have their
+  own "Sign in with Pocket ID".
+- The rest of the internal apps have no SSO of their own, so Envoy's OIDC filter sits in front of
+  them (`apps/network/lab-sso`) and their own logins are off: the *arrs, Bazarr, SABnzbd, Bindery,
+  Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma (`kuma.z7x.org`) and the start page. Their pods
+  only take traffic from the gateway, their own namespace, `status` and `observability`
+  (CiliumNetworkPolicy `lab-sso-ingress`), so going to a pod directly can't skip the passkey.
+  In-cluster callers keep using API keys; through the gateway every request needs the passkey
+  session, so phone apps that call `sonarr.z7x.org/api` directly won't get through.
+- Only Pocket ID's `lab-admins` group gets in. `../scripts/pocket-id.py` owns that group, the
+  owner account, the OIDC clients and their secrets (`vault_pocket_id_<client>_secret`, copied
+  into the sops Secrets that need them; commit what it lists). `--link` prints a one-time
+  sign-in link (30 minutes) for adding a passkey on a new device or after losing one.
+
+`../scripts/lab-logins.py` keeps the apps' own logins off (`--check` only reports), and keeps the
+shared login, `admin` and `vault_lab_admin_password`, on the accounts that still have a job:
+qBittorrent's (anything outside the pod network), Grafana's local admin (break-glass next to
+Pocket ID, and the Git Sync job's), and the Kuma, Bindery and Cleanuparr accounts the script
+changes their settings with. It keeps qBittorrent's hash in `gluetun-secret`, Kuma's seed login
+and Grafana's admin secret in step.
 
 ```sh
-scripts/lab-logins.py        # apply; commit the files it lists, then restart Unpackerr
+scripts/lab-logins.py        # apply; commit the files it lists
 # rotate: the current password, then the new one
 scripts/vault-set.py vault_lab_admin_previous_password vault_lab_admin_password && scripts/lab-logins.py
 ```

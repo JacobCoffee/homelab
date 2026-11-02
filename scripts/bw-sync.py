@@ -11,8 +11,13 @@ item per app, with its URLs so the browser extension autofills it.
     scripts/bw-sync.py
 
 Items are matched by name inside the folder and only rewritten when something differs, so a
-re-run is a no-op. The vault stays the source of truth: change a password there (and apply it, see
-scripts/lab-logins.py), then re-run this. Secrets reach bw on stdin, never on argv.
+re-run is a no-op; items this script made earlier that are no longer listed are deleted (only ones
+carrying its note). The vault stays the source of truth: change a password there (and apply it,
+see scripts/lab-logins.py), then re-run this. Secrets reach bw on stdin, never on argv.
+
+Most lab apps have no login of their own any more (the passkey sign-in at id.z7x.org fronts
+them), so only the logins a person can still type are here: Grafana's break-glass admin,
+qBittorrent's fallback, AdGuard and OPNsense.
 """
 
 from __future__ import annotations
@@ -33,18 +38,8 @@ NOTE = "Managed by scripts/bw-sync.py from the homelab Ansible vault; edits here
 # name: (username vault key or literal, password vault key, URLs)
 SHARED = ("vault_lab_admin_username", "vault_lab_admin_password")
 ITEMS: dict[str, tuple[str, str, list[str]]] = {
-    "Homelab: Sonarr": (*SHARED, ["https://sonarr.z7x.org"]),
-    "Homelab: Radarr": (*SHARED, ["https://radarr.z7x.org"]),
-    "Homelab: Lidarr": (*SHARED, ["https://lidarr.z7x.org"]),
-    "Homelab: Prowlarr": (*SHARED, ["https://prowlarr.z7x.org"]),
-    "Homelab: Bazarr": (*SHARED, ["https://bazarr.z7x.org"]),
-    "Homelab: SABnzbd": (*SHARED, ["https://sabnzbd.z7x.org"]),
-    "Homelab: Bindery": (*SHARED, ["https://bindery.z7x.org"]),
-    "Homelab: Cleanuparr": (*SHARED, ["https://cleanuparr.z7x.org"]),
+    "Homelab: Grafana (break-glass)": (*SHARED, ["https://grafana.z7x.org"]),
     "Homelab: qBittorrent": (*SHARED, ["https://qbittorrent.z7x.org"]),
-    "Homelab: Unpackerr": (*SHARED, ["https://unpackerr.z7x.org"]),
-    "Homelab: Uptime Kuma": (*SHARED, ["https://kuma.z7x.org"]),
-    "Homelab: Grafana": (*SHARED, ["https://grafana.z7x.org"]),
     "Homelab: AdGuard Home": ("admin", "vault_adguard_password",
                               ["http://10.10.10.53", "https://dns.z7x.org:8443"]),
     "Homelab: OPNsense": ("root", "vault_opnsense_root_password",
@@ -92,6 +87,10 @@ def main() -> int:
         item.update(notes=NOTE, login={**login, **want_login})
         bw("edit", "item", item["id"], stdin=encoded(item))
         print(f"{name:24} updated")
+    for name, item in existing.items():
+        if name not in ITEMS and item.get("notes") == NOTE:
+            bw("delete", "item", item["id"])
+            print(f"{name:24} deleted (no longer a login)")
     return 0
 
 
