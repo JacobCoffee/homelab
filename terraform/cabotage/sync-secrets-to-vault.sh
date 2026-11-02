@@ -1,43 +1,44 @@
 #!/usr/bin/env bash
 # Run once after `./tf.sh apply` completes the Consul/Vault bootstrap (module.cabotage's bootstrap
-# scripts write these into .secrets/, which is gitignored and lives only on this machine).
-# Backs the crown-jewel tokens up into the Ansible vault so they survive a lost laptop. Never
-# prints secret values.
+# scripts write these into .secrets/<workspace>/, which is gitignored and lives only on this
+# machine — the module namespaces secrets_dir by `terraform.workspace`, "default" unless a
+# workspace was created). Backs the crown-jewel tokens up into the Ansible vault so they survive a
+# lost laptop. Never prints secret values.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOMELAB_ROOT="$(cd "$ROOT/../.." && pwd)"
 VAULT_FILE="$HOMELAB_ROOT/ansible/inventory/group_vars/all/vault.yml"
-SECRETS_DIR="$ROOT/.secrets"
-
-declare -A FILES=(
-  [consul-management-token]=vault_cabotage_consul_management_token
-  [vault-bootstrap-token]=vault_cabotage_vault_root_token
-  [vault-unseal-key]=vault_cabotage_vault_unseal_key
-  [vault-recovery-key]=vault_cabotage_vault_recovery_key
-)
+WORKSPACE="$(cd "$ROOT" && mise exec -- tofu workspace show 2>/dev/null || echo default)"
+SECRETS_DIR="$ROOT/.secrets/$WORKSPACE"
 
 TMP="$(mktemp)"
 trap 'shred -u "$TMP" 2>/dev/null || rm -f "$TMP"' EXIT
 
-ansible-vault view "$VAULT_FILE" > "$TMP"
+(cd "$HOMELAB_ROOT/ansible" && ansible-vault view "$VAULT_FILE") > "$TMP"
 
 CHANGED=0
-for f in "${!FILES[@]}"; do
-  key="${FILES[$f]}"
-  path="$SECRETS_DIR/$f"
-  [ -f "$path" ] || continue
+sync_one() {
+  file="$1"
+  key="$2"
+  path="$SECRETS_DIR/$file"
+  [ -f "$path" ] || return 0
   if grep -q "^${key}:" "$TMP"; then
-    continue # already stored, do not overwrite silently
+    return 0 # already stored, do not overwrite silently
   fi
   val="$(cat "$path")"
   printf '%s: "%s"\n' "$key" "$val" >> "$TMP"
   CHANGED=1
-  echo "stored $key (from $f)"
-done
+  echo "stored $key (from $file)"
+}
+
+sync_one "consul-bootstrap-token" "vault_cabotage_consul_management_token"
+sync_one "vault-bootstrap-token" "vault_cabotage_vault_root_token"
+sync_one "vault-unseal-key" "vault_cabotage_vault_unseal_key"
+sync_one "vault-recovery-key" "vault_cabotage_vault_recovery_key"
 
 if [ "$CHANGED" -eq 1 ]; then
-  ansible-vault encrypt --output "$VAULT_FILE.new" "$TMP"
+  (cd "$HOMELAB_ROOT/ansible" && ansible-vault encrypt --output "$VAULT_FILE.new" "$TMP")
   chmod 600 "$VAULT_FILE.new"
   mv "$VAULT_FILE.new" "$VAULT_FILE"
   chmod 600 "$VAULT_FILE"
