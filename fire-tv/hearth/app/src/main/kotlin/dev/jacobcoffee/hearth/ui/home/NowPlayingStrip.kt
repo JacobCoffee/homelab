@@ -30,6 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -72,7 +74,13 @@ fun rememberNowPlaying(source: NowPlayingSource): NowPlaying? {
  * bar, and previous / play-pause / next. OK on the cover or title opens the player.
  */
 @Composable
-fun NowPlayingStrip(np: NowPlaying, source: NowPlayingSource, type: HomeType, modifier: Modifier = Modifier) {
+fun NowPlayingStrip(
+    np: NowPlaying,
+    source: NowPlayingSource,
+    type: HomeType,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
+) {
     val colors = LocalHearthColors.current
     val context = LocalContext.current
     val interaction = remember { MutableInteractionSource() }
@@ -82,6 +90,7 @@ fun NowPlayingStrip(np: NowPlaying, source: NowPlayingSource, type: HomeType, mo
             Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .clickable(interactionSource = interaction, indication = null) { openPlayer(context, np) }
                 .drawBehind {
                     if (!focused) return@drawBehind

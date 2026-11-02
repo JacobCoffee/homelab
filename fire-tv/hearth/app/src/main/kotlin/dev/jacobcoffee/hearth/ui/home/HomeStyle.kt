@@ -211,17 +211,26 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.diamond(center: Off
 
 /**
  * Re-runs [fetch] every [periodMs] while the screen is resumed and keeps the last result.
+ * A result that [failed] is retried after [retryMs] instead of a whole period.
  * Nothing polls behind an app the user opened.
  */
 @Composable
-fun <T> rememberPolled(key: Any?, initial: T, periodMs: Long, fetch: suspend () -> T): State<T> {
+fun <T> rememberPolled(
+    key: Any?,
+    initial: T,
+    periodMs: Long,
+    retryMs: Long = periodMs,
+    failed: (T) -> Boolean = { false },
+    fetch: suspend () -> T,
+): State<T> {
     val state = remember(key) { mutableStateOf(initial) }
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner, key) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
-                state.value = fetch()
-                delay(periodMs)
+                val result = fetch()
+                state.value = result
+                delay(if (failed(result)) retryMs else periodMs)
             }
         }
     }

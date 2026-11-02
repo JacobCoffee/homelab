@@ -116,6 +116,7 @@ fun LauncherScreen(deps: HearthDependencies, onOpenSettings: (themesOnly: Boolea
     var notice by remember { mutableStateOf<String?>(null) }
     var railOpen by remember { mutableStateOf(false) }
     val firstTile = remember { FocusRequester() }
+    val nowPlayingFocus = remember { FocusRequester() }
     val nowPlaying = remember { NowPlayingSource(context) }
     val playing = rememberNowPlaying(nowPlaying)
 
@@ -193,7 +194,7 @@ fun LauncherScreen(deps: HearthDependencies, onOpenSettings: (themesOnly: Boolea
                 Row(Modifier.fillMaxWidth().height(STRIP_HEIGHT).nightScrim(), verticalAlignment = Alignment.CenterVertically) {
                     guild?.let { QuestLog(it, type, maxShown = if (playing != null) 1 else 2, modifier = Modifier.weight(1f)) }
                     if (guild != null && playing != null) StripDivider()
-                    playing?.let { NowPlayingStrip(it, nowPlaying, type, Modifier.weight(1f)) }
+                    playing?.let { NowPlayingStrip(it, nowPlaying, type, Modifier.weight(1f), focusRequester = nowPlayingFocus) }
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -209,6 +210,9 @@ fun LauncherScreen(deps: HearthDependencies, onOpenSettings: (themesOnly: Boolea
                 apps = apps,
                 type = type,
                 firstTileFocus = firstTile,
+                // Up from the top row goes to the music; without this the left tiles, which sit
+                // under the guild's quest (not focusable), go to the rail instead.
+                upFromFirstRow = if (playing != null) nowPlayingFocus else null,
                 onLaunch = { if (arranging) menuFor = MenuTarget(it, movable = true) else launch(it) },
                 onMenu = { menuFor = MenuTarget(it, movable = true) },
                 onFocusedBounds = { pkg, bounds ->

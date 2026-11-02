@@ -48,7 +48,13 @@ private data class DailyBlock(
 
 class WeatherRepository {
     private val json = Json { ignoreUnknownKeys = true }
-    @Volatile private var last: WeatherSnapshot? = null
+
+    /**
+     * The last good snapshot for this place, so a header that is composed again (after Settings
+     * or a theme change) shows the weather at once instead of blanking until a fetch returns.
+     */
+    fun cached(lat: Double, lon: Double, units: String): WeatherState =
+        lastGood[key(lat, lon, units)]?.let { WeatherState.Available(it, stale = false) } ?: WeatherState.Loading
 
     suspend fun fetch(lat: Double, lon: Double, units: String): WeatherState = withContext(Dispatchers.IO) {
         val tempUnit = if (units == "celsius") "celsius" else "fahrenheit"
@@ -78,12 +84,17 @@ class WeatherRepository {
                 daily = daily,
                 fetchedAtMillis = System.currentTimeMillis(),
             )
-            last = snapshot
+            lastGood[key(lat, lon, units)] = snapshot
             WeatherState.Available(snapshot, stale = false)
         } catch (e: Exception) {
             Log.w("Hearth/Weather", "fetch failed: $e")
-            val cached = last
+            val cached = lastGood[key(lat, lon, units)]
             if (cached != null) WeatherState.Available(cached, stale = true) else WeatherState.Unavailable
         }
+    }
+
+    private companion object {
+        val lastGood = java.util.concurrent.ConcurrentHashMap<String, WeatherSnapshot>()
+        fun key(lat: Double, lon: Double, units: String) = "$lat,$lon,$units"
     }
 }

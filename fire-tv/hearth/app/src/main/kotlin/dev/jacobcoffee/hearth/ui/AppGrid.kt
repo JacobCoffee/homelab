@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -98,12 +99,15 @@ private fun fitGrid(count: Int, maxW: Dp, maxH: Dp): GridFit {
  * Every launchable TV app as a grid that fits the space it is given. [onFocusedBounds] reports
  * a tile's bounds in root coordinates when it gains focus and null when it loses it, keyed by
  * package, so the screen can light the painting beneath whichever tile holds focus.
+ * [upFromFirstRow], when set, is where Up goes from the top row; otherwise focus search decides,
+ * which from the left-hand tiles finds the rail.
  */
 @Composable
 fun AppGrid(
     apps: List<AppInfo>,
     type: HomeType,
     firstTileFocus: FocusRequester,
+    upFromFirstRow: FocusRequester?,
     onLaunch: (AppInfo) -> Unit,
     onMenu: (AppInfo) -> Unit,
     onFocusedBounds: (packageName: String, bounds: Rect?) -> Unit,
@@ -121,6 +125,7 @@ fun AppGrid(
                             height = fit.tileH,
                             type = type,
                             focusRequester = if (row == 0 && col == 0) firstTileFocus else null,
+                            upFocus = if (row == 0) upFromFirstRow else null,
                             onClick = { onLaunch(app) },
                             onLongClick = { onMenu(app) },
                             onFocusChanged = { bounds -> onFocusedBounds(app.packageName, bounds) },
@@ -153,6 +158,7 @@ private fun AppTile(
     height: Dp,
     type: HomeType,
     focusRequester: FocusRequester?,
+    upFocus: FocusRequester?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onFocusChanged: (Rect?) -> Unit,
@@ -181,6 +187,7 @@ private fun AppTile(
                     scaleY = s
                 }
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                .then(if (upFocus != null) Modifier.focusProperties { up = upFocus } else Modifier)
                 .onKeyEvent { e ->
                     if (e.key == Key.Menu && e.type == KeyEventType.KeyDown) { onLongClick(); true } else false
                 }

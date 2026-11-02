@@ -12,7 +12,10 @@ object NetworkClient {
         .readTimeout(5, TimeUnit.SECONDS)
         .writeTimeout(5, TimeUnit.SECONDS)
         .callTimeout(5, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(false)
+        // Must stay on: servers close idle keep-alive connections (Open-Meteo does), and the next
+        // request on a pooled one fails with "unexpected end of stream" unless OkHttp retries it on
+        // a fresh connection. Every call here is a GET from [get], so a retry is safe.
+        .retryOnConnectionFailure(true)
         .build()
 
     fun get(url: String, basicAuthUser: String? = null, basicAuthPass: String? = null): Request {

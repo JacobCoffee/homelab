@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -142,11 +144,14 @@ private fun ThemePickerScreen(themeRepository: ThemeRepository, onThemeChanged: 
     HearthTheme(previewTheme, reduceMotion = true) {
         val colors = LocalHearthColors.current
         Row(modifier = Modifier.fillMaxSize()) {
+            // Scrolls so every theme is reachable: focus moving past the last visible row
+            // brings that row into view.
             Column(
                 modifier = Modifier
                     .width(360.dp)
                     .fillMaxHeight()
                     .background(colors.background.copy(alpha = 0.92f))
+                    .verticalScroll(rememberScrollState())
                     .padding(32.dp),
             ) {
                 Text("Theme", color = colors.onSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold)

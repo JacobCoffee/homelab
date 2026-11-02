@@ -139,7 +139,13 @@ private fun greetingFor(greetings: ThemeGreetings?, hour: Int, name: String): St
 private fun Almanac(config: WeatherConfig, type: HomeType) {
     val colors = LocalHearthColors.current
     val repo = remember { WeatherRepository() }
-    val state by rememberPolled(config, WeatherState.Loading as WeatherState, 20 * 60 * 1000L) {
+    val state by rememberPolled(
+        key = config,
+        initial = repo.cached(config.lat, config.lon, config.units),
+        periodMs = 20 * 60 * 1000L,
+        retryMs = 60_000L,
+        failed = { it !is WeatherState.Available || it.stale },
+    ) {
         repo.fetch(config.lat, config.lon, config.units)
     }
     val s = state as? WeatherState.Available ?: return
@@ -163,7 +169,7 @@ private fun Almanac(config: WeatherConfig, type: HomeType) {
         }
         if (s.stale) {
             val asOf = java.time.Instant.ofEpochMilli(snap.fetchedAtMillis).atZone(java.time.ZoneId.systemDefault())
-            Text("  ·  as of ${asOf.format(DateTimeFormatter.ofPattern("h:mm a"))}", style = type.aside)
+            Text("  ·  as of ${asOf.format(DateTimeFormatter.ofPattern("h:mm a"))}", style = type.aside, maxLines = 1, softWrap = false)
         }
     }
 }
