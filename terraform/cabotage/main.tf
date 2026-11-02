@@ -22,7 +22,7 @@ resource "kubernetes_namespace_v1" "traefik" {
   }
 }
 module "cabotage" {
-  source = "git::https://github.com/cabotage/terraform.git//modules/cabotage?ref=19f312ce028b6faca7e3e0e601a2827d11b8d96e"
+  source = "git::https://github.com/cabotage/terraform.git//modules/cabotage?ref=40f5ed1222aed532153cca72365a02fee193066f"
 
   cluster_identifier       = "homelab"
   kube_context             = local.kube_context
