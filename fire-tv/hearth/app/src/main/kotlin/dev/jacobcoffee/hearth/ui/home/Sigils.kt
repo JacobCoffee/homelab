@@ -19,7 +19,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /** The home screen's drawn symbols: one line family, one stroke weight, on a 24-unit grid. */
-enum class Sigil { Search, Arrange, Apps, Inputs, TvSettings, Controllers, Power, Homelab, Theme, Settings }
+enum class Sigil { Search, Arrange, Apps, Inputs, TvSettings, Controllers, Power, Homelab, Theme, Settings, Previous, Play, Pause, Next }
 
 @Composable
 fun SigilIcon(sigil: Sigil, color: Color, size: Dp = 24.dp, modifier: Modifier = Modifier) {
@@ -105,6 +105,16 @@ fun SigilIcon(sigil: Sigil, color: Color, size: Dp = 24.dp, modifier: Modifier =
                     val a = Math.toRadians(i * 45.0)
                     line(12f + cos(a).toFloat() * 6.6f, 12f + sin(a).toFloat() * 6.6f, 12f + cos(a).toFloat() * 9.2f, 12f + sin(a).toFloat() * 9.2f)
                 }
+            }
+            Sigil.Play -> path { moveTo(8f * u, 5f * u); lineTo(19f * u, 12f * u); lineTo(8f * u, 19f * u); close() }
+            Sigil.Pause -> { line(8.5f, 5.5f, 8.5f, 18.5f); line(15.5f, 5.5f, 15.5f, 18.5f) }
+            Sigil.Next -> {
+                path { moveTo(5f * u, 6f * u); lineTo(14.5f * u, 12f * u); lineTo(5f * u, 18f * u); close() }
+                line(18.5f, 6f, 18.5f, 18f)
+            }
+            Sigil.Previous -> {
+                path { moveTo(19f * u, 6f * u); lineTo(9.5f * u, 12f * u); lineTo(19f * u, 18f * u); close() }
+                line(5.5f, 6f, 5.5f, 18f)
             }
         }
     }

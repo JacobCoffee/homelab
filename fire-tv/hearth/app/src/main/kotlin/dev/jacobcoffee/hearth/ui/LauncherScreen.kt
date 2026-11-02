@@ -70,6 +70,12 @@ import dev.jacobcoffee.hearth.ui.home.SearchPanel
 import dev.jacobcoffee.hearth.ui.home.StarRule
 import dev.jacobcoffee.hearth.ui.home.displayText
 import dev.jacobcoffee.hearth.ui.home.rememberHomeType
+import dev.jacobcoffee.hearth.media.NowPlayingSource
+import dev.jacobcoffee.hearth.ui.home.NowPlayingStrip
+import dev.jacobcoffee.hearth.ui.home.STRIP_HEIGHT
+import dev.jacobcoffee.hearth.ui.home.StripDivider
+import dev.jacobcoffee.hearth.ui.home.nightScrim
+import dev.jacobcoffee.hearth.ui.home.rememberNowPlaying
 import dev.jacobcoffee.hearth.widgets.TvLink
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay
@@ -110,6 +116,8 @@ fun LauncherScreen(deps: HearthDependencies, onOpenSettings: (themesOnly: Boolea
     var notice by remember { mutableStateOf<String?>(null) }
     var railOpen by remember { mutableStateOf(false) }
     val firstTile = remember { FocusRequester() }
+    val nowPlaying = remember { NowPlayingSource(context) }
+    val playing = rememberNowPlaying(nowPlaying)
 
     fun closePanel() { panel = Panel.None; arrivals++ }
     BackHandler(enabled = panel == Panel.Search) { closePanel() }
@@ -178,7 +186,16 @@ fun LauncherScreen(deps: HearthDependencies, onOpenSettings: (themesOnly: Boolea
         Column(Modifier.fillMaxSize().padding(start = RAIL_WIDTH + 18.dp, end = SAFE_X, top = SAFE_Y, bottom = SAFE_Y)) {
             HomeHeader(config, type)
             Spacer(Modifier.height(12.dp))
-            config.guild?.let { QuestLog(it, type, Modifier.fillMaxWidth()) }
+            val guild = config.guild
+            if (guild != null || playing != null) {
+                StarRule(Modifier.fillMaxWidth())
+                // Music shares the strip with the guild's next quest rather than pushing the grid down.
+                Row(Modifier.fillMaxWidth().height(STRIP_HEIGHT).nightScrim(), verticalAlignment = Alignment.CenterVertically) {
+                    guild?.let { QuestLog(it, type, maxShown = if (playing != null) 1 else 2, modifier = Modifier.weight(1f)) }
+                    if (guild != null && playing != null) StripDivider()
+                    playing?.let { NowPlayingStrip(it, nowPlaying, type, Modifier.weight(1f)) }
+                }
+            }
             Spacer(Modifier.height(14.dp))
             val banner = notice ?: if (arranging) "ARRANGING  \u00b7  CHOOSE AN APP TO MOVE OR HIDE  \u00b7  BACK WHEN DONE" else null
             if (banner != null) {

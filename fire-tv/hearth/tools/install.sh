@@ -45,4 +45,7 @@ echo "enabling Hearth's accessibility service (and disabling any other)..."
 $ADB shell settings put secure enabled_accessibility_services "$SERVICE"
 $ADB shell settings put secure accessibility_enabled 1
 
+echo "allowing Hearth to see what's playing (notification listener; reads no notifications)..."
+$ADB shell cmd notification allow_listener "$APP_ID/dev.jacobcoffee.hearth.media.MediaListener"
+
 echo "done. Hearth is installed and is now the Home redirect."

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -27,43 +26,41 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
-/** Height is fixed so loading, empty and error states never move the app grid. */
-private val STRIP_HEIGHT = 54.dp
+/** The strip under the header. Height is fixed so loading, empty and error states never move the app grid. */
+val STRIP_HEIGHT = 54.dp
 
 /**
- * The guild's next quests as a single strip under a star rule: a gold quest mark, the title
- * in display type, kind and place beneath, and when it starts at the right.
+ * The guild's next quests in the home strip: a gold quest mark, the title in display type,
+ * kind and place beneath, and when it starts at the right. [maxShown] drops to one when
+ * Now Playing shares the strip.
  */
 @Composable
-fun QuestLog(config: GuildConfig, type: HomeType, modifier: Modifier = Modifier) {
+fun QuestLog(config: GuildConfig, type: HomeType, maxShown: Int, modifier: Modifier = Modifier) {
     val repo = remember { GuildEventsRepository() }
     val state by rememberPolled(config, GuildEventsState.Loading as GuildEventsState, 15 * 60 * 1000L) {
         repo.fetch(config.baseUrl, config.maxEvents)
     }
-    Column(modifier) {
-        StarRule(Modifier.fillMaxWidth())
-        Box(Modifier.fillMaxWidth().height(STRIP_HEIGHT).nightScrim(), contentAlignment = Alignment.CenterStart) {
-            when (val s = state) {
-                is GuildEventsState.Available -> if (s.events.isEmpty()) {
-                    Text("No quests posted yet.", style = type.aside)
-                } else {
-                    val shown = s.events.take(2)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        shown.forEachIndexed { i, event ->
-                            if (i > 0) Divider()
-                            QuestEntry(event, type, Modifier.weight(1f))
-                        }
+    Box(modifier.height(STRIP_HEIGHT), contentAlignment = Alignment.CenterStart) {
+        when (val s = state) {
+            is GuildEventsState.Available -> if (s.events.isEmpty()) {
+                Text("No quests posted yet.", style = type.aside)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    s.events.take(maxShown).forEachIndexed { i, event ->
+                        if (i > 0) StripDivider()
+                        QuestEntry(event, type, Modifier.weight(1f))
                     }
                 }
-                GuildEventsState.Unavailable -> Text("The notice board can't be reached right now.", style = type.aside)
-                GuildEventsState.Loading -> Unit
             }
+            GuildEventsState.Unavailable -> Text("The notice board can't be reached right now.", style = type.aside)
+            GuildEventsState.Loading -> Unit
         }
     }
 }
 
+/** A short vertical hairline between entries in the home strip. */
 @Composable
-private fun Divider() {
+fun StripDivider() {
     val colors = LocalHearthColors.current
     Box(
         Modifier

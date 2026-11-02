@@ -76,6 +76,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Unlocks MediaSessionManager.getActiveSessions for Home's Now Playing strip; reads no
+             notifications. Enabled by tools/install.sh (cmd notification allow_listener). -->
+        <service
+            android:name=".media.MediaListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- Write-only; see tools/push-config.sh. -->
         <provider
             android:name=".config.ConfigProvider"

@@ -39,7 +39,7 @@ Your devices, name, weather location and service addresses live in one file,
 ```sh
 make setup         # copies config/site.env.example to config/site.env; then edit it
 make keystore      # creates ~/.hearth-keys/hearth-release.keystore if missing
-make install       # builds, installs, grants READ_LOGS, sets Hearth as the Home redirect
+make install       # builds, installs, grants READ_LOGS and media access, sets Hearth as the Home redirect
 make push-config   # renders config/hearth.local.json from site.env and pushes it
 ```
 
@@ -47,8 +47,18 @@ make push-config   # renders config/hearth.local.json from site.env and pushes i
 (`make catalog`, into `dist/catalog`) and a local test stack of AdGuard, Uptime Kuma and the
 catalog (`make stack-up`).
 
-`install.sh` points `enabled_accessibility_services` at Hearth's `HomeRedirectService` only.
+`install.sh` points `enabled_accessibility_services` at Hearth's `HomeRedirectService` only,
+and allows `media/MediaListener` as a notification listener so Home can show what's playing.
 Unset widgets (weather, guild events, Uptime Kuma, AdGuard, TV controls) stay hidden.
+
+## Now Playing
+
+When another app is playing music or video (Spotify in the background, say), the strip
+under the header shows its cover, title, artist and app, a time bar, and previous /
+play-pause / next. It shares the strip with the guild's next quest (one quest instead of
+two), so the app grid doesn't move. OK on the cover or title opens the player. A paused
+session stays until its app releases it, so it can be resumed from Home. Up from the grid
+reaches it.
 
 ## Remote bridge
 
@@ -71,6 +81,9 @@ accessibility service, so it starts at boot and its activity starts are not bloc
   write-only `ConfigProvider` (`content://dev.jacobcoffee.hearth.config/config`).
 - `widgets/` -- weather (Open-Meteo), guild events (SideQuest), Uptime Kuma, AdGuard Home,
   and the TV link.
+- `media/` -- Now Playing: follows other apps' media sessions (`NowPlayingSource`) through
+  `MediaListener`, a notification listener that exists only to unlock
+  `MediaSessionManager.getActiveSessions` and reads no notifications.
 - `apps/` -- the app lists (TV apps and user-installed apps for the grid, Fire OS's own
   launchers for the Apps panel), ordering, hiding, pushed layouts, Fire TV settings.
 - `ui/` -- Compose for TV: `home/` (header, quest log, command rail, panels, search, sigils,
@@ -79,8 +92,9 @@ accessibility service, so it starts at boot and its activity starts are not bloc
 ## Tests
 
 `app/src/test` covers the edge logic that is worth testing in isolation: season-window
-resolution (wrap-around, priority, ties, no-match), theme.json validation, and the catalog
-installer's zip-slip and sha256-mismatch rejection. Everything else (UI, network widgets,
+resolution (wrap-around, priority, ties, no-match), theme.json validation, the catalog
+installer's zip-slip and sha256-mismatch rejection, and Now Playing's position clock.
+Everything else (UI, network widgets,
 the home-redirect service) is exercised on-device.
 
 ## Source
