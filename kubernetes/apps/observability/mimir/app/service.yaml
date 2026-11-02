@@ -1,0 +1,18 @@
+# Stable in-cluster name/URL (not chart-prefixed): http://mimir.observability.svc.cluster.local:8080
+# Prometheus remote_write -> http://mimir.observability.svc.cluster.local:8080/api/v1/push
+# Prometheus-compatible query API (Grafana datasource URL) -> same host, path /prometheus
+apiVersion: v1
+kind: Service
+metadata:
+  name: mimir
+  namespace: observability
+spec:
+  selector:
+    app.kubernetes.io/name: mimir
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: grpc
+      port: 9095
+      targetPort: grpc

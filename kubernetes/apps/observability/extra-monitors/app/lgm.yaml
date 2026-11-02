@@ -1,0 +1,20 @@
+# Loki/Mimir/Alloy (../mimir, ../loki, ../alloy) scrape jobs: "job" comes from each
+# ServiceMonitor's name (mimir, loki) and the Alloy chart's own serviceMonitor (named after the
+# release, alloy). One rule is enough at this scale -- no SLOs, just "is it up".
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-lgm
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: lgm
+      rules:
+        - alert: ObservabilityStackTargetDown
+          expr: up{job=~"loki|mimir|alloy"} == 0
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.job }} target {{ $labels.instance }} is down"

@@ -2,3 +2,10 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: observability
+  labels:
+    # prometheus-node-exporter (hostNetwork/hostPID/hostPath, baseline-violating) and Alloy
+    # (hostNetwork, for Talos's machine.logging.destinations/KmsgLogConfig to reach 127.0.0.1 on
+    # each node) both need this -- without it the cluster's baseline default silently leaves their
+    # DaemonSets at 0/3 forever (daemonset-controller retries, PodSecurity admission rejects every
+    # pod, no restart loop to notice).
+    pod-security.kubernetes.io/enforce: privileged

@@ -1,0 +1,29 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: alloy
+  namespace: flux-system
+spec:
+  targetNamespace: observability
+  path: ./kubernetes/apps/observability/alloy/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  dependsOn:
+    # ServiceMonitor CRD, and Loki needs to exist for pods logs to have somewhere to land.
+    - name: kube-prometheus-stack
+    - name: loki
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: DaemonSet
+      name: alloy
+      namespace: observability

@@ -41,3 +41,23 @@ allowedRoles:
   - os:etcd:backup
 allowedKubernetesNamespaces:
   - backup
+---
+# Service logs (machined, kubelet, containerd, etc.) pushed as json_lines to the Alloy DaemonSet
+# pod on this same node (kubernetes/apps/observability/alloy: hostNetwork: true, so 127.0.0.1
+# reaches it from the host). Alloy receives it on otelcol.receiver.tcplog and tags it
+# job="talos-service-logs" before forwarding to Loki. This is a strategic-merge patch against the
+# base v1alpha1 config document (no apiVersion/kind -- machine.logging isn't its own typed
+# document).
+machine:
+  logging:
+    destinations:
+      - endpoint: "tcp://127.0.0.1:6051/"
+        format: json_lines
+---
+# Kernel (kmsg) log forwarding is its own typed document in 1.14+, to a second Alloy listener
+# (job="talos-kernel-logs") so it stays distinguishable from service logs in Loki. Takes effect
+# after a reboot.
+apiVersion: v1alpha1
+kind: KmsgLogConfig
+name: alloy
+url: tcp://127.0.0.1:6052/

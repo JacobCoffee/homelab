@@ -1,0 +1,104 @@
+# Hand-rolled monolithic Mimir (grafana/mimir:3.2.4 image, no Helm chart): a single `-target=all`
+# process does distributor+ingester+querier+compactor+store-gateway+(idle) ruler/alertmanager in
+# one pod, backed by the local filesystem instead of S3/GCS/MinIO. The mimir-distributed chart
+# always wants an object store (MinIO by default) even in its "SingleBinary" deployment mode, and
+# ships a ring of extra CRDs/ServiceAccounts/ConfigMaps for microservices we don't run -- more
+# sprawl than three Talos VMs need. Single pod means no object storage is needed for
+# replication/handoff between ingesters; replication_factor is pinned to 1 for the same reason.
+#
+# Multi-tenancy: multitenancy_enabled stays false (single "anonymous" tenant) for now, matching
+# single-tenant Loki. Nothing here hardcodes a tenant name into a URL or datasource, so turning
+# multitenancy_enabled on later (e.g. for Cabotage, which has its own tenants) is a config-only
+# change on both the Mimir side and whatever sends `X-Scope-OrgID`.
+multitenancy_enabled: false
+usage_stats:
+  enabled: false
+# Default is a relative path in the container's CWD ("/"), unwritable as a non-root user.
+activity_tracker:
+  filepath: /data/metrics-activity.log
+
+server:
+  http_listen_port: 8080
+  grpc_listen_port: 9095
+  log_level: warn
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+
+memberlist:
+  # Single instance: no peers to gossip with, but every ring still needs a kvstore.
+  join_members: []
+
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /data/common
+
+blocks_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/blocks
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+  tsdb:
+    dir: /data/tsdb
+    # 90d of local retention requested; the compactor is what actually enforces it, this is
+    # just how long a block can sit unshipped before the ingester force-flushes it.
+    retention_period: 2190h
+
+ingester:
+  ring:
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+distributor:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+store_gateway:
+  sharding_ring:
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+compactor:
+  data_dir: /data/compactor
+  sharding_ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+  # 90 days: this small cluster's whole metrics history, see PVC sizing in statefulset.yaml.
+  compaction_interval: 1h
+  first_level_compaction_wait_period: 25m
+
+limits:
+  compactor_blocks_retention_period: 2190h
+  # Lab-scale, generous headroom over kube-prometheus-stack's own scrape volume (a few
+  # hundred targets, a few hundred thousand active series at most).
+  max_global_series_per_user: 1000000
+  ingestion_rate: 100000
+  ingestion_burst_size: 200000
+
+# Ruler/Alertmanager modules still start under -target=all (Mimir has no "exclude module"
+# flag), but their APIs are off and nothing ever pushes a rule group or an Alertmanager config
+# to them, so they sit idle. Alerting stays entirely in kube-prometheus-stack's Alertmanager.
+ruler:
+  enable_api: false
+  rule_path: /data/ruler-cache
+ruler_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/ruler
+
+alertmanager:
+  enable_api: false
+  data_dir: /data/alertmanager-cache
+alertmanager_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/alertmanager

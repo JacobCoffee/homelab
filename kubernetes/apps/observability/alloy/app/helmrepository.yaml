@@ -1,0 +1,10 @@
+# Same chart repo as ../loki; kept here too (not a cross-dir reference) so this Kustomization is
+# self-contained even if loki's is ever removed. Flux reconciles both copies to the same object.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: grafana
+  namespace: observability
+spec:
+  interval: 1h
+  url: https://grafana.github.io/helm-charts

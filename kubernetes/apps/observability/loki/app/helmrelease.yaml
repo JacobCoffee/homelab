@@ -1,0 +1,109 @@
+# Monolithic Loki (single binary, one replica): three Talos VMs don't need read/write/backend
+# split into separate Deployments, and filesystem storage means there's no object store for
+# microservices mode to even hand chunks off through. 14d retention, compactor deletes expired
+# chunks itself (deletion_mode defaults to filter-and-delete once retention_enabled is on).
+#
+# Multi-tenancy: auth_enabled stays false (implicit single tenant) for now -- nothing below
+# hardcodes a tenant name into a URL, so turning auth_enabled on later (e.g. so Cabotage can use
+# its own tenant) is a config-only change on both this release and every client's headers.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: observability
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: loki
+      version: "7.5.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: observability
+  values:
+    fullnameOverride: loki
+
+    loki:
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 1
+      server:
+        http_listen_port: 3100
+      storage:
+        type: filesystem
+      schemaConfig:
+        configs:
+          - from: "2024-01-01"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: loki_index_
+              period: 24h
+      ingester:
+        chunk_encoding: snappy
+      querier:
+        max_concurrent: 2
+      limits_config:
+        retention_period: 336h # 14d
+        allow_structured_metadata: true
+        volume_enabled: true
+        # Lab-scale: generous headroom over Alloy's actual ingest volume (pod logs, k8s events,
+        # Talos service logs, Proxmox + OPNsense syslog).
+        ingestion_rate_mb: 16
+        ingestion_burst_size_mb: 32
+      compactor:
+        working_directory: /var/loki/compactor
+        retention_enabled: true
+        delete_request_store: filesystem
+
+    deploymentMode: SingleBinary
+    singleBinary:
+      replicas: 1
+      persistence:
+        enabled: true
+        storageClass: proxmox-fast
+        # 14 days at lab scale (pod logs + k8s events + Talos/Proxmox/OPNsense syslog): a few
+        # GiB/day compressed at most for ~50 pods and three syslog sources, so 14d comfortably
+        # fits in 30Gi with room for the index and compactor scratch space.
+        size: 30Gi
+      resources:
+        requests: { cpu: 100m, memory: 512Mi }
+        limits: { memory: 1Gi }
+
+    # No object storage, no gateway/microservices sprawl: everything talks straight to the
+    # single-binary pod on :3100 (push and query both), at the stable Service name `loki`.
+    gateway:
+      enabled: false
+    minio:
+      enabled: false
+    chunksCache:
+      enabled: false
+    resultsCache:
+      enabled: false
+    test:
+      enabled: false
+    lokiCanary:
+      enabled: false
+    monitoring:
+      serviceMonitor:
+        enabled: true
+      selfMonitoring:
+        enabled: false
+      lokiCanary:
+        enabled: false
+
+    # Zero every microservices-mode component: SingleBinary runs all of Loki in one pod.
+    backend: { replicas: 0 }
+    read: { replicas: 0 }
+    write: { replicas: 0 }
+    ingester: { replicas: 0 }
+    querier: { replicas: 0 }
+    queryFrontend: { replicas: 0 }
+    queryScheduler: { replicas: 0 }
+    distributor: { replicas: 0 }
+    compactor: { replicas: 0 }
+    indexGateway: { replicas: 0 }
+    bloomCompactor: { replicas: 0 }
+    bloomGateway: { replicas: 0 }

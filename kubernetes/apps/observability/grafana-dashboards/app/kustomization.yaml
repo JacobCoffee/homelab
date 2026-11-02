@@ -1,0 +1,111 @@
+# Dashboard JSON vendored from upstream (grafana.com, grafana/{mimir,loki,alloy} mixins,
+# cilium/cilium, envoyproxy/gateway) -- see kubernetes/README.md "Observability" for sources and
+# the light datasource-variable patches applied so each floats to whatever Prometheus/Loki
+# datasource is marked default (Mimir/Loki), instead of a hardcoded uid.
+#
+# One ConfigMap per folder: the kube-prometheus-stack Grafana sidecar is configured
+# (kube-prometheus-stack/app/helmrelease.yaml, grafana.sidecar.dashboards.folderAnnotation) to
+# read the grafana_folder annotation on each ConfigMap and recreate it as a Grafana folder.
+# The chart's own gnetId-downloaded defaults (Kubernetes, Node Exporter, Proxmox, Flux, Cilium
+# Agent) carry no such annotation, so they keep landing in Grafana's General folder, untouched.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    grafana_dashboard: "1"
+configMapGenerator:
+  - name: grafana-dashboards-cilium-hubble
+    files:
+      - dashboards/cilium-hubble/hubble-dashboard.json
+  - name: grafana-dashboards-envoy-gateway
+    files:
+      - dashboards/envoy-gateway/envoy-gateway-global.json
+  - name: grafana-dashboards-cert-manager
+    files:
+      - dashboards/cert-manager/cert-manager.json
+  - name: grafana-dashboards-adguard
+    files:
+      - dashboards/adguard/adguard-home.json
+  - name: grafana-dashboards-opnsense
+    files:
+      - dashboards/opnsense/node-exporter-full.json
+  - name: grafana-dashboards-loki-alloy
+    files:
+      - dashboards/loki-alloy/loki-operational.json
+      - dashboards/loki-alloy/alloy-cluster-overview.json
+      - dashboards/loki-alloy/alloy-cluster-node.json
+  - name: grafana-dashboards-mimir
+    files:
+      - dashboards/mimir/mimir-overview.json
+  - name: grafana-dashboards-logs
+    files:
+      - dashboards/logs/logs.json
+  - name: grafana-dashboards-general
+    files:
+      - dashboards/general/lab-overview.json
+patches:
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-cilium-hubble
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "Cilium / Hubble" }
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-envoy-gateway
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "Envoy Gateway" }
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-cert-manager
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "cert-manager" }
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-adguard
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "AdGuard" }
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-opnsense
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "OPNsense" }
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-loki-alloy
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "Loki / Alloy" }
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-mimir
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "Mimir" }
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-logs
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "Logs" }
+  - target:
+      kind: ConfigMap
+      name: grafana-dashboards-general
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value: { grafana_folder: "General" }

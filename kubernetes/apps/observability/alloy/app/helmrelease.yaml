@@ -1,0 +1,243 @@
+# DaemonSet (one pod per node, hostNetwork: true so Talos's machine.logging.destinations and
+# KmsgLogConfig can reach 127.0.0.1 on each node -- see kubernetes/talos/patches/cluster.yaml).
+# Collects: pod logs (namespace/pod/container/node/app only, no per-pod label fan-out), Kubernetes
+# events (clustered so the 3 pods don't triple-collect), syslog (Proxmox/OPNsense, via the
+# LoadBalancer service.yaml), and Talos service/kernel logs (raw TCP json_lines, no
+# `loki.source.tcp` in Alloy -- see config.alloy's otelcol.receiver.tcplog).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+  namespace: observability
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: alloy
+      version: "1.15.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: observability
+  values:
+    alloy:
+      # otelcol.receiver.tcplog (Talos service/kernel logs, config.alloy below) is still
+      # experimental upstream -- the chart's default minimum stability is generally-available.
+      stabilityLevel: experimental
+      configMap:
+        create: true
+        content: |
+          // Stable in-cluster Loki target (kubernetes/apps/observability/loki): no tenant header is sent
+          // (Loki's auth_enabled is false), so nothing here hardcodes a tenant/org id into the URL --
+          // turning multi-tenancy on later is a config-only change.
+          loki.write "default" {
+            endpoint {
+              url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+            }
+          }
+          
+          // -----------------------------------------------------------------------------------------------
+          // Pod logs: namespace/pod/container/node/app only -- no per-pod label fan-out (cardinality). Every
+          // DaemonSet pod discovers every pod in the cluster but the first relabel rule keeps only the ones
+          // scheduled on its own node (NODE_NAME via the downward API, see helmrelease.yaml alloy.extraEnv),
+          // since /var/log/pods for other nodes' pods doesn't exist locally.
+          // -----------------------------------------------------------------------------------------------
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
+          
+          discovery.relabel "pod_logs" {
+            targets = discovery.kubernetes.pods.targets
+          
+            rule {
+              source_labels = ["__meta_kubernetes_pod_node_name"]
+              regex         = sys.env("NODE_NAME")
+              action        = "keep"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+              separator     = ";"
+              regex         = "(.+);(.+)"
+              target_label  = "__path__"
+              replacement   = "/var/log/pods/*$1*/$2/*.log"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              target_label  = "namespace"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              target_label  = "pod"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              target_label  = "container"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_node_name"]
+              target_label  = "node"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+              target_label  = "app"
+            }
+            rule {
+              regex  = "__meta_.*"
+              action = "labeldrop"
+            }
+          }
+          
+          local.file_match "pod_logs" {
+            path_targets = discovery.relabel.pod_logs.output
+            sync_period  = "5s"
+          }
+          
+          loki.source.file "pod_logs" {
+            targets    = local.file_match.pod_logs.targets
+            forward_to = [loki.write.default.receiver]
+          }
+          
+          // -----------------------------------------------------------------------------------------------
+          // Kubernetes events (cluster-scoped, one copy total): clustering stops all 3 DaemonSet pods from
+          // each watching and forwarding the same events (alloy.clustering.enabled: true in values).
+          // -----------------------------------------------------------------------------------------------
+          loki.source.kubernetes_events "events" {
+            job_name   = "kubernetes-events"
+            log_format = "json"
+            forward_to = [loki.write.default.receiver]
+          
+            clustering {
+              enabled = true
+            }
+          }
+          
+          // -----------------------------------------------------------------------------------------------
+          // Syslog: Proxmox hosts (ansible/roles/pve_syslog) and OPNsense (ansible/roles/opnsense,
+          // tasks/syslog.yml), reaching this over the LoadBalancer Service at 10.10.30.210 (service.yaml).
+          // -----------------------------------------------------------------------------------------------
+          loki.source.syslog "syslog" {
+            listener {
+              address  = "0.0.0.0:5514"
+              protocol = "tcp"
+              labels   = { job = "syslog" }
+            }
+            listener {
+              address  = "0.0.0.0:5514"
+              protocol = "udp"
+              labels   = { job = "syslog" }
+            }
+            relabel_rules = loki.relabel.syslog.rules
+            forward_to    = [loki.write.default.receiver]
+          }
+          
+          loki.relabel "syslog" {
+            forward_to = []
+          
+            rule {
+              source_labels = ["__syslog_connection_hostname"]
+              target_label  = "host"
+            }
+            rule {
+              source_labels = ["__syslog_message_hostname"]
+              target_label  = "host"
+            }
+            rule {
+              source_labels = ["__syslog_message_app_name"]
+              target_label  = "app"
+            }
+          }
+          
+          // -----------------------------------------------------------------------------------------------
+          // Talos service + kernel logs: json_lines over raw TCP (kubernetes/talos/patches/cluster.yaml).
+          // Talos has no Loki client and Alloy has no `loki.source.tcp`, so otelcol.receiver.tcplog takes
+          // the raw connection; it doesn't parse the JSON body itself, so each line lands in Loki as the
+          // raw json_lines text (queryable with `| json` in LogQL), labeled only with job/node.
+          // -----------------------------------------------------------------------------------------------
+          otelcol.receiver.tcplog "talos_service" {
+            listen_address = "0.0.0.0:6051"
+            output {
+              logs = [otelcol.processor.attributes.talos_service.input]
+            }
+          }
+          
+          otelcol.processor.attributes "talos_service" {
+            action {
+              key    = "job"
+              action = "insert"
+              value  = "talos-service-logs"
+            }
+            action {
+              key    = "node"
+              action = "insert"
+              value  = sys.env("NODE_NAME")
+            }
+            action {
+              key    = "loki.attribute.labels"
+              action = "insert"
+              value  = "job, node"
+            }
+            output {
+              logs = [otelcol.exporter.loki.talos_service.input]
+            }
+          }
+          
+          otelcol.exporter.loki "talos_service" {
+            forward_to = [loki.write.default.receiver]
+          }
+          
+          otelcol.receiver.tcplog "talos_kernel" {
+            listen_address = "0.0.0.0:6052"
+            output {
+              logs = [otelcol.processor.attributes.talos_kernel.input]
+            }
+          }
+          
+          otelcol.processor.attributes "talos_kernel" {
+            action {
+              key    = "job"
+              action = "insert"
+              value  = "talos-kernel-logs"
+            }
+            action {
+              key    = "node"
+              action = "insert"
+              value  = sys.env("NODE_NAME")
+            }
+            action {
+              key    = "loki.attribute.labels"
+              action = "insert"
+              value  = "job, node"
+            }
+            output {
+              logs = [otelcol.exporter.loki.talos_kernel.input]
+            }
+          }
+          
+          otelcol.exporter.loki "talos_kernel" {
+            forward_to = [loki.write.default.receiver]
+          }
+      clustering:
+        enabled: true
+      extraEnv:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+      mounts:
+        varlog: true
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits: { memory: 512Mi }
+
+    controller:
+      type: daemonset
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists
+
+    rbac:
+      create: true
+
+    serviceMonitor:
+      enabled: true

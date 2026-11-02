@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+resources:
+  - ./statefulset.yaml
+  - ./service.yaml
+  - ./servicemonitor.yaml
+# Stable name, not hashed: kustomize's built-in nameReference transformer doesn't cover
+# StatefulSet volumes[].configMap.name (verified: `kubectl kustomize` left statefulset.yaml's
+# reference as the literal "mimir-config" while the generated ConfigMap got a hash suffix, so the
+# volume pointed at a ConfigMap that didn't exist). A config edit needs a manual pod restart
+# (`kubectl rollout restart statefulset/mimir -n observability`) since Mimir doesn't hot-reload.
+configMapGenerator:
+  - name: mimir-config
+    files:
+      - mimir.yaml
+generatorOptions:
+  disableNameSuffixHash: true

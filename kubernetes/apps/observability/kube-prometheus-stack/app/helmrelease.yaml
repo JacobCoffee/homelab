@@ -58,7 +58,9 @@ spec:
 
     prometheus:
       prometheusSpec:
-        retention: 10d
+        # Mimir (../mimir) now holds the long-term history via remote_write below; Prometheus
+        # itself only needs enough local retention to survive a Mimir outage/restart.
+        retention: 3d
         replicas: 1
         resources:
           requests: { cpu: 100m, memory: 512Mi }
@@ -68,8 +70,15 @@ spec:
             spec:
               storageClassName: proxmox-fast
               accessModes: ["ReadWriteOnce"]
+              # Sized for 3d, not 10d: shrinking this spec doesn't shrink the already-bound 20Gi
+              # PVC (PVCs only grow), it only matters for a fresh install.
               resources:
-                requests: { storage: 20Gi }
+                requests: { storage: 10Gi }
+        remoteWrite:
+          - url: http://mimir.observability.svc.cluster.local:8080/api/v1/push
+            # Mimir holds metric history; its multitenancy_enabled is false (single tenant), so no
+            # X-Scope-OrgID header is needed -- turning multi-tenancy on later only means adding
+            # one here.
         # Pick up ServiceMonitors/PodMonitors/PrometheusRules/Probes from any namespace, not just
         # ones carrying this release's Helm labels (extra-monitors, pve-exporter, adguard-exporter
         # all live outside this chart's release).
@@ -130,14 +139,48 @@ spec:
         size: 2Gi
       # RWO volume: a rolling update deadlocks when the new pod lands on another node, because the
       # volume stays attached to the old pod. Recreate stops the old pod first.
+      # rollingUpdate: null is required, not just omitted: the live Deployment still carries the
+      # old RollingUpdate strategy's rollingUpdate block from before this switch, and Kubernetes
+      # rejects strategy.rollingUpdate alongside type: Recreate. An explicit null in the applied
+      # manifest tells server-side apply to clear that field instead of leaving it untouched.
       deploymentStrategy:
         type: Recreate
+        rollingUpdate: null
       resources:
         requests: { cpu: 50m, memory: 192Mi }
         limits: { memory: 640Mi }
       grafana.ini:
         server:
           root_url: https://grafana.z7x.org
+      sidecar:
+        dashboards:
+          # Lets ../grafana-dashboards' per-folder ConfigMaps (annotation grafana_folder) land in
+          # their own Grafana folders instead of all piling into General.
+          folderAnnotation: grafana_folder
+          provider:
+            foldersFromFilesStructure: true
+        datasources:
+          # Mimir (below) is the new default; this chart's own auto-provisioned "Prometheus"
+          # datasource (still pointing at this release's own Prometheus) stays, just not default.
+          isDefaultDatasource: false
+      # Mimir is single-tenant (multitenancy_enabled: false, see ../mimir/app/mimir.yaml) so no
+      # X-Scope-OrgID header is set here; Loki likewise (auth_enabled: false, see ../loki). Neither
+      # URL encodes a tenant, so enabling multi-tenancy later is a datasource-only edit.
+      additionalDataSources:
+        - name: Mimir
+          type: prometheus
+          uid: mimir
+          access: proxy
+          url: http://mimir.observability.svc.cluster.local:8080/prometheus
+          isDefault: true
+          jsonData:
+            httpMethod: POST
+        - name: Loki
+          type: loki
+          uid: loki
+          access: proxy
+          url: http://loki.observability.svc.cluster.local:3100
+          isDefault: false
       # Downloaded straight from grafana.com by the chart's dashboard sidecar init container.
       dashboards:
         default:

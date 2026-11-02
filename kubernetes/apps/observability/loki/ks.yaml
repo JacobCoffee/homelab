@@ -1,0 +1,28 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: loki
+  namespace: flux-system
+spec:
+  targetNamespace: observability
+  path: ./kubernetes/apps/observability/loki/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  dependsOn:
+    # ServiceMonitor CRD.
+    - name: kube-prometheus-stack
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: loki
+      namespace: observability

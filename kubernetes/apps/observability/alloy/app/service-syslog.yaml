@@ -1,0 +1,27 @@
+# Fixed LB IP (10.10.30.200/.201 are the two Envoy Gateways; .202-.209 left free for anything
+# else that lands between them and this). Proxmox (ansible/roles/pve_syslog) and OPNsense
+# (ansible/roles/opnsense, tasks/syslog.yml) point their remote syslog here, TCP and UDP 514.
+# Backing pods use hostNetwork (helmrelease.yaml), so Cilium forwards to whichever node's Alloy
+# pod; the syslog port itself (5514) is bound directly on each node by Alloy's listener, not by
+# this Service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy-syslog
+  namespace: observability
+  annotations:
+    lbipam.cilium.io/ips: "10.10.30.210"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: alloy
+    app.kubernetes.io/instance: alloy
+  ports:
+    - name: syslog-tcp
+      port: 514
+      targetPort: 5514
+      protocol: TCP
+    - name: syslog-udp
+      port: 514
+      targetPort: 5514
+      protocol: UDP

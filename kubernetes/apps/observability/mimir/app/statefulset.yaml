@@ -1,0 +1,80 @@
+# PVC sizing (90 days, this cluster): Prometheus's own 20Gi/10d PVC (kube-prometheus-stack)
+# already holds its WAL *and* a duplicate 2h in-memory-equivalent block on disk, i.e. roughly
+# 2GiB/day of raw samples at today's ~300 scraped series x a few hundred targets. Mimir's TSDB
+# blocks are the same compressed chunk format without that WAL duplication, so day-over-day usage
+# should run under Prometheus's per-day figure, not over it -- budgeting ~1GiB/day compacted,
+# 90 days is ~90Gi. 100Gi on proxmox-fast leaves ~10% headroom for compactor scratch space
+# (it rewrites blocks before deleting the originals) without the cluster being far oversized for
+# three Talos VMs. Revisit (du -sh on /data/blocks) once 90 days of real data exist.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mimir
+  namespace: observability
+spec:
+  serviceName: mimir
+  replicas: 1
+  # Unlike a Deployment, a StatefulSet's RollingUpdate terminates the existing pod for an
+  # ordinal before creating its replacement, so the RWO volume is detached before it's needed
+  # on a (possibly different) node; no Recreate workaround needed here.
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mimir
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mimir
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mimir
+          image: grafana/mimir:3.2.4
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          args:
+            - -target=all
+            - -config.file=/etc/mimir/mimir.yaml
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: grpc
+              containerPort: 9095
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ready, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 200m, memory: 768Mi }
+            limits: { cpu: "2", memory: 2Gi }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/mimir
+              readOnly: true
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: mimir-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: proxmox-fast
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: { storage: 100Gi }

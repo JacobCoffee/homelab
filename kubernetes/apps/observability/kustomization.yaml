@@ -8,3 +8,7 @@ resources:
   - ./adguard-exporter/ks.yaml
   - ./flux-notifications/ks.yaml
   - ./extra-monitors/ks.yaml
+  - ./mimir/ks.yaml
+  - ./loki/ks.yaml
+  - ./alloy/ks.yaml
+  - ./grafana-dashboards/ks.yaml

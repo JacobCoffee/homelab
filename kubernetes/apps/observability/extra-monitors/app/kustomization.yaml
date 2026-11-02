@@ -7,3 +7,4 @@ resources:
   - ./flux.yaml
   - ./probes.yaml
   - ./prometheusrule.yaml
+  - ./lgm.yaml

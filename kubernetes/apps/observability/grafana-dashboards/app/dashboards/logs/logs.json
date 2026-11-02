@@ -1,0 +1,98 @@
+{
+  "title": "Logs",
+  "uid": "lab-logs",
+  "tags": ["logs", "loki", "lab"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "loki_datasource",
+        "type": "datasource",
+        "query": "loki",
+        "current": { "text": "default", "value": "default" },
+        "hide": 0,
+        "label": "Loki"
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "${loki_datasource}" },
+        "query": "label_values(namespace)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "label": "Namespace"
+      },
+      {
+        "name": "pod",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "${loki_datasource}" },
+        "query": "label_values({namespace=\"$namespace\"}, pod)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Pod"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Log volume by pod",
+      "type": "timeseries",
+      "datasource": { "type": "loki", "uid": "${loki_datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (pod) (count_over_time({namespace=\"$namespace\", pod=~\"$pod\"}[1m]))",
+          "legendFormat": "{{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Pod logs",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "${loki_datasource}" },
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 8 },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessages": false,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{namespace=\"$namespace\", pod=~\"$pod\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Kubernetes events",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "${loki_datasource}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 24 },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{job=\"kubernetes-events\", namespace=\"$namespace\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
