@@ -1,0 +1,49 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: lab-sso
+  namespace: media
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: sonarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: radarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: lidarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: prowlarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: bazarr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: sabnzbd
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: bindery
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: cleanuparr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: gluetun-qbittorrent
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: unpackerr
+  oidc:
+    provider:
+      issuer: https://id.z7x.org
+    clientID: lab-gateway
+    clientSecret:
+      name: lab-sso-oidc
+    scopes: [openid, profile, email, groups]
+    # Envoy's default redirect is <scheme>://<host>/oauth2/callback on each app's own host, which
+    # the lab-gateway client allows as https://*.z7x.org/oauth2/callback.
+    logoutPath: /oauth2/logout
+    refreshToken: true
+  # Pocket ID lets only lab-admins into the lab-gateway client, so any valid ID token is enough.

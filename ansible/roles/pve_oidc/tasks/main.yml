@@ -1,0 +1,133 @@
+---
+# Realm config lives in /etc/pve/domains.cfg (cluster-shared pmxcfs), so this only needs to run
+# once; run_once executes it on the play's first host (hnhv01), same as monitoring_pve.
+- name: "OIDC | blocked on vault_pocket_id_{{ pve_oidc_client_id }}_secret"
+  ansible.builtin.debug:
+    msg: >-
+      vault_pocket_id_{{ pve_oidc_client_id }}_secret is not in the vault yet; run
+      scripts/pocket-id.py (it generates and stores one per client) then re-run with
+      --tags pve_oidc.
+  run_once: true
+  when: vault_pocket_id_proxmox_secret is not defined
+
+- name: OIDC | realm, group and ACL
+  run_once: true
+  when: vault_pocket_id_proxmox_secret is defined
+  block:
+    - name: "OIDC | current {{ pve_oidc_realm }} realm block in /etc/pve/domains.cfg"
+      ansible.builtin.shell: |
+        set -o pipefail
+        awk '/^openid: {{ pve_oidc_realm }}$/{f=1;next} /^[a-z]+:/{f=0} f{print}' /etc/pve/domains.cfg \
+          | sed -e 's/^\t//' -e 's/ /=/'
+      args:
+        executable: /bin/bash
+      register: pve_oidc_state
+      changed_when: false
+      no_log: true
+
+    - name: "OIDC | parse it (no_log: includes client-key)"
+      ansible.builtin.set_fact:
+        pve_oidc_now: "{{ dict(pve_oidc_state.stdout_lines | map('split', '=', 1)) }}"
+        pve_oidc_want:
+          client-id: "{{ pve_oidc_client_id }}"
+          issuer-url: "{{ pve_oidc_issuer_url }}"
+          autocreate: "1"
+          client-key: "{{ vault_pocket_id_proxmox_secret }}"
+          groups-autocreate: "1"
+          groups-claim: "{{ pve_oidc_groups_claim }}"
+          scopes: "{{ pve_oidc_scopes }}"
+          username-claim: "{{ pve_oidc_username_claim }}"
+      no_log: true
+
+    - name: "OIDC | create the {{ pve_oidc_realm }} realm (no_log: carries the client secret)"
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - realm
+          - add
+          - "{{ pve_oidc_realm }}"
+          - --type
+          - openid
+          - --issuer-url
+          - "{{ pve_oidc_issuer_url }}"
+          - --client-id
+          - "{{ pve_oidc_client_id }}"
+          - --client-key
+          - "{{ vault_pocket_id_proxmox_secret }}"
+          - --username-claim
+          - "{{ pve_oidc_username_claim }}"
+          - --autocreate
+          - "1"
+          - --scopes
+          - "{{ pve_oidc_scopes }}"
+          - --groups-claim
+          - "{{ pve_oidc_groups_claim }}"
+          - --groups-autocreate
+          - "1"
+      when: pve_oidc_now | length == 0
+      changed_when: true
+      no_log: true
+
+    - name: "OIDC | update the {{ pve_oidc_realm }} realm (no_log: carries the client secret)"
+      ansible.builtin.command:
+        argv:
+          - pveum
+          - realm
+          - modify
+          - "{{ pve_oidc_realm }}"
+          - --issuer-url
+          - "{{ pve_oidc_issuer_url }}"
+          - --client-id
+          - "{{ pve_oidc_client_id }}"
+          - --client-key
+          - "{{ vault_pocket_id_proxmox_secret }}"
+          - --username-claim
+          - "{{ pve_oidc_username_claim }}"
+          - --autocreate
+          - "1"
+          - --scopes
+          - "{{ pve_oidc_scopes }}"
+          - --groups-claim
+          - "{{ pve_oidc_groups_claim }}"
+          - --groups-autocreate
+          - "1"
+      when: pve_oidc_now | length > 0 and pve_oidc_now != pve_oidc_want
+      changed_when: true
+      no_log: true
+
+    # groups-autocreate only makes the group on a user's first login; pre-creating it lets the
+    # ACL below grant admin before jacob ever signs in, instead of landing with no privileges.
+    - name: OIDC | existing groups
+      ansible.builtin.command: pveum group list --output-format json
+      register: pve_oidc_groups
+      changed_when: false
+
+    - name: "OIDC | create the {{ pve_oidc_admin_group }} group"
+      ansible.builtin.command: >-
+        pveum group add {{ pve_oidc_admin_group }}
+        --comment "Synced from Pocket ID's lab-admins via the {{ pve_oidc_realm }} OIDC realm (groups-claim)"
+      when: pve_oidc_admin_group not in (pve_oidc_groups.stdout | from_json | map(attribute='groupid') | list)
+      changed_when: true
+
+    - name: OIDC | existing ACLs
+      ansible.builtin.command: pveum acl list --output-format json
+      register: pve_oidc_acls
+      changed_when: false
+
+    - name: "OIDC | grant {{ pve_oidc_admin_role }} to {{ pve_oidc_admin_group }} on /"
+      ansible.builtin.command: pveum aclmod / -group {{ pve_oidc_admin_group }} -role {{ pve_oidc_admin_role }}
+      when: >-
+        pve_oidc_acls.stdout | from_json
+        | selectattr('ugid', 'equalto', pve_oidc_admin_group)
+        | selectattr('roleid', 'equalto', pve_oidc_admin_role)
+        | selectattr('path', 'equalto', '/') | list | length == 0
+      changed_when: true
+
+- name: OIDC | report
+  ansible.builtin.debug:
+    msg: >-
+      Realm {{ pve_oidc_realm }} (issuer {{ pve_oidc_issuer_url }}, client {{ pve_oidc_client_id }})
+      is on the login page of every node; members of Pocket ID's lab-admins group land in
+      {{ pve_oidc_admin_group }}, which holds {{ pve_oidc_admin_role }} on /. root@pam is untouched.
+  run_once: true
+  when: vault_pocket_id_proxmox_secret is defined

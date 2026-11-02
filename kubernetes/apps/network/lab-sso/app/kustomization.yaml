@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./securitypolicy-media.yaml
+  - ./securitypolicy-status.yaml
+  - ./secret-media.sops.yaml
+  - ./secret-status.sops.yaml

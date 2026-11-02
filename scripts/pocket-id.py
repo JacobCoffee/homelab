@@ -15,24 +15,39 @@ generated into the vault as vault_pocket_id_<client>_secret and handed to Pocket
 is the source of truth: deleting a vault key rotates that client's secret on the next run. After
 a rotation, re-run whatever reads the key (the sops Secrets, ansible --tags pocket_id, ...).
 
-While the owner has no passkey yet, it prints a one-time link (15 minutes) that signs in once so
+While the owner has no passkey yet, it prints a one-time link (30 minutes) that signs in once so
 a passkey can be added under My Account.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import secrets
+import subprocess
 import sys
 from pathlib import Path
 
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vault import vault_get, vault_set  # noqa: E402
+from vault import ROOT, vault_get, vault_set  # noqa: E402
 
 BASE = "https://id.z7x.org"
+# sops files that carry a client secret to its consumer: path -> {stringData key: vault key}.
+SOPS = {
+    "kubernetes/apps/network/lab-sso/app/secret-media.sops.yaml":
+        {"client-secret": "vault_pocket_id_lab_gateway_secret"},
+    "kubernetes/apps/network/lab-sso/app/secret-status.sops.yaml":
+        {"client-secret": "vault_pocket_id_lab_gateway_secret"},
+    "kubernetes/apps/media/jellyfin/app/secret.sops.yaml":
+        {"OIDC_CLIENT_SECRET": "vault_pocket_id_jellyfin_secret"},
+    "kubernetes/apps/observability/kube-prometheus-stack/app/secret-grafana-oidc.sops.yaml":
+        {"client-secret": "vault_pocket_id_grafana_secret"},
+}
 GROUP = {"name": "lab-admins", "friendlyName": "Lab admins"}
+# Created with these values; afterwards only isAdmin and the group are enforced, so profile edits
+# made under My Account (username, names) stick. Found by email.
 OWNER = {
     "username": "jacob",
     "email": "jacob@z7x.org",
@@ -59,7 +74,13 @@ CLIENTS: dict[str, dict] = {
     },
     "proxmox": {
         "name": "Proxmox",
-        "callbackURLs": ["https://*.internal.z7x.org:8006"],
+        # *.internal.z7x.org for the Tailscale/mDNS hostnames; the bare LAN IPs too, since the
+        # Proxmox UI's OIDC callback is whatever origin the browser used to reach it (hnhv01/02).
+        "callbackURLs": [
+            "https://*.internal.z7x.org:8006",
+            "https://192.168.1.220:8006",
+            "https://192.168.1.192:8006",
+        ],
         "launchURL": "https://hnhv01.internal.z7x.org:8006",
     },
     "jellyfin": {
@@ -102,14 +123,14 @@ def ensure_group(api: Api) -> str | None:
 
 
 def ensure_owner(api: Api, gid: str | None) -> str | None:
-    user = next((u for u in api.get_all("/users") if u["username"] == OWNER["username"]), None)
+    user = next((u for u in api.get_all("/users") if u["email"] == OWNER["email"]), None)
     if user is None:
         made = api.change(f"create user {OWNER['username']}", "POST", "/users",
                           json={**OWNER, "userGroupIds": [gid] if gid else []})
         return made["id"] if made else None
-    if any(user.get(k) != v for k, v in OWNER.items()):
-        api.change(f"update user {OWNER['username']}", "PUT", f"/users/{user['id']}",
-                   json={**user, **OWNER})
+    if not user["isAdmin"]:
+        api.change(f"make {user['username']} admin", "PUT", f"/users/{user['id']}",
+                   json={**user, "isAdmin": True})
     groups = {g["id"] for g in api.req("GET", f"/users/{user['id']}/groups")}
     if gid and gid not in groups:
         api.change(f"add {OWNER['username']} to {GROUP['name']}", "PUT",
@@ -155,6 +176,22 @@ def ensure_client(api: Api, cid: str, spec: dict, gid: str | None, vault: dict) 
                json={"secret": secret})
 
 
+def sync_sops(api: Api, path: Path, key: str, value: str) -> None:
+    """Set stringData[key] unless it already holds value; the value never goes on argv."""
+    def sops(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+        return subprocess.run(["mise", "-C", str(ROOT), "exec", "--", "sops", *args, str(path)],
+                              input=stdin, capture_output=True, text=True)
+    if not path.exists():
+        return
+    if sops("-d", "--extract", f'["stringData"]["{key}"]').stdout == value:
+        return
+    rel = path.relative_to(ROOT)
+    api.changes.append(f"{rel}:{key}")
+    print(f"{'would update' if api.check else 'update'} {rel} {key}; commit it")
+    if not api.check:
+        sops("set", "--value-stdin", f'["stringData"]["{key}"]', stdin=json.dumps(value)).check_returncode()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true")
@@ -167,12 +204,17 @@ def main() -> None:
     uid = ensure_owner(api, gid)
     for cid, spec in CLIENTS.items():
         ensure_client(api, cid, spec, gid, vault)
+    for rel, keys in SOPS.items():
+        for key, vkey in keys.items():
+            sync_sops(api, ROOT / rel, key, vault[vkey])
 
     if uid and not args.check:
         passkeys = api.req("GET", f"/users/{uid}/webauthn-credentials") or []
         if args.link or not passkeys:
-            token = api.req("POST", f"/users/{uid}/one-time-access-token", json={"ttl": "15m"})["token"]
-            print(f"{'no passkey yet; ' if not passkeys else ''}sign in once (15 min): {BASE}/lc/{token}")
+            # 30m, not 15m: Pocket ID makes <=15m codes 6 characters, but its code page only
+            # submits 12-character codes while email login codes are disabled.
+            token = api.req("POST", f"/users/{uid}/one-time-access-token", json={"ttl": "30m"})["token"]
+            print(f"{'no passkey yet; ' if not passkeys else ''}sign in once (30 min): {BASE}/lc/{token}")
     print("ok, no changes" if not api.changes else f"{len(api.changes)} change(s)")
 
 

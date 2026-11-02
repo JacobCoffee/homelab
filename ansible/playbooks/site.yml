@@ -93,6 +93,12 @@
   roles:
     - pve_theme
 
+- name: "Proxmox login: Pocket ID OpenID realm (passkey SSO, root@pam stays break-glass)"
+  hosts: pve
+  tags: [pve_oidc]
+  roles:
+    - pve_oidc
+
 - name: "Cloudflare cache rules (z7x.org): bypass cache for media.z7x.org video streaming"
   hosts: localhost
   connection: local

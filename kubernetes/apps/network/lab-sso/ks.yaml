@@ -1,0 +1,25 @@
+# Passkey sign-in (Pocket ID, id.z7x.org) in front of the lab apps that have no SSO of their own:
+# Envoy Gateway's OIDC filter on their internal HTTPRoutes. The apps' own logins are off; their
+# CiliumNetworkPolicies only let the gateway (and in-namespace/monitoring callers) reach them.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: lab-sso
+  namespace: flux-system
+spec:
+  path: ./kubernetes/apps/network/lab-sso/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: envoy-gateway-config
+    - name: pocket-id
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
