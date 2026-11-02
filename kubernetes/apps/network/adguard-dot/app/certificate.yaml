@@ -1,0 +1,19 @@
+# Fire TV DNS-over-TLS (fire-tv/DECISIONS.md "DNS"): a cert for AdGuard's own TLS listener
+# (853 DoT, 443 HTTPS -- separate from the cluster's z7x-org-tls, which only covers Envoy
+# Gateway). adguard-dot-cert-push pushes this Secret's contents into both AdGuard instances
+# through their /control/tls/configure API, so renewal (cert-manager, ~30 days before expiry)
+# reaches them automatically on its next run.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: adguard-dot-tls
+  namespace: network
+spec:
+  secretName: adguard-dot-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  commonName: dns.z7x.org
+  dnsNames:
+    - dns.z7x.org
+    - "*.dns.z7x.org"

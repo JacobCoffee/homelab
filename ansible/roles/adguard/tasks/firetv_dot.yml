@@ -1,0 +1,92 @@
+# Fire TV DNS-over-TLS client + telemetry blocklist (fire-tv/DECISIONS.md "DNS" / "Telemetry
+# blocklist"). TLS itself (cert + enabling DoT on 853) is pushed by a k8s CronJob
+# (kubernetes/apps/network/adguard-dot-cert) straight through /control/tls/configure, not here --
+# it owns the cert-manager-issued cert and needs to push again on renewal, which this Ansible run
+# doesn't know about. This file only adds the persistent client and the local filter list.
+- name: Current clients
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -H, "{{ adguard_auth }}", "http://127.0.0.1/control/clients"]
+  register: adguard_clients
+  changed_when: false
+  no_log: true
+
+- name: "Fire TV client | add or update"
+  vars:
+    current: "{{ (adguard_clients.stdout | from_json).clients | selectattr('name', 'equalto', adguard_firetv_client_name) | list }}"
+    wanted:
+      name: "{{ adguard_firetv_client_name }}"
+      ids: ["{{ adguard_firetv_client_id }}"]
+      tags: []
+      use_global_settings: true
+      filtering_enabled: true
+      parental_enabled: false
+      safebrowsing_enabled: false
+      safe_search: {enabled: false}
+      use_global_blocked_services: true
+      blocked_services: []
+      upstreams: []
+      ignore_querylog: false
+      ignore_statistics: false
+      upstreams_cache_enabled: false
+      upstreams_cache_size: 0
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}",
+           -H, "Content-Type: application/json", --data-binary, "@-",
+           "http://127.0.0.1/control/clients/{{ 'update' if current else 'add' }}"]
+    stdin: >-
+      {{ ({'name': current[0].name, 'data': wanted} if current else wanted) | to_json }}
+  when: not current or current[0].ids != wanted.ids
+  changed_when: true
+  no_log: true
+
+- name: "Telemetry blocklist | current file in the CT"
+  ansible.builtin.command: pct exec {{ adguard_ctid }} -- cat {{ adguard_firetv_blocklist_path }}
+  register: adguard_firetv_blocklist_current
+  changed_when: false
+  failed_when: false
+
+- name: "Telemetry blocklist | write {{ adguard_firetv_blocklist_path }}"
+  vars:
+    wanted_content: "{{ lookup('file', 'firetv-telemetry.txt') }}"
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, sh, -c,
+           "mkdir -p $(dirname {{ adguard_firetv_blocklist_path }}) && cat > {{ adguard_firetv_blocklist_path }}"]
+    stdin: "{{ wanted_content }}"
+  register: adguard_firetv_blocklist_write
+  when: adguard_firetv_blocklist_current.stdout != lookup('file', 'firetv-telemetry.txt')
+  changed_when: true
+
+- name: "Telemetry blocklist | current filter lists"
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -H, "{{ adguard_auth }}", "http://127.0.0.1/control/filtering/status"]
+  register: adguard_firetv_filtering
+  changed_when: false
+  no_log: true
+
+- name: "Telemetry blocklist | register as a local filter list"
+  vars:
+    # AdGuard's filtering API only accepts bare local paths (safe_fs_patterns), not file:// URLs
+    # (verified against this CT's v0.107.79: file:// -> 400 "want http or https").
+    firetv_url: "{{ adguard_firetv_blocklist_path }}"
+    current: "{{ (adguard_firetv_filtering.stdout | from_json).filters | default([], true) | selectattr('url', 'equalto', firetv_url) | list }}"
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}",
+           -H, "Content-Type: application/json", --data-binary, "@-",
+           "http://127.0.0.1/control/filtering/{{ 'set_url' if current else 'add_url' }}"]
+    stdin: >-
+      {{ ({'url': firetv_url, 'whitelist': false,
+           'data': {'name': 'Fire TV telemetry/ads/Alexa ($client=firetv)', 'url': firetv_url, 'enabled': true}} if current else
+          {'name': 'Fire TV telemetry/ads/Alexa ($client=firetv)', 'url': firetv_url, 'whitelist': false}) | to_json }}
+  register: adguard_firetv_filter_registered
+  when: not current or not current[0].enabled
+  no_log: true
+  changed_when: true
+
+# AdGuard only re-reads a local (file://) filter's content when told to; the add_url/set_url
+# calls above re-read it once on registration, so this only matters when the blocklist text
+# changed without touching its registration (the common case, e.g. adding a newly discovered host).
+- name: "Telemetry blocklist | refresh filters if the file changed"
+  ansible.builtin.command:
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}", "http://127.0.0.1/control/filtering/refresh"]
+  when: adguard_firetv_blocklist_write is changed and adguard_firetv_filter_registered is not changed
+  changed_when: true

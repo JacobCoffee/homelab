@@ -1,0 +1,25 @@
+# Fire TV DNS-over-TLS cert (fire-tv/DECISIONS.md "DNS"): a cert-manager Certificate for
+# dns.z7x.org/*.dns.z7x.org plus a CronJob that pushes it into both AdGuard instances through
+# their API, so cert renewal reaches AdGuard automatically.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: adguard-dot
+  namespace: flux-system
+spec:
+  targetNamespace: network
+  path: ./kubernetes/apps/network/adguard-dot/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: cert-manager-issuers
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age

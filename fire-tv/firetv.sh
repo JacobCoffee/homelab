@@ -84,6 +84,11 @@ tweaks() {
   a shell settings put secure limit_ad_tracking 1
   a shell settings put secure non_amz_limit_ad_tracking 1
   a shell settings put secure usage_metrics_marketing_enabled 0
+  # DNS-over-TLS to AdGuard (fire-tv/DECISIONS.md "DNS"): ClientID "firetv" via SNI, so AdGuard
+  # shows the stick as its own client and the telemetry blocklist (adguard role) scopes to it.
+  # Persists across reboots (unlike the process limit below), but harmless to set every run.
+  a shell settings put global private_dns_mode hostname
+  a shell settings put global private_dns_specifier firetv.dns.z7x.org
   # Not persisted by Android: resets to standard on every reboot.
   a shell service call activity $TX_SET_PROCESS_LIMIT i32 $PROCESS_LIMIT >/dev/null
   echo "process limit now: $(a shell service call activity $TX_GET_PROCESS_LIMIT | tr -d '\r')"
@@ -97,6 +102,8 @@ untweak() {
   a shell settings put secure limit_ad_tracking 0
   a shell settings put secure non_amz_limit_ad_tracking 0
   a shell settings put secure usage_metrics_marketing_enabled 1
+  a shell settings put global private_dns_mode off
+  a shell settings delete global private_dns_specifier
   a shell service call activity $TX_SET_PROCESS_LIMIT i32 -1 >/dev/null
 }
 

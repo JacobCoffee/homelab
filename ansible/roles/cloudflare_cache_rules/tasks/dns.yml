@@ -1,0 +1,41 @@
+# Public DNS for Fire TV DNS-over-TLS (fire-tv/DECISIONS.md "DNS"): the stick's Android Private
+# DNS hostname (firetv.dns.z7x.org) and AdGuard's TLS server_name/cert (dns.z7x.org,
+# *.dns.z7x.org) need to resolve from the house LAN. Points at the WAN CARP address (follows
+# whichever OPNsense is master) and must stay DNS-only: proxying a bare A record through
+# Cloudflare would break the raw TCP DoT/HTTPS port forwards (853/8443, roles/opnsense
+# tasks/firetv_dot.yml) and the address is a private IP anyway.
+- name: "Cloudflare DNS | existing records"
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records?per_page=5000"
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+  register: cloudflare_dns_existing
+  no_log: true
+
+- name: "Cloudflare DNS | create or update managed records"
+  vars:
+    existing: >-
+      {{ cloudflare_dns_existing.json.result
+         | selectattr('name', 'equalto', item.name) | selectattr('type', 'equalto', item.type) | list }}
+  ansible.builtin.uri:
+    url: >-
+      https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records{{
+      '/' ~ existing[0].id if existing else '' }}
+    method: "{{ 'PUT' if existing else 'POST' }}"
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+    body_format: json
+    body:
+      type: "{{ item.type }}"
+      name: "{{ item.name }}"
+      content: "{{ item.content }}"
+      proxied: "{{ item.proxied }}"
+      ttl: "{{ item.ttl | default(1) }}"
+    status_code: [200]
+  loop: "{{ cloudflare_dns_records }}"
+  loop_control:
+    label: "{{ item.name }} {{ item.type }} -> {{ item.content }}"
+  when: >-
+    not existing or existing[0].content != item.content or existing[0].proxied != item.proxied
+  changed_when: true
+  no_log: true

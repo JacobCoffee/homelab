@@ -55,3 +55,6 @@
   when: not (cloudflare_cache_matches | min)
   no_log: true
   changed_when: true
+
+- name: "Cloudflare DNS | dns.z7x.org / *.dns.z7x.org -> WAN CARP address"
+  ansible.builtin.include_tasks: dns.yml

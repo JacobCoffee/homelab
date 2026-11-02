@@ -1,0 +1,18 @@
+# Shared chart source for the bjw-s app-template HelmRelease under status/. One pull,
+# reused by uptime-kuma's HelmRelease via chartRef (same namespace, no values here).
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: status-app-template
+  namespace: flux-system
+spec:
+  targetNamespace: status
+  path: ./kubernetes/apps/status/app-template/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

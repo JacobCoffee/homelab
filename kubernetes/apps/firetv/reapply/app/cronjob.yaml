@@ -1,0 +1,158 @@
+# Re-runs fire-tv/firetv.sh's apply() (disable packages.txt) and tweaks() (animation scale,
+# ad-tracking opt-out, private DNS, background process limit) against the Fire TV stick every 5m.
+# Fire OS silently re-enables some disabled packages and resets some settings after an OTA, so
+# this catches drift without a human running `./firetv.sh apply && ./firetv.sh tweaks` by hand.
+#
+# Idempotent via a debug.homelab.applied system property: Android's property service clears any
+# debug.* property on every boot (standard behavior for that prefix, not something firetv.sh or
+# this script sets up), so the marker is only ever present if apply+tweaks already ran since the
+# stick's last reboot -- no reboot was triggered to verify this directly (no physical access).
+#
+# Platform-tools come from Debian bookworm's own apt repo (android-tools-adb package) rather than
+# Google's https://dl.google.com/android/repository/platform-tools_r*-linux.zip, which used to let
+# you pin an exact release but 404s on every versioned URL as of 2026 (Google only serves
+# "-latest-" now, which isn't pinnable). Pinning the debian:12.11-slim image tag pins the apt
+# snapshot instead, which is as reproducible as this ecosystem currently allows without building
+# and pushing a custom image.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: firetv-reapply
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: reapply
+              image: debian:12.11-slim
+              env:
+                - name: FIRETV_HOST
+                  value: "192.168.1.28"
+                - name: FIRETV_ADB_PORT
+                  value: "5555"
+                - name: HOME
+                  value: /root
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+
+                  apt-get update -qq
+                  apt-get install -y -qq --no-install-recommends android-sdk-platform-tools-common android-tools-adb >/dev/null
+
+                  mkdir -p "$HOME/.android"
+                  cp /secrets/adbkey "$HOME/.android/adbkey"
+                  cp /secrets/adbkey.pub "$HOME/.android/adbkey.pub"
+                  chmod 600 "$HOME/.android/adbkey"
+
+                  TARGET="$FIRETV_HOST:$FIRETV_ADB_PORT"
+                  LIST=/work/packages.txt
+                  TX_SET_PROCESS_LIMIT=43
+                  PROCESS_LIMIT=2
+
+                  a() { adb -s "$TARGET" "$@" </dev/null; }
+
+                  packages() {
+                    local pkg _
+                    while read -r pkg _; do
+                      [[ -z "$pkg" || "$pkg" == \#* ]] && continue
+                      printf '%s\n' "$pkg"
+                    done <"$LIST"
+                  }
+
+                  echo "connecting to $TARGET ..."
+                  connect_out=$(timeout 15 adb connect "$TARGET" 2>&1) || true
+                  echo "$connect_out"
+                  if grep -qE 'failed to authenticate' <<<"$connect_out"; then
+                    echo "device reachable but this CronJob's adb key is not yet authorized: approve 'Allow USB debugging' on the TV once, skipping"
+                    exit 0
+                  fi
+                  if grep -qE 'cannot connect|refused|unable to connect|failed to connect|timed out|no route to host' <<<"$connect_out"; then
+                    echo "device unreachable, skipping"
+                    exit 0
+                  fi
+                  if ! timeout 10 a get-state >/tmp/state.out 2>&1; then
+                    echo "device unreachable, skipping"
+                    exit 0
+                  fi
+                  state=$(tr -d '\r' </tmp/state.out)
+                  if [[ "$state" == "unauthorized" ]]; then
+                    echo "device reachable but this CronJob's adb key is not yet authorized: approve 'Allow USB debugging' on the TV once, skipping"
+                    exit 0
+                  fi
+                  if [[ "$state" != "device" ]]; then
+                    echo "device unreachable (state=$state), skipping"
+                    exit 0
+                  fi
+
+                  marker=$(a shell getprop debug.homelab.applied 2>/dev/null | tr -d '\r')
+                  if [[ -n "$marker" ]]; then
+                    echo "marker present (debug.homelab.applied=$marker), skipping"
+                    exit 0
+                  fi
+
+                  echo "marker absent: applying debloat list and tweaks"
+
+                  load_state() {
+                    ALL=$(a shell pm list packages -s | tr -d '\r')
+                    DISABLED=$(a shell pm list packages -d | tr -d '\r')
+                  }
+                  state_of() {
+                    local pkg=$1
+                    if ! grep -qxF "package:$pkg" <<<"$ALL"; then echo absent
+                    elif grep -qxF "package:$pkg" <<<"$DISABLED"; then echo disabled
+                    else echo enabled; fi
+                  }
+
+                  load_state
+                  while read -r pkg; do
+                    st=$(state_of "$pkg")
+                    case $st in
+                      absent) echo "absent    $pkg" ;;
+                      disabled) echo "already   $pkg" ;;
+                      *)
+                        out=$(a shell pm disable-user --user 0 "$pkg" 2>&1 | tr -d '\r') || true
+                        if [[ "$out" == *"new state: disabled-user"* ]]; then
+                          echo "disabled  $pkg"
+                        else
+                          echo "REFUSED   $pkg: $(grep -m1 -oE '[A-Za-z]*Exception: .*' <<<"$out" || echo "$out")"
+                        fi ;;
+                    esac
+                  done < <(packages)
+
+                  for k in window_animation_scale transition_animation_scale animator_duration_scale; do
+                    a shell settings put global "$k" 0.5
+                  done
+                  a shell settings put secure amz_limit_ad_tracking 1
+                  a shell settings put secure limit_ad_tracking 1
+                  a shell settings put secure non_amz_limit_ad_tracking 1
+                  a shell settings put secure usage_metrics_marketing_enabled 0
+                  a shell settings put global private_dns_mode hostname
+                  a shell settings put global private_dns_specifier firetv.dns.z7x.org
+                  a shell service call activity $TX_SET_PROCESS_LIMIT i32 $PROCESS_LIMIT >/dev/null
+                  echo "tweaks applied"
+
+                  a shell setprop debug.homelab.applied 1
+                  echo "marker set: debug.homelab.applied=1"
+              volumeMounts:
+                - name: adbkey
+                  mountPath: /secrets
+                  readOnly: true
+                - name: files
+                  mountPath: /work
+                  readOnly: true
+          volumes:
+            - name: adbkey
+              secret:
+                secretName: firetv-reapply-adbkey
+                defaultMode: 0400
+            - name: files
+              configMap:
+                name: firetv-reapply-files

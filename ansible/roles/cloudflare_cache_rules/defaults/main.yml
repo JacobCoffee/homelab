@@ -10,3 +10,11 @@ cloudflare_cache_rules:
     action_parameters:
       cache: false
     enabled: true
+
+# Fire TV DNS-over-TLS (fire-tv/DECISIONS.md "DNS"): public names for AdGuard's DoT/HTTPS cert
+# and server_name, and for the stick's Android Private DNS hostname. DNS-only (never proxied --
+# the targets are a private IP reached through OPNsense WAN port forwards, roles/opnsense
+# tasks/firetv_dot.yml).
+cloudflare_dns_records:
+  - { name: "dns.z7x.org", type: A, content: "{{ firewall_wan_vip }}", proxied: false }
+  - { name: "*.dns.z7x.org", type: A, content: "{{ firewall_wan_vip }}", proxied: false }

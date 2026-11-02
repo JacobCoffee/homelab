@@ -75,6 +75,9 @@
 - name: Static hostname rewrites
   ansible.builtin.include_tasks: apps_rewrite.yml
 
+- name: Fire TV DNS-over-TLS client and telemetry blocklist
+  ansible.builtin.include_tasks: firetv_dot.yml
+
 - name: Tailnet host names
   ansible.builtin.include_tasks: internal_names.yml
   when: tailscale_api_key is defined

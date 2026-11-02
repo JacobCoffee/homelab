@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: adguard-dot-cert-push
+  namespace: network
+spec:
+  # Every 6h: cert-manager renews ~30 days before expiry, so this reaches AdGuard with plenty of
+  # margin without needing a Secret-change watch/trigger.
+  schedule: "17 */6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: push-cert
+              image: python:3.12-alpine
+              command: ["python3", "/scripts/push-cert.py"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              env:
+                - name: ADGUARD_HOSTS
+                  value: "10.10.10.54,10.10.10.55"
+                - name: ADGUARD_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: adguard-dot-cert-push
+                      key: ADGUARD_USER
+                - name: ADGUARD_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: adguard-dot-cert-push
+                      key: ADGUARD_PASSWORD
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                - name: certs
+                  mountPath: /certs
+                  readOnly: true
+          volumes:
+            - name: script
+              configMap:
+                name: adguard-dot-cert-push-script
+            - name: certs
+              secret:
+                secretName: adguard-dot-tls

@@ -1,0 +1,24 @@
+# Periodically re-applies fire-tv/packages.txt (debloat list) and fire-tv/firetv.sh's tweaks()
+# settings to the Fire TV stick over adb, since Fire OS re-enables some disabled packages and
+# resets some settings after OTA updates. Idempotent: a debug.* system property (wiped on every
+# Android reboot) marks "already applied since last boot" so a healthy stick is a no-op each run.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: firetv-reapply
+  namespace: flux-system
+spec:
+  targetNamespace: firetv
+  path: ./kubernetes/apps/firetv/reapply/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age

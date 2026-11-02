@@ -1,0 +1,109 @@
+# Rebuilds the Hearth theme catalog from the public mirror github.com/JacobCoffee/hearth on
+# every pod start: two initContainers run sequentially against a shared `repo` emptyDir, then
+# write dist/catalog/ into a shared `catalog` emptyDir that the main container serves read-only.
+# No PVC -- fully reproducible, nothing to persist.
+#
+# To publish new/updated themes: update the commit SHA in the `fetch` initContainer's `git
+# fetch`/log below to the new pinned commit on github.com/JacobCoffee/hearth (pushed there by
+# .github/workflows/mirror-hearth.yml whenever fire-tv/hearth changes on this repo's main
+# branch), then let Flux reconcile (or re-apply/roll the Deployment -- it won't pick up a new
+# SHA on its own since the image tags don't change).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: theme-catalog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: theme-catalog
+  template:
+    metadata:
+      labels:
+        app: theme-catalog
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: fetch
+          image: alpine/git:v2.47.1
+          workingDir: /repo
+          env:
+            - name: HOME
+              value: /tmp
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              git config --global --add safe.directory /repo
+              git init -q
+              git remote add origin https://github.com/JacobCoffee/hearth.git
+              git fetch --depth 1 origin b2d83fa8a1ccf17d8821e4ae8d1da753311e062a
+              git checkout -q FETCH_HEAD
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: repo
+              mountPath: /repo
+        - name: build
+          image: python:3.12-slim
+          workingDir: /repo
+          env:
+            - name: HOME
+              value: /tmp
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              pip install --user --quiet --no-cache-dir pillow
+              python3 tools/build-catalog.py --themes-dir themes --dist-dir /output
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: repo
+              mountPath: /repo
+            - name: catalog
+              mountPath: /output
+      containers:
+        - name: caddy
+          image: caddy:2-alpine
+          command: ["caddy", "file-server", "--listen", ":8088", "--root", "/srv/catalog", "--browse"]
+          ports:
+            - name: http
+              containerPort: 8088
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              # caddy:2-alpine's binary has cap_net_bind_service set via setcap; with
+              # allowPrivilegeEscalation=false the kernel refuses exec (EPERM) unless the
+              # process already holds that capability -- grant it explicitly (listening on
+              # 8088 itself doesn't need it, but the binary's file capability does).
+              add: ["NET_BIND_SERVICE"]
+          volumeMounts:
+            - name: catalog
+              mountPath: /srv/catalog
+              # build-catalog.py always writes under <dist-dir>/catalog/, so select that
+              # subdirectory of the shared emptyDir (mounted at /output in the build container).
+              subPath: catalog
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: repo
+          emptyDir: {}
+        - name: catalog
+          emptyDir: {}

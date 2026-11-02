@@ -1,0 +1,131 @@
+# Ports fire-tv/hearth/teststack/seed-kuma.py against the in-cluster Kuma Service: creates the
+# admin user on first run, then (idempotently, by name/slug) a handful of monitors and the
+# public status page slug "home". Runs weekly to re-assert state after any manual edits; cheap
+# and a no-op when nothing has drifted.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kuma-seed-script
+  namespace: status
+data:
+  seed-kuma.py: |
+    #!/usr/bin/env python3
+    """Seed Uptime Kuma with an admin user, monitors, and a public status page slug 'home'.
+    Idempotent: skips setup if already configured and skips monitors that already exist by name.
+    """
+    import os
+    import sys
+
+    from uptime_kuma_api import MonitorType, UptimeKumaApi, UptimeKumaException
+
+    BASE_URL = "http://uptime-kuma.status.svc.cluster.local:3001"
+    ADGUARD_DNS_RESOLVER = "10.10.10.53"
+
+
+    def main() -> int:
+        username = os.environ["KUMA_USERNAME"]
+        password = os.environ["KUMA_PASSWORD"]
+
+        api = UptimeKumaApi(BASE_URL, timeout=30, wait_events=0.5)
+        try:
+            if api.need_setup():
+                api.setup(username, password)
+            api.login(username, password)
+
+            existing = {m["name"]: m for m in api.get_monitors()}
+
+            monitors = [
+                dict(type=MonitorType.HTTP, name="home-assistant",
+                     url="https://home.z7x.org", interval=60),
+                dict(type=MonitorType.HTTP, name="jellyfin",
+                     url="https://media.z7x.org", interval=60),
+                dict(type=MonitorType.HTTP, name="seerr",
+                     url="https://requests.z7x.org", interval=60),
+                dict(type=MonitorType.HTTP, name="proxmox hnhv01",
+                     url="https://192.168.1.220:8006", interval=60),
+                dict(type=MonitorType.HTTP, name="proxmox hnhv02",
+                     url="https://192.168.1.192:8006", interval=60),
+                dict(type=MonitorType.HTTP, name="opnsense",
+                     url="https://10.10.10.1", interval=60),
+                dict(type=MonitorType.DNS, name="adguard dns",
+                     hostname="cloudflare.com", dns_resolve_server=ADGUARD_DNS_RESOLVER,
+                     port=53, interval=60),
+                dict(type=MonitorType.HTTP, name="grafana",
+                     url="https://grafana.z7x.org", interval=60),
+                dict(type=MonitorType.HTTP, name="internet",
+                     url="https://1.1.1.1", interval=60),
+            ]
+
+            created_ids = []
+            for mon in monitors:
+                if mon["name"] in existing:
+                    created_ids.append(existing[mon["name"]]["id"])
+                    continue
+                resp = api.add_monitor(**mon)
+                created_ids.append(resp["monitorID"])
+
+            status_pages = {sp["slug"]: sp for sp in api.get_status_pages()}
+            if "home" not in status_pages:
+                api.add_status_page(slug="home", title="Homelab")
+
+            public_group_list = [{
+                "name": "Homelab",
+                "weight": 1,
+                "monitorList": [{"id": mid} for mid in created_ids],
+            }]
+            api.save_status_page(
+                "home",
+                title="Homelab",
+                description="Homelab status page",
+                publicGroupList=public_group_list,
+            )
+
+            print("Uptime Kuma seeded.")
+            print(f"  monitors: {[m['name'] for m in monitors]}")
+            print("  status page slug: home")
+            return 0
+        except UptimeKumaException as e:
+            print(f"error seeding Uptime Kuma: {e}", file=sys.stderr)
+            return 1
+        finally:
+            api.disconnect()
+
+
+    if __name__ == "__main__":
+        raise SystemExit(main())
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kuma-seed
+  namespace: status
+spec:
+  schedule: "0 4 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: seed
+              image: python:3.12-slim
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  pip install --quiet --no-cache-dir uptime-kuma-api
+                  python /script/seed-kuma.py
+              envFrom:
+                - secretRef:
+                    name: uptime-kuma-seed
+              volumeMounts:
+                - mountPath: /script
+                  name: script
+          volumes:
+            - name: script
+              configMap:
+                name: kuma-seed-script

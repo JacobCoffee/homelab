@@ -1,0 +1,53 @@
+# Backend hosts for the Fire TV telemetry packages Fire OS 8.0 refuses to let `pm` disable
+# (../../../fire-tv/packages.txt: ftvads.deeplinking, client.metrics, device.metrics, diode,
+# device.crashmanager, device.logmanager) plus the Alexa hosts named in
+# ../../../fire-tv/reports/privacy-audit.md. Scoped to $client=firetv (AdGuard client ID from the
+# stick's DNS-over-TLS SNI, fire-tv/DECISIONS.md "DNS") so it can't affect any other house device.
+# Sources cross-checked against Perflyst/PiHoleBlocklist AmazonFireTV.txt and
+# ultimate-pihole-list/list fire-tv.txt (2026-11), narrowed to telemetry/ads/Alexa only --
+# anything flagged "required for app install/updates" or video-metadata-adjacent (msh.*,
+# mas-*.amazon.com, dp-*.amazon.com, fls-*.amazon.com, amazonadsi-a.akamaihd.net) is left off so
+# the Appstore and Prime Video/Netflix/YouTube playback keep working. Managed by
+# ansible/roles/adguard/tasks/firetv_dot.yml -- edit here, not on the AdGuard UI (owned, like
+# external-dns-adguard's rewrites, by this file, not user_rules).
+
+# ftvads.deeplinking / ad system
+||amazon-adsystem.com^$client=firetv
+||aan.amazon.com^$client=firetv
+||mads-eu.amazon.com^$client=firetv
+||mads-na.amazon.com^$client=firetv
+
+# client.metrics / device.metrics (metrics reporting + collector)
+||device-metrics-us.amazon.com^$client=firetv
+||device-metrics-us-2.amazon.com^$client=firetv
+||device-metrics-us-ud.amazon.com^$client=firetv
+||minerva.devices.a2z.com^$client=firetv
+||mobileanalytics.us-east-1.amazonaws.com^$client=firetv
+||device-messaging-na.amazon.com^$client=firetv
+||devicemessaging.us-east-1.amazon.com^$client=firetv
+||messaging-director-us-east-1.amazon.com^$client=firetv
+
+# diode (Amazon's internal "Unagi" diagnostics/analytics pipeline)
+||unagi-na.amazon.com^$client=firetv
+||unagi-eu.amazon.com^$client=firetv
+
+# device.crashmanager (crash-report uploader)
+||prod.amazoncrl.com^$client=firetv
+||notify.firetv.bugsnag.appstore.a2z.com^$client=firetv
+||settings.crashlytics.com^$client=firetv
+
+# device.logmanager (log upload service)
+||web.diagnostic.networking.aws.dev^$client=firetv
+||cdws.eu-west-1.amazonaws.com^$client=firetv
+
+# Alexa voice pipeline (privacy-audit.md: "block their backend hosts ... instead of disabling"
+# com.amazon.vizzini; also backs the alexadirectivebroker/alexamediaplayer/alexa.datastore/
+# alexanotifications/alexaalerts/externalmediaplayer packages already disabled in packages.txt)
+||api.amazonalexa.com^$client=firetv
+||avs-alexa-na.amazon.com^$client=firetv
+||avs-alexa-eu.amazon.com^$client=firetv
+||bob-dispatch-prod-na.amazon.com^$client=firetv
+||cortana-gateway.amazon.com^$client=firetv
+||arcus-uswest.amazon.com^$client=firetv
+||pitangui.amazon.com^$client=firetv
+||layla.amazon.com^$client=firetv

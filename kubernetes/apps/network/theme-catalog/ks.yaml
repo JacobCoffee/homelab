@@ -1,0 +1,27 @@
+# Serves fire-tv/hearth's theme catalog (themes.z7x.org) publicly. The Deployment rebuilds the
+# catalog on every pod start from the public mirror github.com/JacobCoffee/hearth, pinned to an
+# exact commit SHA in app/deployment.yaml -- bump that SHA to publish new/updated themes. No PVC:
+# fully reproducible from source, nothing to persist.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: theme-catalog
+  namespace: flux-system
+spec:
+  targetNamespace: network
+  path: ./kubernetes/apps/network/theme-catalog/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: envoy-gateway-config
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: theme-catalog
+      namespace: network

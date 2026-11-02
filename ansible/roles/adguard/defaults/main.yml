@@ -41,6 +41,13 @@ adguard_static_rewrites:
   - domain: "*.apps.z7x.org"
     answer: "10.10.30.202"
 
+# Fire TV DNS-over-TLS client + telemetry blocklist (fire-tv/DECISIONS.md "DNS" /
+# "Telemetry blocklist", tasks/firetv_dot.yml). ClientID matches the Android Private DNS
+# hostname's leftmost label (firetv.dns.z7x.org), read from the DoT SNI.
+adguard_firetv_client_name: firetv
+adguard_firetv_client_id: firetv
+adguard_firetv_blocklist_path: /opt/AdGuardHome/userfilters/firetv-telemetry.txt
+
 # Derived from the zone; no need to change.
 adguard_zone_cfg: "{{ lab_zones | selectattr('name', 'equalto', adguard_zone) | first }}"
 adguard_upstream: "{{ adguard_zone_cfg.gateway }}"

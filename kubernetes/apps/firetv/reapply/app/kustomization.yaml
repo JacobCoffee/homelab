@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./cronjob.yaml
+  - ./secret.sops.yaml
+# Pulls the real debloat state files from fire-tv/ (repo root) instead of a hand-copied/drifting
+# duplicate. The CronJob only reads packages.txt (its own script reimplements apply()/tweaks()
+# from firetv.sh, since firetv.sh itself needs the gitignored hearth/ tree); firetv.sh is still
+# generated into the ConfigMap so its logic stays one `kubectl diff`/review away from this
+# CronJob's copy if fire-tv/firetv.sh changes.
+configMapGenerator:
+  - name: firetv-reapply-files
+    files:
+      - ../../../../../fire-tv/firetv.sh
+      - ../../../../../fire-tv/packages.txt

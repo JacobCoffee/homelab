@@ -1,0 +1,38 @@
+# Internal: full admin UI access at kuma.z7x.org, lab/tailnet only.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: uptime-kuma-internal
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - kuma.z7x.org
+  rules:
+    - backendRefs:
+        - name: uptime-kuma
+          port: 3001
+---
+# External: only the public status-page JSON API at status.z7x.org/api/status-page/*, so the
+# admin UI (everything else, including "/") stays unreachable from the internet.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: uptime-kuma-external
+spec:
+  parentRefs:
+    - name: external
+      namespace: network
+      sectionName: https
+  hostnames:
+    - status.z7x.org
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/status-page
+      backendRefs:
+        - name: uptime-kuma
+          port: 3001

@@ -11,3 +11,5 @@ resources:
   - ./storage
   - ./backup
   - ./observability
+  - ./status
+  - ./firetv

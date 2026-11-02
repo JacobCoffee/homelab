@@ -11,7 +11,7 @@
 - Amazon apps **disabled**: Amazon Music, Amazon Photos, Freevee, Echo home audio, Show on Fire TV.
 - **Re-enabled 2026-11-01**: Prime Video (`com.amazon.firebat`) and the Games/Luna hub (`com.amazon.gamehub`); commented out in `packages.txt`. The stick stays for Luna, Xbox and GeForce NOW, and the TCL remote's app buttons open apps here.
 - Never touch: `com.amazon.ceviche` (disabling it crash-loops Amazon's launcher), `com.amazon.tv.launcher`, OTA, settings, input/HDMI/Wi-Fi/Bluetooth packages.
-- Protected by Fire OS 8.0 (`pm` refuses them): `ftvads.deeplinking`, `client.metrics`, `device.metrics`, `diode`, `device.crashmanager`, `device.logmanager`. Commented out in `packages.txt`; block their hosts with AdGuard once the homelab DNS exists.
+- Protected by Fire OS 8.0 (`pm` refuses them): `ftvads.deeplinking`, `client.metrics`, `device.metrics`, `diode`, `device.crashmanager`, `device.logmanager`. Commented out in `packages.txt`; their backend hosts are blocked at the DNS level instead (`ansible/roles/adguard/files/firetv-telemetry.txt`, see "DNS" below).
 - `com.amazon.device.telemetry.emitter` is not on Homestead's checked list; I added it for this device. If anything misbehaves, re-enable it first.
 
 ## Tweaks (`./firetv.sh tweaks`)
@@ -38,10 +38,13 @@
 - The TCL half is shell processes: after a TCL reboot run `../tcl-tv/bridge/bridge.sh start` (TCL Wireless debugging on).
 
 ## After a reboot or Fire OS update
+A k8s CronJob (`kubernetes/apps/firetv/reapply`, every 5 min) now runs this automatically: it
+connects, checks `getprop debug.homelab.applied` (cleared by Android on every reboot), and if
+empty re-applies the debloat list and tweaks, then sets the marker. Manually, or to debug it:
 ```sh
 ./firetv.sh connect
 ./firetv.sh apply     # re-disables anything Amazon switched back on
-./firetv.sh tweaks    # process limit is lost on reboot
+./firetv.sh tweaks    # process limit is lost on reboot (Private DNS persists)
 ./firetv.sh status
 ```
 If Home goes back to Amazon's screen after an update, run `hearth/tools/install.sh` again.
@@ -58,7 +61,47 @@ Fire OS 8.1.8.5 (2026-11-02) re-enabled Amazon Music, Shopping, Kindle connect a
 - Hearth is an enabled notification listener (`media/MediaListener`), which Android requires before an app may read other apps' media sessions. Hearth never reads notifications through it; it only follows media sessions while Home is in front.
 - TCP 47800 (stick) and 47801 (TCL) accept a fixed word list from anyone on the LAN; the worst a stranger can do is open an app, switch input or turn the TV off.
 
-## Waiting on the new homelab (OPNsense + AdGuard)
-- Whole-LAN AdGuard DNS (also blocks the protected telemetry packages above).
-- A job that re-runs `./firetv.sh apply` and `tweaks` after the stick reboots.
-- Point Hearth's Uptime Kuma, AdGuard and theme-catalog URLs at homelab hosts instead of this Mac's test stack.
+## DNS (AdGuard, whole-LAN)
+- DNS-over-TLS to AdGuard: `./firetv.sh tweaks` sets Android Private DNS to `firetv.dns.z7x.org`
+  (persists across reboots). AdGuard serves DoT on 853 and its HTTPS API on 443, both forwarded
+  from the OPNsense WAN CARP address (853->853, 8443->443; `ansible/roles/opnsense/tasks/firetv_dot.yml`)
+  with a Let's Encrypt cert for `dns.z7x.org`/`*.dns.z7x.org` (`kubernetes/apps/network/adguard-dot`:
+  a cert-manager `Certificate` plus a CronJob that pushes it into both AdGuard instances through
+  `/control/tls/configure` every 6h, so renewal reaches them automatically -- proved by forcing a
+  reissue and re-push during setup). Public `dns.z7x.org`/`*.dns.z7x.org` A records point at the WAN
+  CARP address (`ansible/roles/cloudflare_cache_rules/tasks/dns.yml`); OPNsense's Unbound needed
+  `dns.z7x.org` added to its private-domain allowlist (`advanced.privatedomain`) since it otherwise
+  strips RFC1918 answers (DNS rebind protection) -- the first `*.z7x.org` record ever to point at a
+  private address. The stick presents SNI `firetv.dns.z7x.org`, which AdGuard reads as ClientID
+  `firetv`; a persistent client of that name is registered via the API
+  (`ansible/roles/adguard/tasks/firetv_dot.yml`). Plain DNS (:53) and the HTTP UI/API (:80) are
+  unchanged (`force_https: false`) for the lab, `external-dns-adguard` and `adguard-exporter`.
+- Telemetry blocklist: `ansible/roles/adguard/files/firetv-telemetry.txt`, a local filter list
+  (not `user_rules`, which `external-dns-adguard` owns) with every rule scoped `$client=firetv` so
+  it can't affect other house devices. Covers the backend hosts of the protected packages above
+  (device-metrics-us.amazon.com, unagi-*.amazon.com, prod.amazoncrl.com, etc.) and the Alexa hosts
+  from `reports/privacy-audit.md` (api.amazonalexa.com, avs-alexa-*.amazon.com, etc.), cross-checked
+  against Perflyst/PiHoleBlocklist and ultimate-pihole-list's Fire TV lists; hosts flagged
+  "required for app install/updates" or video-metadata-adjacent (msh.*, mas-*, dp-*, fls-*) are
+  deliberately left off. Verified end-to-end: the stick resolves `bob-dispatch-prod-na.amazon.com`
+  (Alexa-only) to `0.0.0.0` over its DoT connection while a plain (non-firetv) query for the same
+  host resolves normally; Netflix/YouTube/Amazon API hostnames still resolve. Spot-check on the TV:
+  Prime Video, Netflix, YouTube and Appstore installs/updates.
+
+## Homelab services (Hearth's Uptime Kuma / AdGuard / theme-catalog widgets)
+- Uptime Kuma: `kubernetes/apps/status/uptime-kuma` (namespace `status`, SQLite on a
+  `proxmox-vmdata` PVC, `strategy: Recreate`). Admin UI at `kuma.z7x.org` (internal gateway only);
+  the read-only status-page API (`/api/status-page/home`, `/api/status-page/heartbeat/home`) is
+  public at `status.z7x.org` (external gateway, `PathPrefix: /api/status-page` only -- the admin
+  UI 404s there). Monitors (Home Assistant, Jellyfin, Seerr, both Proxmox hosts, OPNsense, AdGuard
+  DNS, Grafana, internet) and the `home` status page are seeded idempotently by the `kuma-seed`
+  CronJob (`uptime-kuma-api`, same approach as `hearth/teststack/seed-kuma.py`); image pinned to
+  Kuma 1.23.x, not 2.x, since `uptime-kuma-api` isn't confirmed compatible with 2.x yet.
+- Theme catalog: `kubernetes/apps/network/theme-catalog`, public at `themes.z7x.org`. An
+  initContainer shallow-clones the public mirror `github.com/JacobCoffee/hearth` at a pinned
+  commit SHA and runs `tools/build-catalog.py`; bump the SHA in `app/deployment.yaml` to update.
+- AdGuard's HTTP API stays house-LAN only at `https://dns.z7x.org:8443` (see "DNS" above) --
+  never exposed through the cluster Gateways.
+- `hearth/config/site.env` (gitignored) points `KUMA_URL`/`ADGUARD_URL`/`THEME_CATALOG_URL` at
+  these; `tools/make-config.py` + `tools/push-config.sh` render and push `hearth.local.json`.
+  `hearth/teststack/` still exists for local iteration without touching the stick.

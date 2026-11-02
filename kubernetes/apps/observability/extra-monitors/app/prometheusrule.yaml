@@ -57,6 +57,19 @@ spec:
           annotations:
             summary: "Backup Job {{ $labels.job_name }} failed in namespace backup"
 
+    - name: firetv
+      rules:
+        # for: 1h, not 5m like BackupJobFailed: the firetv-reapply CronJob exits 0 (success) when
+        # the stick is unreachable (powered off), so a failed Job here is a real script/pm/adb
+        # error, not a flaky/offline TV -- but one real transient failure still shouldn't page
+        # before the next 5m schedule has a chance to self-heal.
+        - alert: FireTvReapplyFailing
+          expr: kube_job_status_failed{namespace="firetv"} > 0
+          for: 1h
+          labels: { severity: warning }
+          annotations:
+            summary: "Fire TV reapply Job {{ $labels.job_name }} failed in namespace firetv"
+
     - name: blackbox
       rules:
         - alert: ProbeFailing

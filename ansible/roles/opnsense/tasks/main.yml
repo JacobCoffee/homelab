@@ -97,6 +97,9 @@
 - name: DHCP options (MTU, AdGuard) and the WAN DNS port-forward
   ansible.builtin.include_tasks: lab_dns.yml
 
+- name: Fire TV DNS-over-TLS forward (853) and AdGuard HTTPS API forward (8443)
+  ansible.builtin.include_tasks: firetv_dot.yml
+
 - name: Report
   ansible.builtin.debug:
     msg: >-

@@ -1,0 +1,62 @@
+# Pushes the adguard-dot-tls Secret (cert-manager, ../certificate.yaml) into both AdGuard
+# instances through /control/tls/configure, which is what actually enables DoT (853) / HTTPS
+# (443, forwarded from the WAN as 8443) and carries the cert. Run by ../cronjob.yaml on a
+# schedule well inside cert-manager's ~30-day-before-expiry renewal window, so a renewed cert
+# reaches AdGuard automatically without anyone pushing it by hand (fire-tv/DECISIONS.md "DNS").
+# Pushed to both instances by address (10.10.10.54/.55), not the floating VIP, so both stay
+# configured even while one is down for maintenance -- a single unreachable instance only logs a
+# warning; the job only fails if neither could be reached (worth alerting on).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adguard-dot-cert-push-script
+  namespace: network
+data:
+  push-cert.py: |
+    #!/usr/bin/env python3
+    import base64, json, os, sys, urllib.request
+
+    cert_dir = "/certs"
+    chain = open(os.path.join(cert_dir, "tls.crt"), "rb").read()
+    key = open(os.path.join(cert_dir, "tls.key"), "rb").read()
+    user = os.environ["ADGUARD_USER"]
+    password = os.environ["ADGUARD_PASSWORD"]
+    auth = base64.b64encode(f"{user}:{password}".encode()).decode()
+
+    body = json.dumps({
+        "enabled": True,
+        "server_name": "dns.z7x.org",
+        "force_https": False,
+        "port_https": 443,
+        "port_dns_over_tls": 853,
+        "port_dns_over_quic": 853,
+        "port_dnscrypt": 0,
+        "dnscrypt_config_file": "",
+        "allow_unencrypted_doh": False,
+        "strict_sni_check": False,
+        "certificate_chain": base64.b64encode(chain).decode(),
+        "private_key": base64.b64encode(key).decode(),
+        "certificate_path": "",
+        "private_key_path": "",
+    }).encode()
+
+    targets = os.environ["ADGUARD_HOSTS"].split(",")
+    ok = 0
+    for host in targets:
+        url = f"http://{host}/control/tls/configure"
+        req = urllib.request.Request(url, data=body, method="POST", headers={
+            "Authorization": f"Basic {auth}",
+            "Content-Type": "application/json",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                resp.read()
+                print(f"{host}: OK ({resp.status})")
+                ok += 1
+        except Exception as e:
+            print(f"{host}: FAILED ({e})", file=sys.stderr)
+
+    if ok == 0:
+        print("no AdGuard instance accepted the cert push", file=sys.stderr)
+        sys.exit(1)
+    print(f"pushed cert to {ok}/{len(targets)} AdGuard instance(s)")

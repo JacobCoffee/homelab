@@ -7,3 +7,5 @@ resources:
   - ./external-dns-adguard/ks.yaml
   - ./external-dns-cloudflare/ks.yaml
   - ./cloudflared/ks.yaml
+  - ./theme-catalog/ks.yaml
+  - ./adguard-dot/ks.yaml

@@ -1,0 +1,71 @@
+# louislam/uptime-kuma:1.23.17-alpine, latest 1.23.x (v1) release as of 2026-11-01. Pinned to
+# v1 rather than 2.x because uptime-kuma-api (the PyPI client the seed CronJob reuses from
+# fire-tv/hearth/teststack/seed-kuma.py) isn't guaranteed compatible with v2's socket.io/auth
+# protocol changes yet. Admin setup is driven by the seed CronJob (seed-cronjob.yaml), not this
+# HelmRelease -- Kuma has no "set admin via env" first-run option.
+#
+# No runAsNonRoot/fsGroup here: the upstream image's entrypoint runs as root to chown/prepare
+# /app/data (PUID/PGID env vars are the opt-in way to drop privileges, and even then upstream
+# warns the rootless variant can have issues) -- forcing a non-root securityContext breaks its
+# startup, so we run it as shipped rather than fight the image.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: uptime-kuma
+  namespace: status
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      uptime-kuma:
+        strategy: Recreate
+        containers:
+          app:
+            image:
+              repository: louislam/uptime-kuma
+              tag: "1.23.17-alpine"
+            env:
+              TZ: America/Chicago
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: &port 3001
+                  initialDelaySeconds: 15
+                  periodSeconds: 15
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /
+                    port: *port
+                  initialDelaySeconds: 15
+                  periodSeconds: 15
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+    service:
+      app:
+        controller: uptime-kuma
+        ports:
+          http:
+            port: *port
+    persistence:
+      data:
+        type: persistentVolumeClaim
+        storageClass: proxmox-vmdata
+        accessMode: ReadWriteOnce
+        size: 1Gi
+        globalMounts:
+          - path: /app/data
