@@ -6,6 +6,14 @@ on the serial console / via `curl`+`ssh`, not guessed.
 
 ## config.xml schema (26.7, verified against opnsense/core@master)
 
+- `<system><disablereplyto>yes</disablereplyto>` is required here. The WAN sits on
+  the house LAN, so its clients (the Mac running Ansible, the Proxmox hosts) are on
+  the WAN subnet. With reply-to, pf routes replies to the WAN gateway (the Spectrum
+  router, verified with `tcpdump -e` on `tap100i0`: SYN-ACKs to the router's MAC),
+  which drops them, so GUI/SSH/API time out although OPNsense answers. QEMU's slirp
+  network forwarded those replies, so the emulated test passed without it.
+  `Firewall/Plugin.php` turns the global flag into a default for every rule,
+  including MVC rules (per-rule `disablereplyto` exists since 26.1.2).
 - `src/etc/config.xml.sample` is the baseline the installer itself ships.
 - `<system><user><password>` and `<system><user><apikeys><item><secret>` are
   both checked with PHP `password_verify()`
@@ -138,6 +146,9 @@ be much faster on real Proxmox/KVM hardware)
   further ~60–90s.
 - Total time from cold boot to a working API/SSH endpoint: ~2–3 minutes
   under TCG. On KVM this should be on the order of 15–30s.
+- Real Proxmox/KVM (hnhv01, HP EliteDesk 800 G5): a full `site.yml` run with the
+  image already cached in the workdir (VM create, import, boot, API config) took
+  about 80 s.
 
 ## Hash formats
 

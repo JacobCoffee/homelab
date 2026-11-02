@@ -1,0 +1,124 @@
+# Every node in group pve ends up in one Proxmox cluster:
+#   no cluster yet -> the first node (sorted) creates it
+#   unclustered    -> joins, one at a time, over node-to-node root SSH (no password)
+# A node with guests is never joined (Proxmox refuses; its guests would clash).
+- name: Cluster | membership
+  ansible.builtin.command: pvecm status
+  register: pve_cluster_status
+  changed_when: false
+  failed_when: false
+
+- name: Cluster | pick the founder
+  ansible.builtin.set_fact:  # with run_once, set on every host
+    pve_cluster_founder: "{{ (clustered | length > 0) | ternary(clustered | first, ansible_play_hosts | sort | first) }}"
+  vars:
+    clustered: >-
+      {{ ansible_play_hosts | sort | map('extract', hostvars)
+         | selectattr('pve_cluster_status.rc', 'equalto', 0) | map(attribute='inventory_hostname') | list }}
+  run_once: true
+
+- name: Cluster | create {{ pve_cluster_name }}
+  ansible.builtin.command: pvecm create {{ pve_cluster_name }} --link0 {{ ansible_host }}
+  when: inventory_hostname == pve_cluster_founder and pve_cluster_status.rc != 0
+  register: pve_cluster_created
+  changed_when: true
+
+# pmxcfs restarts during create and refuses writes for a few seconds afterwards.
+- name: Cluster | wait until /etc/pve is quorate and writable
+  ansible.builtin.shell: |
+    pvecm status | grep -q '^Quorate:.*Yes' && touch /etc/pve/.pxe-write-test && rm /etc/pve/.pxe-write-test
+  register: pve_cluster_writable
+  until: pve_cluster_writable.rc == 0
+  retries: 30
+  delay: 2
+  changed_when: false
+  when: pve_cluster_created is changed
+
+- name: Cluster | joiners
+  ansible.builtin.set_fact:
+    pve_cluster_joining: "{{ inventory_hostname != pve_cluster_founder and pve_cluster_status.rc != 0 }}"
+
+- name: Cluster | guests on a joining node
+  ansible.builtin.shell: |
+    set -o pipefail
+    { qm list; pct list; } | awk 'NR > 1 && $1 ~ /^[0-9]+$/' | wc -l
+  args: { executable: /bin/bash }
+  register: pve_cluster_guests
+  changed_when: false
+  when: pve_cluster_joining
+
+- name: Cluster | refuse to join a node that has guests
+  ansible.builtin.fail:
+    msg: >-
+      {{ inventory_hostname }} has {{ pve_cluster_guests.stdout }} VM(s)/container(s), so it cannot join
+      {{ pve_cluster_name }}. Back them up and remove them (or reinstall the node), then re-run.
+  when: pve_cluster_joining and pve_cluster_guests.stdout | int > 0
+
+- name: Cluster | joining node's root key
+  ansible.builtin.slurp:
+    src: /root/.ssh/id_rsa.pub
+  register: pve_cluster_pubkey
+  when: pve_cluster_joining
+
+- name: Cluster | let the joining node SSH to the founder
+  ansible.builtin.shell: |
+    key={{ pve_cluster_pubkey.content | b64decode | trim | quote }}
+    grep -qxF "$key" /etc/pve/priv/authorized_keys || echo "$key" >> /etc/pve/priv/authorized_keys
+  delegate_to: "{{ pve_cluster_founder }}"
+  when: pve_cluster_joining
+  register: pve_cluster_authorized
+  until: pve_cluster_authorized.rc == 0
+  retries: 5
+  delay: 3
+  changed_when: true
+
+- name: Cluster | trust the founder's host key
+  ansible.builtin.shell: |
+    ip={{ hostvars[pve_cluster_founder].ansible_host }}
+    ssh-keygen -F "$ip" -f /root/.ssh/known_hosts >/dev/null 2>&1 \
+      || ssh-keyscan -T 5 -t ed25519,rsa "$ip" >> /root/.ssh/known_hosts 2>/dev/null
+  when: pve_cluster_joining
+  changed_when: false
+
+- name: Cluster | join {{ pve_cluster_name }}
+  ansible.builtin.command: >-
+    pvecm add {{ hostvars[pve_cluster_founder].ansible_host }} --use_ssh 1 --link0 {{ ansible_host }}
+  when: pve_cluster_joining
+  throttle: 1
+  changed_when: true
+
+- name: Cluster | register this node's ZFS pools in the shared storage config
+  ansible.builtin.command: /usr/local/sbin/pxe-register-storage
+  args:
+    removes: /usr/local/sbin/pxe-register-storage
+  when: pve_cluster_joining
+  changed_when: true
+
+- name: Cluster | HA services on (disabled by first boot while standalone)
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [pve-ha-crm, pve-ha-lrm]
+  when: ansible_play_hosts | length > 1
+
+- name: Cluster | members
+  ansible.builtin.command: pvecm nodes
+  register: pve_cluster_nodes
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ pve_cluster_founder }}"
+
+- name: Cluster | show members
+  ansible.builtin.debug:
+    var: pve_cluster_nodes.stdout_lines
+  run_once: true
+
+- name: Cluster | quorum note
+  ansible.builtin.debug:
+    msg: >-
+      {{ pve_cluster_name }} has {{ ansible_play_hosts | length }} nodes. With two votes, one node down means no
+      quorum: running guests keep running, but nothing can be started or changed until it is back (or
+      `pvecm expected 1`). Add a third node or a QDevice to fix that.
+  run_once: true
+  when: ansible_play_hosts | length == 2

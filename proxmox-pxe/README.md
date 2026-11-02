@@ -31,7 +31,7 @@ sequenceDiagram
 | IP | whatever the router's DHCP gave it during install, written as static config |
 | root password | `secrets/root-password`: generated on first build as `xxxxx-xxxxx-xxxxx-xxxxx` (no lookalike characters); change it from the dashboard |
 | root SSH keys | your SSH agent's keys (Secretive) + `secrets/automation_ed25519` for Ansible; refreshed on every `./build.sh` |
-| VM/CT storage | `vmdata`: LVM-thin on the internal drive, if it is the only internal drive **and blank**; otherwise skipped (set up by hand or Ansible) |
+| VM/CT storage | ZFS `vmdata` from **blank** internal drives: two SATA/SAS → mirror (a single NVMe beside them → separate `fast` pool); two NVMe → mirror; one drive → single. lz4, atime off, ARC capped at 2 GB. Drives with data are never touched |
 | HA services | `pve-ha-lrm`/`pve-ha-crm` disabled while the node is not clustered (they write to the stick constantly); re-enable after joining a cluster |
 | UI | "No valid subscription" pop-up removed; a dpkg hook re-applies the patch after upgrades |
 | Updates | `apt dist-upgrade` on first boot; the report says if a reboot is needed for a new kernel |
@@ -106,11 +106,15 @@ python3 server/core.py forget hnhv03  # next PXE boot of that PC reinstalls it (
 
 The dashboard's Reinstall button does the same as `forget`.
 
-- Internal drive skipped (not blank or several drives)? The first-boot report says so.
-  On the node: `wipefs -a /dev/sdX && pxe-first-boot` (destroys that drive's data).
+- Internal drives skipped (not blank)? The first-boot report lists them. On the node:
+  `pxe-wipe-disk /dev/sdX [/dev/nvme0n1 ...] && pxe-first-boot` (destroys their data; deactivates
+  old LVM on them first).
 - Cluster: on `hnhv01` run `pvecm create homelab`, then join the rest via Datacenter →
-  Cluster → Join. Every node uses the same storage ID `vmdata`, so the cluster-wide
-  storage config works unchanged. Then on every node: `systemctl enable --now pve-ha-lrm pve-ha-crm`.
+  Cluster → Join. Every node has a ZFS pool named `vmdata`, so the cluster-wide storage
+  entry works unchanged and Proxmox replication between nodes is available. `fast` is
+  node-local; a joining node's own `fast` entry has to be re-added (`pvesm add zfspool fast
+  --pool fast --content images,rootdir --sparse 1 --nodes <node>`). Then on every node:
+  `systemctl enable --now pve-ha-lrm pve-ha-crm`.
 - Installer failure: the PC drops to a shell. Logs: `/tmp/fetch_answer.log`,
   `/tmp/auto_installer`, `/tmp/install-low-level-start-session.log`.
 

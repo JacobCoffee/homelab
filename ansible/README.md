@@ -7,6 +7,7 @@ which every node trusts from install.
 
 | Play | Hosts | Result |
 |---|---|---|
+| `pve_cluster` | all nodes | one cluster `homelab`: the first node creates it, every other node joins over node-to-node SSH (no password); a node with guests is refused; joined nodes get their ZFS pools registered and HA turned on |
 | `tailscale` | all nodes | node joined to your tailnet (`--accept-dns=false`), reachable even when OPNsense is down |
 | `pve_network` | `core` (hnhv01) | `vmbr1`: VLAN-aware bridge on the lab trunk NIC carrying VLANs 10/20/30 |
 | `opnsense` | `core` | VM 100 `hnfw01`: OPNsense 26.7 nano, bootstrapped unattended (see below) |
@@ -29,8 +30,12 @@ cd ansible
 ansible-playbook playbooks/discover-nics.yml        # find hnhv01's card ports
 echo 'pve_trunk_nic: enp1s0f0' > inventory/host_vars/hnhv01.yml   # card port 1 (use the real name)
 ansible-vault edit inventory/group_vars/all/vault.yml   # add tailscale_authkey (reusable, pre-approved)
-ansible-playbook playbooks/site.yml
+ansible-playbook playbooks/site.yml                     # or --skip-tags tailscale until the key is in
 ```
+
+Re-run `site.yml` after every new node: it joins the cluster on the next run. With two
+nodes the cluster has no quorum while either is down (running guests keep running, but
+nothing can be started or changed); a third node or a QDevice fixes that.
 
 The play ends by printing OPNsense's WAN IP and MAC: **reserve that IP in the My Spectrum
 app**, since the management rules and later port-forwards point at it.

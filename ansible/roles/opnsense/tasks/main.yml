@@ -18,10 +18,11 @@
     url_password: "{{ opnsense_api_secret }}"
     force_basic_auth: true
     validate_certs: false
+    timeout: 5  # per try; the default 30 s made an unreachable WAN take ~30 min to fail
   delegate_to: localhost
   register: opnsense_api
   until: opnsense_api.status == 200
-  retries: 60
+  retries: 36
   delay: 5
   no_log: true
 
