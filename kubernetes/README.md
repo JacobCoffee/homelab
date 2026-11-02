@@ -87,6 +87,28 @@ Flux decrypts with the `flux-system/sops-age` secret (the same age key as
 token in `cert-manager-issuers` and `external-dns-cloudflare` is the vault's
 `cloudflare_api_token`; if you rotate it, update both files.
 
+## Logins
+
+Every app with its own login uses the same one: `admin` and `vault_lab_admin_password` from the
+Ansible vault. That's Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, SABnzbd, Bindery, Cleanuparr,
+qBittorrent, Unpackerr, Uptime Kuma and Grafana. `../scripts/lab-logins.py` applies it through
+each app's API and keeps the secrets that hand it over on restart in step (Unpackerr's
+`UNPACKERR_UI_LOGIN` in `arr-api-keys`, qBittorrent's hash in `gluetun-secret`, Kuma's seed login,
+Grafana's admin secret); `--check` only reports. The *arrs require the login everywhere
+(`AUTH__REQUIRED: Enabled`): every request reaches them from the gateway's pod IP, so "not for
+local addresses" meant no login at all.
+
+```sh
+scripts/lab-logins.py        # apply; commit the files it lists, then restart Unpackerr
+# rotate: the current password, then the new one
+scripts/vault-set.py vault_lab_admin_previous_password vault_lab_admin_password && scripts/lab-logins.py
+```
+
+Not shared, on purpose: AdGuard (`admin` / `vault_adguard_password`; external-dns, the DoT cert
+push, its exporter, Homepage and the Fire TV app all log in with it), OPNsense `root`
+(`vault_opnsense_root_password`) and Proxmox `root@pam` (recovery accounts), and the personal
+or GitHub logins of Jellyfin, Seerr (signs in with Jellyfin), Home Assistant and Cabotage.
+
 ## Storage
 
 `apps/storage/`: [proxmox-csi-plugin](https://github.com/sergelogvinov/proxmox-csi-plugin)

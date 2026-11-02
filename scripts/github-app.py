@@ -33,9 +33,8 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-ANSIBLE_DIR = ROOT / "ansible"
-VAULT_FILE = ANSIBLE_DIR / "inventory/group_vars/all/vault.yml"
+from vault import vault_set
+
 OWNER = "JacobCoffee"
 GRAFANA_REPO = f"{OWNER}/homelab"
 
@@ -138,50 +137,6 @@ def github(method: str, path: str, token: str, payload: dict | None = None) -> d
     )
     with urllib.request.urlopen(req, timeout=20) as resp:
         return json.loads(resp.read() or b"{}")
-
-
-def vault_set(values: dict[str, str]) -> None:
-    """Replace or append top-level keys; multi-line values become block scalars."""
-    view = subprocess.run(
-        ["mise", "exec", "--", "ansible-vault", "view", str(VAULT_FILE)],
-        cwd=ANSIBLE_DIR, capture_output=True, text=True, check=True,
-    ).stdout.splitlines()
-
-    def render(key: str, value: str) -> list[str]:
-        if "\n" in value.strip():
-            return [f"{key}: |"] + ["  " + line for line in value.strip().splitlines()]
-        return [f"{key}: {json.dumps(value)}"]
-
-    out, seen, i = [], set(), 0
-    while i < len(view):
-        key = view[i].split(":", 1)[0]
-        if key in values and not view[i].startswith((" ", "#")):
-            out += render(key, values[key])
-            seen.add(key)
-            i += 1
-            while i < len(view) and (view[i].startswith("  ") or not view[i].strip()):
-                i += 1
-            continue
-        out.append(view[i])
-        i += 1
-    for key, value in values.items():
-        if key not in seen:
-            out += render(key, value)
-
-    with tempfile.NamedTemporaryFile("w", dir=VAULT_FILE.parent, delete=False) as tmp:
-        os.chmod(tmp.name, 0o600)
-        tmp.write("\n".join(out) + "\n")
-    try:
-        subprocess.run(
-            ["mise", "exec", "--", "ansible-vault", "encrypt", tmp.name],
-            cwd=ANSIBLE_DIR, capture_output=True, check=True,
-        )
-        os.chmod(tmp.name, 0o600)
-        os.replace(tmp.name, VAULT_FILE)
-    finally:
-        if os.path.exists(tmp.name):
-            os.unlink(tmp.name)
-    os.chmod(VAULT_FILE, 0o600)
 
 
 class Flow:

@@ -38,8 +38,8 @@
         'HOMEPAGE_VAR_SABNZBD_KEY': arr.SABNZBD_API_KEY,
         'HOMEPAGE_VAR_BAZARR_KEY': (homepage_bazarr_config.stdout | from_yaml).auth.apikey,
         'HOMEPAGE_VAR_SEERR_KEY': (homepage_seerr_settings.stdout | from_json).main.apiKey,
-        'HOMEPAGE_VAR_QBITTORRENT_USER': vault_qbittorrent_username,
-        'HOMEPAGE_VAR_QBITTORRENT_PASSWORD': vault_qbittorrent_password,
+        'HOMEPAGE_VAR_QBITTORRENT_USER': vault_lab_admin_username,
+        'HOMEPAGE_VAR_QBITTORRENT_PASSWORD': vault_lab_admin_password,
         'HOMEPAGE_VAR_ADGUARD_USER': homepage_adguard_user,
         'HOMEPAGE_VAR_ADGUARD_PASSWORD': vault_adguard_password
       }) }}

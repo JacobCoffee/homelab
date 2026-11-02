@@ -3,18 +3,14 @@
 
     scripts/vault-set.py vault_cabotage_discord_client_id vault_cabotage_discord_client_secret
 
-Uses the same writer as scripts/github-app.py (replace-or-append, multi-line values as block
-scalars). An empty answer leaves that key unchanged.
+Uses scripts/vault.py (replace-or-append, multi-line values as block scalars). An empty answer
+leaves that key unchanged.
 """
 
 import getpass
-import importlib.util
 import sys
-from pathlib import Path
 
-spec = importlib.util.spec_from_file_location("github_app", Path(__file__).with_name("github-app.py"))
-github_app = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(github_app)
+from vault import vault_set
 
 
 def main(keys: list[str]) -> int:
@@ -29,7 +25,7 @@ def main(keys: list[str]) -> int:
     if not values:
         print("nothing to change")
         return 0
-    github_app.vault_set(values)
+    vault_set(values)
     print(f"vault updated: {', '.join(values)}")
     return 0
 

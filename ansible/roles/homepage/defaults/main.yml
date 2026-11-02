@@ -5,8 +5,9 @@
 # can be read back): a read-only Proxmox token (built-in PVEAuditor role) and, on each firewall
 # (no config sync between them), an OPNsense user limited to the two pages the Homepage widget
 # reads, with its own API key. Copied in on every run: the *arr/SABnzbd keys from arr-api-keys,
-# Bazarr's and Seerr's keys from their config files, and the qBittorrent, AdGuard and Jellyfin
-# logins from the vault. The file is only rewritten when a value actually changed.
+# Bazarr's and Seerr's keys from their config files, and from the vault the shared lab login
+# (qBittorrent; scripts/lab-logins.py), AdGuard's own login and the Jellyfin key. The file is
+# only rewritten when a value actually changed.
 homepage_repo: "{{ playbook_dir }}/../.."
 homepage_mise: "mise -C {{ homepage_repo }} exec --"
 homepage_namespace: status
