@@ -59,3 +59,69 @@
   delegate_to: localhost
   when: opnsense_firetv_dnat_add is changed
   changed_when: true
+
+# dns.z7x.org is the first z7x.org name with a private (house-LAN) address. Unbound's DNS-rebind
+# protection strips private answers for public names, so lab clients (and AdGuard, which asks
+# Unbound) got nothing for it. Allow just this domain; keep whatever else is already listed.
+# Empty entries are dropped: an empty selected entry (what setting the field to "" leaves behind)
+# joined into ",dns.z7x.org", rendered an invalid advanced.conf, and Unbound refused to start on
+# reconfigure, which took lab DNS down. The status check below fails the run if that recurs.
+- name: Fire TV DoT | Unbound advanced settings
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/settings/get"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_unbound_adv
+
+- name: Fire TV DoT | allow dns.z7x.org's private answer past rebind protection
+  vars:
+    current: >-
+      {{ opnsense_unbound_adv.json.unbound.advanced.privatedomain | dict2items
+         | selectattr('value.selected', 'equalto', 1) | map(attribute='key')
+         | map('trim') | reject('equalto', '') | list }}
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/settings/set"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      unbound:
+        advanced:
+          privatedomain: "{{ (current + ['dns.' ~ domain]) | unique | join(',') }}"
+  delegate_to: localhost
+  register: opnsense_unbound_privdomain
+  when: ('dns.' ~ domain) not in current
+  changed_when: opnsense_unbound_privdomain.json.result == "saved"
+  failed_when: opnsense_unbound_privdomain.json.result is not defined or opnsense_unbound_privdomain.json.result == "failed"
+
+- name: Fire TV DoT | reload Unbound
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/service/reconfigure"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+  delegate_to: localhost
+  when: opnsense_unbound_privdomain is changed
+  changed_when: true
+
+- name: Fire TV DoT | Unbound is running again
+  ansible.builtin.uri:
+    url: "https://{{ opnsense_wan_ip }}/api/unbound/service/status"
+    url_username: "{{ opnsense_api_key }}"
+    url_password: "{{ opnsense_api_secret }}"
+    force_basic_auth: true
+    validate_certs: false
+  delegate_to: localhost
+  register: opnsense_unbound_status
+  until: opnsense_unbound_status.json.status | default('') == 'running'
+  retries: 10
+  delay: 3
+  when: opnsense_unbound_privdomain is changed
