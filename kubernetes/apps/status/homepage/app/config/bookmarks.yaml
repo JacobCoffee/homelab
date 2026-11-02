@@ -1,0 +1,10 @@
+- Admin:
+    - Homelab repo:
+        - icon: github.svg
+          href: https://github.com/JacobCoffee/homelab
+    - Tailscale:
+        - icon: tailscale.svg
+          href: https://login.tailscale.com/admin/machines
+    - Cloudflare:
+        - icon: cloudflare.svg
+          href: https://dash.cloudflare.com/0346e28e1f2af422c32c0c37e9f7f363

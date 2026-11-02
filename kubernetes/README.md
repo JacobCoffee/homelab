@@ -43,6 +43,7 @@ flux get kustomizations
 | adguard-dot | `apps/network/adguard-dot`: cert-manager cert for `dns.z7x.org`/`*.dns.z7x.org` (AdGuard's own DoT/HTTPS TLS, separate from `z7x-org-tls`) plus a CronJob pushing it into both AdGuard instances -- see `fire-tv/DECISIONS.md` "DNS" |
 | theme-catalog | `apps/network/theme-catalog`: public static site at `themes.z7x.org`, built from a pinned commit of the public `github.com/JacobCoffee/hearth` mirror |
 | uptime-kuma | `apps/status/uptime-kuma` (namespace `status`): admin UI internal-only at `kuma.z7x.org`, public read-only status API at `status.z7x.org` -- see `fire-tv/DECISIONS.md` "Homelab services" |
+| homepage | `apps/status/homepage`: start page at `start.z7x.org` (internal only) linking every app, with an up/down dot per link. Edit `app/config/services.yaml` to add one; changes reach the pod within a minute, no restart |
 | firetv-reapply | `apps/firetv/reapply` (namespace `firetv`): CronJob re-running the Fire TV debloat/tweaks after a reboot -- see `fire-tv/DECISIONS.md` |
 | metrics-server, kubelet-csr-approver | `kubectl top`; approves kubelet serving certificates |
 | Spegel | nodes share pulled images with each other |
@@ -153,7 +154,8 @@ HelmRelease here.
 - **Skipped:** Profilarr (overlaps with Recyclarr, GUI-only config), Huntarr (automatic
   missing/upgrade searching -- the user drives searches manually here), Byparr/Trawl (FlareSolverr
   itself is still maintained), Swaparr (bundled with Huntarr, narrower than Cleanuparr), Ombi
-  (superseded by Seerr), Organizr/Homarr-style dashboards (not requested).
+  (superseded by Seerr), Organizr/Homarr-style dashboards (the lab-wide start page is Homepage,
+  `apps/status/homepage`).
 - **API keys:** `apps/media/secrets` holds one `arr-api-keys` Secret with pre-generated keys for
   Sonarr/Radarr/Lidarr/Prowlarr, injected via `<APP>__AUTH__APIKEY` env vars (the Servarr config
   override convention) so Recyclarr and Unpackerr already know them. Bazarr (Python, no such env

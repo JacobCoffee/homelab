@@ -1,0 +1,23 @@
+title: Homelab
+theme: dark
+color: slate
+headerStyle: clean
+statusStyle: dot
+hideVersion: true
+useEqualHeights: true
+layout:
+  Media:
+    style: row
+    columns: 4
+  Downloads:
+    style: row
+    columns: 4
+  Home:
+    style: row
+    columns: 2
+  Platform:
+    style: row
+    columns: 3
+  Infrastructure:
+    style: row
+    columns: 3

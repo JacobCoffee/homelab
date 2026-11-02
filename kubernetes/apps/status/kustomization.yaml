@@ -4,3 +4,4 @@ resources:
   - ./namespace.yaml
   - ./app-template/ks.yaml
   - ./uptime-kuma/ks.yaml
+  - ./homepage/ks.yaml

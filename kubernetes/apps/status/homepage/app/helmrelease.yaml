@@ -1,0 +1,72 @@
+# ghcr.io/gethomepage/homepage v2.7.0, latest release as of 2026-11-02. The image ships prebuilt;
+# the community-scripts LXC's 4 GB is for compiling it from source, which doesn't happen here.
+#
+# /app/config is the read-only homepage-config ConfigMap. Homepage copies a skeleton for any
+# config file that's missing (and exits if it can't), so every file it looks for is in config/,
+# even the empty ones. LOG_TARGETS=stdout keeps it from writing config/logs/.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: homepage
+  namespace: status
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      homepage:
+        containers:
+          app:
+            image:
+              repository: ghcr.io/gethomepage/homepage
+              tag: v2.7.0@sha256:19c5c09184458a41b7b5915e71463a39f36cd33540f41bdbed008791b8182d5f
+            env:
+              TZ: America/Chicago
+              HOMEPAGE_ALLOWED_HOSTS: start.z7x.org
+              LOG_TARGETS: stdout
+            probes:
+              liveness: &probe
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/healthcheck
+                    port: &port 3000
+                    # Homepage rejects requests whose Host isn't in HOMEPAGE_ALLOWED_HOSTS.
+                    httpHeaders:
+                      - name: Host
+                        value: start.z7x.org
+                  periodSeconds: 15
+              readiness: *probe
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+            resources:
+              requests:
+                cpu: 10m
+                memory: 128Mi
+              limits:
+                memory: 384Mi
+        pod:
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+    service:
+      app:
+        controller: homepage
+        ports:
+          http:
+            port: *port
+    persistence:
+      config:
+        type: configMap
+        name: homepage-config
+        globalMounts:
+          - path: /app/config
+            readOnly: true

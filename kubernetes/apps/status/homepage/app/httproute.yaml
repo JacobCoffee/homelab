@@ -1,0 +1,16 @@
+# Internal only: start.z7x.org on the lab/tailnet gateway (external-dns-adguard publishes it).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: homepage
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - start.z7x.org
+  rules:
+    - backendRefs:
+        - name: homepage
+          port: 3000

@@ -1,0 +1,2 @@
+---
+# Unused. Present because Homepage exits if it is missing and /app/config is read-only.

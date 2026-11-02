@@ -1,0 +1,26 @@
+# Homepage (gethomepage.dev) start page at start.z7x.org: links to every lab app with an up/down
+# dot per link. Internal-only (tailnet/lab); no secrets, no Kubernetes RBAC.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: homepage
+  namespace: flux-system
+spec:
+  targetNamespace: status
+  path: ./kubernetes/apps/status/homepage/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: status-app-template
+    - name: envoy-gateway-config
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: homepage
+      namespace: status
