@@ -44,6 +44,7 @@ flux get kustomizations
 | echo | smoke test at `echo.z7x.org` on the internal gateway |
 | home-assistant | `home.z7x.org` on both gateways, backed by the HA VM (selector-less Service + EndpointSlice to 10.10.10.20:80) |
 | media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
+| Proxmox CSI plugin | `csi-proxmox`: provisions the `proxmox-vmdata` (default) and `proxmox-fast` StorageClasses -- see "Storage" below |
 | VolSync, etcd-backup, opnsense-backup | `apps/backup/`: restic-to-R2 offsite backups -- see "Backups and restore" below |
 
 ## Publishing an app
@@ -79,6 +80,50 @@ Flux decrypts with the `flux-system/sops-age` secret (the same age key as
 `~/.config/sops/age/keys.txt` and `vault_sops_age_key` in the Ansible vault). The Cloudflare
 token in `cert-manager-issuers` and `external-dns-cloudflare` is the vault's
 `cloudflare_api_token`; if you rotate it, update both files.
+
+## Storage
+
+`apps/storage/`: [proxmox-csi-plugin](https://github.com/sergelogvinov/proxmox-csi-plugin)
+(`csi-proxmox` namespace, chart `oci://ghcr.io/sergelogvinov/charts/proxmox-csi-plugin`)
+provisions Proxmox VM disks as PersistentVolumes -- no storage daemon runs in-cluster, the data
+sits on whichever Proxmox node the volume lands on.
+
+- **StorageClasses:** `proxmox-vmdata` (default; Proxmox storage `vmdata`, the cluster-wide ZFS
+  mirror) and `proxmox-fast` (Proxmox storage `fast`, each node's local NVMe ZFS pool). Both are
+  RWO, `WaitForFirstConsumer`, `ext4`: the first pod to use a PVC picks a node, the plugin
+  allocates the disk there, and the resulting PV's `topology.kubernetes.io/zone` node affinity
+  pins every future pod for that PVC to Proxmox nodes with that zone label -- no cross-node
+  migration. `proxmox-fast` additionally requires the zone label since its storage is node-local;
+  `proxmox-vmdata` is cluster-wide, so volumes can reattach on any node.
+- **Credentials:** `ansible/roles/pve_csi` creates a `kubernetes-csi@pve` Proxmox user, a `CSI`
+  role (`VM.Audit VM.Config.Disk Datastore.Allocate Datastore.AllocateSpace Datastore.Audit`) and
+  an API token, then writes the token straight into `app/secret.sops.yaml` (never printed, never
+  touches the Ansible vault). If that file is ever missing, the role rotates the token (Proxmox
+  only shows a token's secret once) rather than failing.
+- **Topology labels:** `ansible/roles/talos`'s `machine.yaml.j2` sets
+  `topology.kubernetes.io/region` (the Proxmox cluster name, `homelab`) and
+  `topology.kubernetes.io/zone` (the Proxmox node each Talos VM runs on, `k8s_nodes[].host`) via
+  `KubeNodeConfig`. Every node that can run CSI-backed pods needs both labels.
+- **VM requirements:** `VirtIO SCSI single` controller (already the Talos VM default) and disk
+  hotplug, which Proxmox enables by default (`hotplug: network,disk,usb` unless overridden) --
+  nothing extra to set.
+- **Media NFS is separate:** the temporary `/media` export below is a plain NFS volume on a VM,
+  not a Proxmox CSI StorageClass -- no provisioner, no PVC, just an NFS mount every media app
+  uses directly.
+
+### Media NFS (temporary)
+
+`ansible/roles/media_nfs`: VM 401 `hnnfs01` (Debian 13 + cloud-init, 10.10.30.20 on the K8S
+zone), standing in for a NAS until one exports the same layout. `nfs-kernel-server` exports
+`/srv/media` to `10.10.30.0/24` (`rw,sync,no_subtree_check,no_root_squash`); apps mount it at
+`/media` via `MEDIA_NFS_SERVER`/`MEDIA_NFS_PATH` in `cluster-settings.yaml`.
+
+- **Layout:** TRaSH-style single tree so downloads and the library can be hardlinked instead of
+  copied: `/srv/media/{downloads/{torrents,usenet}/{movies,tv,music,books},library/{movies,tv,music,books}}`,
+  owned `1000:1000` mode `2775` (setgid, so new entries inherit the group).
+- **Backups:** the root disk is covered by the nightly Proxmox vzdump job
+  (`ansible/roles/pve_backup`); the 100 GB data disk is `backup=0` (media, not config -- nothing
+  worth restoring from a Proxmox snapshot).
 
 ## Media stack
 

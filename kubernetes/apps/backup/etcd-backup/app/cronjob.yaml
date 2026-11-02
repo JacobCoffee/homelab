@@ -20,7 +20,8 @@ spec:
             - name: snapshot
               image: ghcr.io/siderolabs/talosctl:v1.14.5
               command:
-                - talosctl
+                - /talosctl
+              args:
                 - etcd
                 - snapshot
                 - /backup/db.snapshot

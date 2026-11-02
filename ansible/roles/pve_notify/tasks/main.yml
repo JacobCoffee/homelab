@@ -2,10 +2,12 @@
 # Discord, alongside the builtin default-matcher (still mails root). Skipped entirely until
 # vault_discord_webhook_url exists -- see kubernetes/README.md "Monitoring & alerting".
 #
-# Body uses Handlebars (Proxmox's notification templating), not Jinja: wrapped in {% raw %} so
-# Ansible passes the literal "{{ ... }}" through instead of trying to resolve it. The webhook URL
-# lives only in the secret `webhook_url`, referenced from the URL field as
-# `{{ secrets.webhook_url }}` so it's never written into the target's own (unencrypted) config.
+# Proxmox validates the `url` parameter against a URL-shaped regex before substituting
+# Handlebars, so only the literal "https://discord.com/api/webhooks/" prefix can live there;
+# the id/token suffix (opaque, sensitive) is the secret `webhook_path`, referenced as
+# `{{ secrets.webhook_path }}` (wrapped in {% raw %} so Ansible passes it through un-rendered).
+# Body uses the same Handlebars templating -- see Discord example in
+# docs.proxmox.com (notifications.adoc) and pve-devel patch 20241108144124.273550-11.
 # --header/--secret/--body are property strings / base64 per `pvesh usage
 # /cluster/notifications/endpoints/webhook --verbose`.
 - name: "Notify | existing webhook endpoints (no_log: contains the rendered secret handlebars)"
@@ -31,13 +33,13 @@
       - --header
       - "name=Content-Type,value={{ 'application/json' | b64encode }}"
       - --secret
-      - "name=webhook_url,value={{ vault_discord_webhook_url | b64encode }}"
+      - "name=webhook_path,value={{ (vault_discord_webhook_url | regex_replace('^https://discord.com/api/webhooks/', '')) | b64encode }}"
       - --body
       - "{{ pve_notify_discord_body | b64encode }}"
       - --comment
       - "Mirrors Proxmox notifications to Discord"
   vars:
-    pve_notify_discord_url: "{% raw %}{{ secrets.webhook_url }}{% endraw %}"
+    pve_notify_discord_url: "https://discord.com/api/webhooks/{% raw %}{{ secrets.webhook_path }}{% endraw %}"
     pve_notify_discord_body: |-
       {% raw %}{
         "username": "Proxmox",
@@ -67,6 +69,8 @@
   run_once: true
   when: vault_discord_webhook_url is defined
 
+# Matchers and endpoints share one name namespace in Proxmox's notification system, so this
+# can't also be called "discord" (that's the endpoint created above).
 - name: Notify | route everything to Discord too (builtin default-matcher keeps mailing root)
   ansible.builtin.command:
     argv:
@@ -74,7 +78,7 @@
       - create
       - /cluster/notifications/matchers
       - --name
-      - discord
+      - discord-all
       - --mode
       - all
       - --target
@@ -83,7 +87,7 @@
       - "Mirror every notification to Discord (host/guest/backup/replication events)"
   when: >-
     vault_discord_webhook_url is defined and
-    'discord' not in (pve_notify_matchers.stdout | from_json | map(attribute='name') | list)
+    'discord-all' not in (pve_notify_matchers.stdout | from_json | map(attribute='name') | list)
   changed_when: true
   run_once: true
 

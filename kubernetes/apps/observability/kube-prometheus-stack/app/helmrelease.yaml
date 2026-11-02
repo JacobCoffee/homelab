@@ -129,8 +129,8 @@ spec:
         accessModes: ["ReadWriteOnce"]
         size: 2Gi
       resources:
-        requests: { cpu: 50m, memory: 128Mi }
-        limits: { memory: 256Mi }
+        requests: { cpu: 50m, memory: 192Mi }
+        limits: { memory: 640Mi }
       grafana.ini:
         server:
           root_url: https://grafana.z7x.org

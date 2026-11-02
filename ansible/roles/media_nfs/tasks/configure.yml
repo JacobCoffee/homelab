@@ -54,11 +54,10 @@
       when: media_nfs_data_fstype.stdout == ""
       changed_when: true
 
-    - name: Mount point
+    - name: Mount point (ownership/mode set once mounted, below)
       ansible.builtin.file:
         path: "{{ media_nfs_export }}"
         state: directory
-        mode: "0755"
 
     - name: Mounted by label (survives disk reordering)
       ansible.builtin.mount:

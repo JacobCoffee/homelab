@@ -112,7 +112,7 @@
                       'headers': {
                         'Authorization': 'PVEAPIToken=' ~ monitoring_pve_user ~ '!' ~ monitoring_pve_token_name ~ '=' ~ (monitoring_pve_token.stdout | from_json).value
                       },
-                      'fail_if_body_matches_regexp': ['"health":"(?!ONLINE)[A-Z]+"'],
+                      'fail_if_body_matches_regexp': ['"health":"(DEGRADED|FAULTED|UNAVAIL|OFFLINE|REMOVED|SUSPENDED)"'],
                       'tls_config': { 'insecure_skip_verify': true }
                     }
                   }
