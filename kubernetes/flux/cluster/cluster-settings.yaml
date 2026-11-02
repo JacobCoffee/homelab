@@ -12,3 +12,12 @@ data:
   CLOUDFLARE_TUNNEL_ID: "cab61fbe-b69d-454d-a3fd-df123f30e0cc"
   # Contact address for Let's Encrypt expiry/revocation notices (cert-manager ClusterIssuer).
   ACME_EMAIL: "admin@z7x.org"
+  # Temporary media NFS server (ansible/roles/media_nfs, VM 401 hnnfs01); apps mount it at
+  # /media. Owner: Storage.
+  MEDIA_NFS_SERVER: "10.10.30.20"
+  MEDIA_NFS_PATH: "/srv/media"
+  # Cloudflare R2 (account 0346e28e1f2af422c32c0c37e9f7f363), bucket `homelab-backups`: offsite
+  # restic target for etcd/OPNsense/VolSync backups. Keys live in cluster-secrets.sops.yaml next
+  # to this file. Owner: Backups.
+  R2_ENDPOINT: "https://0346e28e1f2af422c32c0c37e9f7f363.r2.cloudflarestorage.com"
+  R2_BUCKET: "homelab-backups"
