@@ -29,6 +29,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -129,7 +130,12 @@ private fun RailEntry(item: RailItem, type: HomeType, reveal: Float) {
                 item.sigil,
                 if (focused) colors.accent else colors.onSurfaceMuted,
                 size = icon,
-                modifier = Modifier.graphicsLayer { alpha = ICON_ALPHA_REST + (1f - ICON_ALPHA_REST) * reveal },
+                // ModulateAlpha: the resting icons are always translucent, and would otherwise
+                // each need an offscreen layer whenever the rail is drawn.
+                modifier = Modifier.graphicsLayer {
+                    alpha = ICON_ALPHA_REST + (1f - ICON_ALPHA_REST) * reveal
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                },
             )
         }
         Spacer(Modifier.width(22.dp))

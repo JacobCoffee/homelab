@@ -39,8 +39,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -79,7 +81,9 @@ import dev.jacobcoffee.hearth.ui.home.rememberNowPlaying
 import dev.jacobcoffee.hearth.widgets.TvLink
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import dev.jacobcoffee.hearth.ui.theme.LocalHearthColors
 import dev.jacobcoffee.hearth.ui.theme.LocalHearthTheme
 
@@ -126,15 +130,21 @@ fun LauncherScreen(deps: HearthDependencies, onOpenSettings: (themesOnly: Boolea
     LaunchedEffect(notice) { if (notice != null) { delay(6000); notice = null } }
 
     // Each return to Home: pick up installs and pushed config, apply a pushed layout, and land
-    // focus on the first app.
+    // focus on the first app. The reading happens off the main thread; unchanged lists compare
+    // equal, so a plain return recomposes nothing.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            config = deps.config.load()
-            deps.apps.applyLayout(config.apps)
-            apps = deps.apps.visibleAppsInOrder()
-            others = deps.apps.systemLauncherApps()
             arrivals++
+            val fresh = withContext(Dispatchers.IO) {
+                val loaded = deps.config.load()
+                deps.apps.applyLayout(loaded.apps)
+                deps.apps.refresh()
+                Triple(loaded, deps.apps.visibleAppsInOrder(), deps.apps.systemLauncherApps())
+            }
+            config = fresh.first
+            apps = fresh.second
+            others = fresh.third
         }
     }
     LaunchedEffect(arrivals, apps.firstOrNull()?.packageName) {
@@ -184,45 +194,51 @@ fun LauncherScreen(deps: HearthDependencies, onOpenSettings: (themesOnly: Boolea
     Box(Modifier.fillMaxSize()) {
         ParticleField(theme.effect, Modifier.fillMaxSize())
         Torchlight(light?.second)
-        Column(Modifier.fillMaxSize().padding(start = RAIL_WIDTH + 18.dp, end = SAFE_X, top = SAFE_Y, bottom = SAFE_Y)) {
-            HomeHeader(config, type)
-            Spacer(Modifier.height(12.dp))
-            val guild = config.guild
-            if (guild != null || playing != null) {
-                StarRule(Modifier.fillMaxWidth())
-                // Music shares the strip with the guild's next quest rather than pushing the grid down.
-                Row(Modifier.fillMaxWidth().height(STRIP_HEIGHT).nightScrim(), verticalAlignment = Alignment.CenterVertically) {
-                    guild?.let { QuestLog(it, type, maxShown = if (playing != null) 1 else 2, modifier = Modifier.weight(1f)) }
-                    if (guild != null && playing != null) StripDivider()
-                    playing?.let { NowPlayingStrip(it, nowPlaying, type, Modifier.weight(1f), focusRequester = nowPlayingFocus) }
+        // The ambient effects below repaint the screen 30 times a second; drawn into one layer,
+        // the UI above them is redrawn only when it changes and is otherwise a single texture
+        // per frame (about a third of the idle CPU, for one screen-sized GPU buffer). Full size,
+        // so a focused tile's scale and the text glow are never clipped at the layer's edge.
+        Box(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
+            Column(Modifier.fillMaxSize().padding(start = RAIL_WIDTH + 18.dp, end = SAFE_X, top = SAFE_Y, bottom = SAFE_Y)) {
+                HomeHeader(config, type)
+                Spacer(Modifier.height(12.dp))
+                val guild = config.guild
+                if (guild != null || playing != null) {
+                    StarRule(Modifier.fillMaxWidth())
+                    // Music shares the strip with the guild's next quest rather than pushing the grid down.
+                    Row(Modifier.fillMaxWidth().height(STRIP_HEIGHT).nightScrim(), verticalAlignment = Alignment.CenterVertically) {
+                        guild?.let { QuestLog(it, type, maxShown = if (playing != null) 1 else 2, modifier = Modifier.weight(1f)) }
+                        if (guild != null && playing != null) StripDivider()
+                        playing?.let { NowPlayingStrip(it, nowPlaying, type, Modifier.weight(1f), focusRequester = nowPlayingFocus) }
+                    }
                 }
-            }
-            Spacer(Modifier.height(14.dp))
-            val banner = notice ?: if (arranging) "ARRANGING  \u00b7  CHOOSE AN APP TO MOVE OR HIDE  \u00b7  BACK WHEN DONE" else null
-            if (banner != null) {
-                Text(
-                    banner.uppercase(),
-                    style = type.label.copy(color = if (notice != null) LocalHearthColors.current.warning else LocalHearthColors.current.accent),
-                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp),
+                Spacer(Modifier.height(14.dp))
+                val banner = notice ?: if (arranging) "ARRANGING  \u00b7  CHOOSE AN APP TO MOVE OR HIDE  \u00b7  BACK WHEN DONE" else null
+                if (banner != null) {
+                    Text(
+                        banner.uppercase(),
+                        style = type.label.copy(color = if (notice != null) LocalHearthColors.current.warning else LocalHearthColors.current.accent),
+                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp),
+                    )
+                }
+                AppGrid(
+                    apps = apps,
+                    type = type,
+                    firstTileFocus = firstTile,
+                    // Up from the top row goes to the music; without this the left tiles, which sit
+                    // under the guild's quest (not focusable), go to the rail instead.
+                    upFromFirstRow = if (playing != null) nowPlayingFocus else null,
+                    onLaunch = { if (arranging) menuFor = MenuTarget(it, movable = true) else launch(it) },
+                    onMenu = { menuFor = MenuTarget(it, movable = true) },
+                    onFocusedBounds = { pkg, bounds ->
+                        if (bounds != null) light = pkg to bounds
+                        else if (light?.first == pkg) light = null
+                    },
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             }
-            AppGrid(
-                apps = apps,
-                type = type,
-                firstTileFocus = firstTile,
-                // Up from the top row goes to the music; without this the left tiles, which sit
-                // under the guild's quest (not focusable), go to the rail instead.
-                upFromFirstRow = if (playing != null) nowPlayingFocus else null,
-                onLaunch = { if (arranging) menuFor = MenuTarget(it, movable = true) else launch(it) },
-                onMenu = { menuFor = MenuTarget(it, movable = true) },
-                onFocusedBounds = { pkg, bounds ->
-                    if (bounds != null) light = pkg to bounds
-                    else if (light?.first == pkg) light = null
-                },
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
+            CommandRail(rail, type, Modifier.align(Alignment.CenterStart), onOpenChanged = { railOpen = it })
         }
-        CommandRail(rail, type, Modifier.align(Alignment.CenterStart), onOpenChanged = { railOpen = it })
         when (panel) {
             Panel.None -> Unit
             Panel.Search -> SearchPanel(apps + systemApps, type, onLaunchApp = ::launch)

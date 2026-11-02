@@ -1,7 +1,7 @@
 package dev.jacobcoffee.hearth.ui.theme
 
 import android.graphics.Bitmap
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,11 +13,11 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -29,6 +29,7 @@ import dev.jacobcoffee.hearth.theme.ResolvedTheme
 import dev.jacobcoffee.hearth.theme.ThemeAssets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.max
 import kotlin.math.sin
 
 data class HearthColors(
@@ -132,23 +133,25 @@ fun HearthTheme(resolved: ResolvedTheme, reduceMotion: Boolean, content: @Compos
             }
             wallpaper?.let { bmp ->
                 val driftClock = if (drifts) clock else null
-                Image(
-                    bitmap = bmp.asImageBitmap(),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            // A slow push-in that never drops below 1.01x, so no edge ever shows.
-                            val t = (driftClock?.value ?: 0L) / 1_000_000_000.0
-                            val breath = if (driftClock == null) 0f else sin(2 * Math.PI * t / DRIFT_PERIOD_S).toFloat()
-                            val pan = if (driftClock == null) 0f else sin(2 * Math.PI * t / PAN_PERIOD_S).toFloat()
-                            val scale = 1.04f + 0.03f * breath
-                            scaleX = scale
-                            scaleY = scale
-                            translationX = size.width * 0.008f * pan
-                        },
-                    contentScale = ContentScale.Crop,
-                )
+                val image = remember(bmp) { bmp.asImageBitmap() }
+                // Drawn, not moved with a graphicsLayer: a layer whose transform changes counts as
+                // a layout change, and with Hearth's own accessibility service enabled every one
+                // makes Compose re-check its whole accessibility tree. Reading the clock here only
+                // redraws.
+                Canvas(Modifier.fillMaxSize()) {
+                    // A slow push-in that never drops below 1.01x, so no edge ever shows.
+                    val t = (driftClock?.value ?: 0L) / 1_000_000_000.0
+                    val breath = if (driftClock == null) 0f else sin(2 * Math.PI * t / DRIFT_PERIOD_S).toFloat()
+                    val pan = if (driftClock == null) 0f else sin(2 * Math.PI * t / PAN_PERIOD_S).toFloat()
+                    // Cover the screen like ContentScale.Crop, then push in around the center.
+                    val fit = max(size.width / image.width, size.height / image.height) * (1.04f + 0.03f * breath)
+                    val left = (size.width - image.width * fit) / 2 + size.width * 0.008f * pan
+                    val top = (size.height - image.height * fit) / 2
+                    withTransform({
+                        translate(left, top)
+                        scale(fit, fit, pivot = Offset.Zero)
+                    }) { drawImage(image) }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

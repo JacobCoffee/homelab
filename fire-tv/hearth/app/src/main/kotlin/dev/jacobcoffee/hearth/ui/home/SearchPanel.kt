@@ -43,9 +43,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
+import dev.jacobcoffee.hearth.apps.AppArt
 import dev.jacobcoffee.hearth.apps.AppInfo
 import dev.jacobcoffee.hearth.ui.theme.LocalHearthColors
-import dev.jacobcoffee.hearth.ui.toImageBitmap
 
 /**
  * An app whose search can be opened with the query already filled in. Only links checked on
@@ -175,7 +175,8 @@ private fun ResultRow(label: String, app: AppInfo, type: HomeType, onClick: () -
     val colors = LocalHearthColors.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val icon = remember(app.packageName) { app.icon.toImageBitmap() }
+    val context = LocalContext.current
+    val icon = remember(app) { AppArt.icon(context, app) }
     Row(
         Modifier
             .fillMaxWidth()

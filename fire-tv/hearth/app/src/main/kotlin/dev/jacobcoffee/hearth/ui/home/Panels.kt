@@ -39,12 +39,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
+import dev.jacobcoffee.hearth.apps.AppArt
 import dev.jacobcoffee.hearth.apps.AppInfo
 import dev.jacobcoffee.hearth.config.AdGuardConfig
 import dev.jacobcoffee.hearth.config.TvConfig
 import dev.jacobcoffee.hearth.config.UptimeKumaConfig
 import dev.jacobcoffee.hearth.ui.theme.LocalHearthColors
-import dev.jacobcoffee.hearth.ui.toImageBitmap
 import dev.jacobcoffee.hearth.widgets.AdGuardRepository
 import dev.jacobcoffee.hearth.widgets.AdGuardState
 import dev.jacobcoffee.hearth.widgets.KumaMonitor
@@ -115,7 +115,8 @@ private fun IconTile(app: AppInfo, type: HomeType, onClick: () -> Unit, modifier
     val colors = LocalHearthColors.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val icon = remember(app.packageName) { app.icon.toImageBitmap() }
+    val context = LocalContext.current
+    val icon = remember(app) { AppArt.icon(context, app) }
     Column(
         modifier
             .width(118.dp)

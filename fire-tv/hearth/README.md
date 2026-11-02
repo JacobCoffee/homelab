@@ -58,7 +58,14 @@ catalog (`make stack-up`).
 
 `install.sh` points `enabled_accessibility_services` at Hearth's `HomeRedirectService` only,
 and allows `media/MediaListener` as a notification listener so Home can show what's playing.
-Unset widgets (weather, guild events, Uptime Kuma, AdGuard, TV controls) stay hidden.
+It also compiles Hearth ahead of time (`cmd package compile -m speed`): a sideloaded APK is
+otherwise mostly interpreted, and cold start drops from about 1.2 s to 0.9 s. Unset widgets
+(weather, guild events, Uptime Kuma, AdGuard, TV controls) stay hidden.
+
+Because the Home redirect is an accessibility service, Compose always keeps its accessibility
+tree live, and each Text that changes or graphicsLayer transform that moves makes it rebuild
+the whole tree (about 100 ms on the stick). Anything that changes every frame or every second
+is drawn instead: the wallpaper drift, the particles, the Now Playing time.
 
 ## Now Playing
 

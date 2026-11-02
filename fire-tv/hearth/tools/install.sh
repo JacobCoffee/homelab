@@ -41,6 +41,11 @@ $ADB install -r -g "$APK"
 echo "granting READ_LOGS..."
 $ADB shell pm grant "$APP_ID" android.permission.READ_LOGS
 
+# A sideloaded APK gets only its small baseline profile compiled; ahead-of-time compiling all
+# of it cut cold start from ~1.2 s to ~0.8 s on the stick (Compose runs interpreted otherwise).
+echo "compiling ahead of time..."
+$ADB shell cmd package compile -m speed -f "$APP_ID"
+
 echo "enabling Hearth's accessibility service (and disabling any other)..."
 $ADB shell settings put secure enabled_accessibility_services "$SERVICE"
 $ADB shell settings put secure accessibility_enabled 1

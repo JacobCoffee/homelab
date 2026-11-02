@@ -1,6 +1,5 @@
 package dev.jacobcoffee.hearth.ui
 
-import android.graphics.drawable.Drawable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -39,8 +38,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -52,13 +49,15 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
-import androidx.core.graphics.drawable.toBitmap
 import androidx.tv.material3.Text
+import dev.jacobcoffee.hearth.apps.AppArt
 import dev.jacobcoffee.hearth.apps.AppInfo
 import dev.jacobcoffee.hearth.ui.home.HomeType
 import dev.jacobcoffee.hearth.ui.theme.LocalHearthColors
@@ -137,19 +136,6 @@ fun AppGrid(
     }
 }
 
-/** Banners rasterized once per app, not on every recomposition. */
-private fun rasterize(app: AppInfo): ImageBitmap = (app.banner ?: app.icon).toImageBitmap()
-
-/**
- * [toBitmap] throws for drawables with no intrinsic size (shapes, colors); those get
- * [fallbackPx] square. An exception here would crash Hearth and the Home redirect with it.
- */
-internal fun Drawable.toImageBitmap(fallbackPx: Int = 192): ImageBitmap =
-    toBitmap(
-        intrinsicWidth.takeIf { it > 0 } ?: fallbackPx,
-        intrinsicHeight.takeIf { it > 0 } ?: fallbackPx,
-    ).asImageBitmap()
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AppTile(
@@ -166,7 +152,11 @@ private fun AppTile(
     val colors = LocalHearthColors.current
     val radius = LocalHearthTileRadius.current
     val frame = TileFrame.of(LocalHearthTheme.current.json.tile?.frame)
-    val image = remember(app.packageName) { rasterize(app) }
+    val context = LocalContext.current
+    // Read at the tile's focused (largest) width, so focus never upscales the art.
+    val bannerWidthPx = with(LocalDensity.current) { (width * (1f + FOCUS_SCALE)).roundToPx() }
+    val banner = remember(app, bannerWidthPx) { AppArt.banner(context, app, bannerWidthPx) }
+    val icon = remember(app, banner) { if (banner == null) AppArt.icon(context, app) else null }
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val lift by animateFloatAsState(if (focused) 1f else 0f, tween(320, easing = EaseOutExpo), label = "lift")
@@ -197,9 +187,9 @@ private fun AppTile(
                     drawTileFrame(frame, lift, colors, radius)
                 },
         ) {
-            if (app.banner != null) {
+            if (banner != null) {
                 Image(
-                    bitmap = image,
+                    bitmap = banner,
                     contentDescription = app.label,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(radius)),
@@ -210,7 +200,7 @@ private fun AppTile(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Image(bitmap = image, contentDescription = null, modifier = Modifier.size(height * 0.42f))
+                    icon?.let { Image(bitmap = it, contentDescription = null, modifier = Modifier.size(height * 0.42f)) }
                     Spacer(Modifier.height(8.dp))
                     Text(
                         app.label,

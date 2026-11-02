@@ -4,27 +4,36 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.graphics.drawable.Drawable
 import dev.jacobcoffee.hearth.config.AppLayout
 
+/** A launcher entry. Plain values, so an unchanged app list compares equal and recomposes nothing. */
 data class AppInfo(
     val packageName: String,
     val component: ComponentName,
     val label: String,
-    val banner: Drawable?,
-    val icon: Drawable,
     /** Installed by the user rather than shipped with Fire OS. */
-    val userInstalled: Boolean = false,
+    val userInstalled: Boolean,
+    /** A TV (Leanback) app: its tile shows the app's banner when it has one. */
+    val tv: Boolean,
+    /** The APK's path. It changes when the app is updated, so [AppArt] reads the art again. */
+    val apkPath: String,
 )
 
 /**
  * Lists the apps Home can open (TV apps and user-installed apps for the grid, Fire OS's own
  * non-TV launchers for the footer) and persists the user's Hide/Move choices plus launch
  * history, entirely in app-private SharedPreferences -- no PACKAGE_USAGE_STATS permission.
+ *
+ * The installed apps are read from PackageManager once and kept; [refresh] re-reads them and
+ * is meant for a background thread. Everything else works from that copy.
  */
 class AppRepository(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("hearth_apps", Context.MODE_PRIVATE)
+
+    private class Installed(val home: List<AppInfo>, val system: List<AppInfo>)
+
+    @Volatile private var installed: Installed? = null
 
     companion object {
         private const val KEY_HIDDEN = "hidden"
@@ -36,28 +45,44 @@ class AppRepository(context: Context) {
     }
 
     /**
+     * Re-reads the installed apps and warms the home grid's banners. Blocking (PackageManager
+     * calls and other apps' resources): call it off the main thread.
+     */
+    fun refresh() {
+        val fresh = query()
+        installed = fresh
+        AppArt.retain(fresh.home + fresh.system)
+        AppArt.warmBanners(appContext, fresh.home)
+    }
+
+    private fun installed(): Installed = installed ?: query().also { installed = it }
+
+    /**
      * Every app for the home grid, visible or not: each TV (Leanback) app, plus apps the user
      * installed that only declare a phone-style launcher activity (the Xbox app is one). Amazon's
      * own non-TV system launchers stay out; they are [systemLauncherApps].
      */
-    fun homeApps(): List<AppInfo> {
-        val leanback = launchable(Intent.CATEGORY_LEANBACK_LAUNCHER, withBanner = true)
-        val leanbackPackages = leanback.map { it.packageName }.toSet()
-        val installed = launchable(Intent.CATEGORY_LAUNCHER, withBanner = false)
-            .filter { it.packageName !in leanbackPackages && it.userInstalled }
-        return leanback + installed
-    }
+    fun homeApps(): List<AppInfo> = installed().home
 
     /** Non-TV launchers that ship with Fire OS (Appstore, Silk, Amazon Home, ...): footer links. */
     fun systemLauncherApps(includeHidden: Boolean = false): List<AppInfo> {
-        val home = homeApps().map { it.packageName }.toSet()
-        val hidden = if (includeHidden) emptySet() else hiddenPackages()
-        return launchable(Intent.CATEGORY_LAUNCHER, withBanner = false)
-            .filter { it.packageName !in home && it.packageName !in hidden }
+        val system = installed().system
+        if (includeHidden) return system
+        val hidden = hiddenPackages()
+        return system.filter { it.packageName !in hidden }
+    }
+
+    private fun query(): Installed {
+        val leanback = launchable(Intent.CATEGORY_LEANBACK_LAUNCHER, tv = true)
+        val leanbackPackages = leanback.mapTo(HashSet()) { it.packageName }
+        val launcher = launchable(Intent.CATEGORY_LAUNCHER, tv = false)
+        val home = leanback + launcher.filter { it.packageName !in leanbackPackages && it.userInstalled }
+        val homePackages = home.mapTo(HashSet()) { it.packageName }
+        return Installed(home, launcher.filter { it.packageName !in homePackages })
     }
 
     /** Enabled activities answering MAIN + [category], one per package, excluding Hearth. */
-    private fun launchable(category: String, withBanner: Boolean): List<AppInfo> {
+    private fun launchable(category: String, tv: Boolean): List<AppInfo> {
         val pm = appContext.packageManager
         // No MATCH_DEFAULT_ONLY: Leanback launcher activities declare LEANBACK_LAUNCHER, not
         // DEFAULT, so that flag silently drops almost every TV app.
@@ -67,16 +92,14 @@ class AppRepository(context: Context) {
             if (activity.packageName == appContext.packageName) return@mapNotNull null
             // Packages switched off with `pm disable-user` (see packages.txt) never appear.
             if (!activity.applicationInfo.enabled) return@mapNotNull null
-            val component = ComponentName(activity.packageName, activity.name)
-            val label = ri.loadLabel(pm)?.toString() ?: activity.packageName
-            // A banner with no intrinsic size (Fire OS 8.1's Troubleshooting app ships a bare
-            // gradient <shape>) has no artwork: the tile shows the icon and label instead.
-            val banner = if (!withBanner) null else runCatching {
-                pm.getActivityBanner(component) ?: pm.getApplicationBanner(activity.applicationInfo)
-            }.getOrNull()?.takeIf { it.intrinsicWidth > 0 && it.intrinsicHeight > 0 }
-            val icon = runCatching { ri.loadIcon(pm) }.getOrNull() ?: activity.loadIcon(pm)
-            val userInstalled = activity.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM == 0
-            AppInfo(activity.packageName, component, label, banner, icon, userInstalled)
+            AppInfo(
+                packageName = activity.packageName,
+                component = ComponentName(activity.packageName, activity.name),
+                label = ri.loadLabel(pm).toString(),
+                userInstalled = activity.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM == 0,
+                tv = tv,
+                apkPath = activity.applicationInfo.sourceDir.orEmpty(),
+            )
         }.distinctBy { it.packageName }
     }
 

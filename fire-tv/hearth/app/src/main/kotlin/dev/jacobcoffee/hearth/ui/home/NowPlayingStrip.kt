@@ -41,17 +41,22 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.tv.material3.Text
+import dev.jacobcoffee.hearth.apps.toImageBitmap
 import dev.jacobcoffee.hearth.media.NowPlaying
 import dev.jacobcoffee.hearth.media.NowPlayingSource
 import dev.jacobcoffee.hearth.media.formatTrackTime
 import dev.jacobcoffee.hearth.ui.theme.LocalHearthColors
-import dev.jacobcoffee.hearth.ui.toImageBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -195,8 +200,27 @@ private fun TrackProgress(np: NowPlaying, type: HomeType) {
             }
             Spacer(Modifier.width(10.dp))
         }
-        Text(time, style = type.label)
+        TickingText(time, type.label)
     }
+}
+
+/**
+ * Text that changes every second, drawn instead of composed as a Text. Hearth's own Home
+ * redirect is an accessibility service, so Compose keeps its screen-reader tree live, and a
+ * changing Text rebuilds and re-sorts that whole tree (about 100 ms on the stick) each time.
+ * A drawing has no accessibility node, and its width is reserved from the text with every digit
+ * at its widest, so a tick never changes the layout either; only the pixels are redrawn.
+ */
+@Composable
+private fun TickingText(text: String, style: TextStyle) {
+    val measurer = rememberTextMeasurer()
+    val layout = measurer.measure(text, style, maxLines = 1)
+    val widest = remember(style) { ('0'..'9').maxBy { measurer.measure(it.toString(), style).size.width } }
+    val reserved = remember(text.length, style, widest) {
+        measurer.measure(text.map { if (it.isDigit()) widest else it }.joinToString(""), style, maxLines = 1).size
+    }
+    val size = with(LocalDensity.current) { DpSize(reserved.width.toDp(), reserved.height.toDp()) }
+    Canvas(Modifier.size(size)) { drawText(layout) }
 }
 
 /** A round transport button: the drawn sigil turns to the accent inside a ring when focused. */
