@@ -70,24 +70,24 @@
   when: vault_discord_webhook_url is defined
 
 # Matchers and endpoints share one name namespace in Proxmox's notification system, so this
-# can't also be called "discord" (that's the endpoint created above).
-- name: Notify | route everything to Discord too (builtin default-matcher keeps mailing root)
+# can't also be called "discord" (that's the endpoint created above). Warnings and errors only:
+# successful backups and other info-level events are noise in Discord (the builtin
+# default-matcher still mails root everything).
+- name: Notify | route warnings and errors to Discord
+  vars:
+    current: "{{ pve_notify_matchers.stdout | from_json | selectattr('name', 'equalto', 'discord-all') | first | default({}) }}"
+    wanted_severity: warning,error
+    comment: "Warnings and errors to Discord (failed backups, fencing, replication, updates)"
   ansible.builtin.command:
-    argv:
-      - pvesh
-      - create
-      - /cluster/notifications/matchers
-      - --name
-      - discord-all
-      - --mode
-      - all
-      - --target
-      - discord
-      - --comment
-      - "Mirror every notification to Discord (host/guest/backup/replication events)"
+    argv: >-
+      {{ ['pvesh', 'set' if current else 'create',
+          '/cluster/notifications/matchers' ~ ('/discord-all' if current else '')]
+         + ([] if current else ['--name', 'discord-all', '--target', 'discord'])
+         + ['--mode', 'all', '--match-severity', wanted_severity, '--comment', comment] }}
   when: >-
     vault_discord_webhook_url is defined and
-    'discord-all' not in (pve_notify_matchers.stdout | from_json | map(attribute='name') | list)
+    (not current or (current['match-severity'] | default([]) | join(',')) != wanted_severity
+     or current.comment | default('') != comment)
   changed_when: true
   run_once: true
 

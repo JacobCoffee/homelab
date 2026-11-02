@@ -6,7 +6,6 @@ resources:
   - ./blackbox-exporter/ks.yaml
   - ./prometheus-pve-exporter/ks.yaml
   - ./adguard-exporter/ks.yaml
-  - ./flux-notifications/ks.yaml
   - ./extra-monitors/ks.yaml
   - ./mimir/ks.yaml
   - ./loki/ks.yaml

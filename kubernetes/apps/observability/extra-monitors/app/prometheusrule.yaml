@@ -33,12 +33,20 @@ spec:
 
     - name: flux
       rules:
-        - alert: FluxReconciliationFailure
-          expr: max by (namespace, name, kind) (gotk_reconcile_condition{status="False", type="Ready"} == 1)
+        # gotk_resource_info comes from kube-state-metrics' customResourceState (see the
+        # kube-prometheus-stack values). Dependents of a broken object report DependencyNotReady;
+        # they're left out so one failure is one alert. All broken objects share one Discord message
+        # (no namespace label to split on), re-posted at most every 12h while still broken.
+        - alert: FluxResourceNotReady
+          expr: >-
+            max by (customresource_kind, exported_namespace, name, reason) (
+              gotk_resource_info{ready="False", suspended!="true", reason!="DependencyNotReady"}
+            ) == 1
           for: 15m
           labels: { severity: warning }
           annotations:
-            summary: "Flux {{ $labels.kind }}/{{ $labels.name }} ({{ $labels.namespace }}) is not Ready"
+            summary: "Flux {{ $labels.customresource_kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} not Ready ({{ $labels.reason }}) for 15m"
+            description: "Check with: flux get {{ $labels.customresource_kind | toLower }} -n {{ $labels.exported_namespace }} {{ $labels.name }}"
 
     - name: backups
       rules:

@@ -75,7 +75,7 @@
       "fieldConfig": { "defaults": { "thresholds": { "steps": [
         { "color": "green", "value": null }, { "color": "red", "value": 1 }
       ] } } },
-      "targets": [{ "expr": "count(gotk_reconcile_condition{type=\"Ready\", status=\"False\"} == 1)", "refId": "A" }]
+      "targets": [{ "expr": "count(gotk_resource_info{ready=\"False\", suspended!=\"true\"} == 1) or vector(0)", "refId": "A" }]
     },
     {
       "id": 6,

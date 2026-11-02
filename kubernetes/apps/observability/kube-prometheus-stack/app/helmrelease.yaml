@@ -55,6 +55,50 @@ spec:
       resources:
         requests: { cpu: 20m, memory: 64Mi }
         limits: { memory: 128Mi }
+      # Flux's controllers no longer export readiness (gotk_reconcile_condition is gone since Flux
+      # 2.1); per Flux's monitoring guide, kube-state-metrics turns the Flux objects' Ready
+      # condition into gotk_resource_info{ready="True|False|Unknown", suspended=...}. The
+      # FluxResourceNotReady rule (extra-monitors) alerts on it, replacing per-event Discord posts.
+      rbac:
+        extraRules:
+          - apiGroups:
+              - source.toolkit.fluxcd.io
+              - kustomize.toolkit.fluxcd.io
+              - helm.toolkit.fluxcd.io
+            resources: ["*"]
+            verbs: [list, watch]
+      customResourceState:
+        enabled: true
+        config:
+          spec:
+            resources:
+              - groupVersionKind: { group: kustomize.toolkit.fluxcd.io, version: v1, kind: Kustomization }
+                metricNamePrefix: gotk
+                metrics: &flux_metrics
+                  - name: resource_info
+                    help: The current state of a Flux resource.
+                    each:
+                      type: Info
+                      info:
+                        labelsFromPath:
+                          name: [metadata, name]
+                    labelsFromPath:
+                      exported_namespace: [metadata, namespace]
+                      ready: [status, conditions, "[type=Ready]", status]
+                      reason: [status, conditions, "[type=Ready]", reason]
+                      suspended: [spec, suspend]
+              - groupVersionKind: { group: helm.toolkit.fluxcd.io, version: v2, kind: HelmRelease }
+                metricNamePrefix: gotk
+                metrics: *flux_metrics
+              - groupVersionKind: { group: source.toolkit.fluxcd.io, version: v1, kind: GitRepository }
+                metricNamePrefix: gotk
+                metrics: *flux_metrics
+              - groupVersionKind: { group: source.toolkit.fluxcd.io, version: v1, kind: OCIRepository }
+                metricNamePrefix: gotk
+                metrics: *flux_metrics
+              - groupVersionKind: { group: source.toolkit.fluxcd.io, version: v1, kind: HelmRepository }
+                metricNamePrefix: gotk
+                metrics: *flux_metrics
 
     prometheus:
       prometheusSpec:
@@ -113,12 +157,17 @@ spec:
           group_by: ["alertname", "namespace"]
           group_wait: 30s
           group_interval: 5m
-          repeat_interval: 4h
+          # A still-broken thing re-posts twice a day, not every few hours.
+          repeat_interval: 12h
           routes:
-            # Watchdog is the "alerting pipeline is alive" heartbeat, not an incident.
+            # Watchdog is the "alerting pipeline is alive" heartbeat, not an incident;
+            # InfoInhibitor and info/none-severity rules are context, not pages.
             - receiver: "null"
               matchers:
-                - alertname = "Watchdog"
+                - alertname =~ "Watchdog|InfoInhibitor"
+            - receiver: "null"
+              matchers:
+                - severity =~ "info|none|"
         receivers:
           - name: "null"
           - name: discord
