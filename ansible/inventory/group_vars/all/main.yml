@@ -70,6 +70,8 @@ k8s_nodes:
   - { name: hnk8s02, host: hnhv01, vmid: 202, ip: 10.10.30.12, mac: "02:10:10:30:00:12", cores: 4, memory: 12288, disk_gb: 64 }
   - { name: hnk8s03, host: hnhv02, vmid: 203, ip: 10.10.30.13, mac: "02:10:10:30:00:13", cores: 4, memory: 8192, disk_gb: 64 }
   - { name: hnk8s04, host: hnhv02, vmid: 204, ip: 10.10.30.14, mac: "02:10:10:30:00:14", cores: 2, memory: 3072, disk_gb: 64, role: worker }
+  # Workloads with room to grow, on the host that has the RAM (hnhv02 is full).
+  - { name: hnk8s05, host: hnhv01, vmid: 205, ip: 10.10.30.15, mac: "02:10:10:30:00:15", cores: 4, memory: 16384, disk_gb: 64, role: worker }
 
 # Home Assistant OS on the node with the Aeotec Z-Wave/Zigbee stick (USB passthrough).
 home_assistant: { name: hnha01, host: hnhv02, vmid: 301, ip: 10.10.10.20, mac: "02:10:10:10:00:20", usb: ["10c4:ea60"] }

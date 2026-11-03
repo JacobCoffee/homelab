@@ -17,7 +17,7 @@ which every node trusts from install.
 | `homeassistant` | node in `home_assistant.host` (`hnhv02`) | VM 301 `hnha01` (10.10.10.20): Home Assistant OS on INT with the Aeotec Z-Wave/Zigbee stick passed through |
 | `pve_csi` | all nodes | Proxmox user/role/token for the Proxmox CSI plugin, captured straight into `kubernetes/apps/storage/proxmox-csi-plugin/app/secret.sops.yaml`; skipped once that file exists, rotates the token if it's ever missing |
 | `media_nfs` | node in `media_nfs.host` (`hnhv01`) | VM 401 `hnnfs01` (10.10.30.20): Debian 13 + cloud-init, nfs-kernel-server exporting `/srv/media` to the K8S zone (temporary, until a NAS takes over) |
-| `talos` | nodes in `k8s_nodes`, then the Mac | VMs 201–204 `hnk8s01`–`04` (10.10.30.11–14, VIP .10; `hnk8s04` a worker): Talos Kubernetes, Cilium, then Flux takes over from [`../kubernetes`](../kubernetes) |
+| `talos` | nodes in `k8s_nodes`, then the Mac | VMs 201–205 `hnk8s01`–`05` (10.10.30.11–15, VIP .10; `hnk8s04` and `hnk8s05` workers): Talos Kubernetes, Cilium, then Flux takes over from [`../kubernetes`](../kubernetes) |
 | `pve_backup` | all nodes | ZFS dataset `vmdata/backups` registered as `dir` storage `backup`, plus one cluster-wide nightly vzdump job (snapshot mode, zstd, keep-daily 7/keep-weekly 4) for VMs/CTs 100/101/102/110/111/301/401 -- see "Backups" below |
 | `pve_theme` | all nodes | [ProxMorph](https://github.com/IT-BAER/proxmorph) themes (pinned release, sha256-checked) in the Color Theme selector, with "UniFi (Auto)" (UniFi Light/UniFi following the browser's light/dark setting) as the default for browsers that haven't picked one; its APT hook re-patches after Proxmox updates. Revert with `bash /root/proxmorph-<ver>/install.sh uninstall` |
 | `pve_oidc` | all nodes (realm config applied once, `/etc/pve` is cluster-shared) | Proxmox login gets a `pocket-id` OpenID realm (issuer `https://id.z7x.org`, client `proxmox`, `scripts/pocket-id.py` manages the OIDC client + `vault_pocket_id_proxmox_secret`): `preferred_username` as the username claim, `groups` claim with autocreate, so Pocket ID's `lab-admins` group becomes PVE group `lab-admins-pocket-id`, pre-created here with `Administrator` on `/`. Login as `jacob@pocket-id` once a passkey is registered (My Account on id.z7x.org). `root@pam` is untouched as break-glass |
@@ -282,7 +282,8 @@ This HA release keeps its HTTP settings in `.storage/http`, not `configuration.y
 ## Kubernetes (Talos)
 
 Talos VMs (`k8s_nodes` in `group_vars/all/main.yml`): three control planes (etcd + workloads;
-two on `hnhv01`, one on `hnhv02`) and workers (`role: worker`, e.g. `hnk8s04` on `hnhv02`).
+two on `hnhv01`, one on `hnhv02`) and workers (`role: worker`: `hnk8s04` on `hnhv02`, `hnk8s05`
+on `hnhv01`, which has the RAM to spare).
 Losing `hnhv01` takes etcd down until it returns; moving a control plane to a third host fixes
 that (a control plane can't become a worker in place: Talos reinstalls it). Control planes get
 `kubernetes/talos/patches/controlplane.yaml` on top of `cluster.yaml`. The role creates the VMs

@@ -7,6 +7,9 @@ resources:
   - ./plugins-secret.sops.yaml
   - ./sso-install-job.yaml
   - ./plugins-job.yaml
+# Nightly restic backup of the config PVC (users, watch history, plugins) to R2.
+components:
+  - ../../../../components/volsync
 configMapGenerator:
   - name: jellyfin-sso-install-script
     files:
