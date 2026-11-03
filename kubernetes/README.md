@@ -401,8 +401,15 @@ Kubernetes, Cilium bootstrap). Patch, minor and digest updates under `kubernetes
 `mise.toml` merge to main by themselves once the release is 3 days old, and Flux deploys them.
 Every HelmRelease rolls back a failed upgrade (`flux/cluster/apps.yaml` patches that into all app
 Kustomizations, so they mustn't set `spec.patches` themselves), and FluxResourceNotReady alerts
-Discord. Majors and Talos/Kubernetes wait for approval on the Dependency Dashboard issue, then
-come as PRs to read before merging; so do the Fire TV app's dependencies and the Cabotage module.
+Discord. Majors (label `major`) and Talos/Kubernetes (label `talos`) open a PR straight away
+and never merge on their own: GitHub notifies you, read the release notes, merge. The Fire TV
+app's dependencies and the Cabotage module (held until a release past v1.9.3, see
+`../terraform/cabotage/README.md`) come as PRs too.
+
+The `*arr` images (`ghcr.io/home-operations/*`) are built from Servarr's **develop** branch, so a
+new major is often a pre-release upstream, and its database migration can't be undone: copy
+`/config/*.db` out of the pod before merging. Uptime Kuma's seed Job and `scripts/lab-logins.py`
+use `uptime-kuma-api2`; the original `uptime-kuma-api` can't talk to Kuma 2.
 
 A merged Talos or Kubernetes bump only changes config for new installs; upgrade the running
 nodes one at a time, then Kubernetes:
