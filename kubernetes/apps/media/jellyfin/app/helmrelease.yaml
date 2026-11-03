@@ -41,10 +41,13 @@ spec:
                     port: *port
                   initialDelaySeconds: 30
                   periodSeconds: 15
+            # The memory request is what it actually holds with the plugins and the live TV
+            # guide loaded (~2Gi). At 512Mi the scheduler packed it onto hnk8s03 (8GB, also
+            # cabotage's stack) next to Dispatcharr, which ran the node out of memory.
             resources:
               requests:
                 cpu: 500m
-                memory: 512Mi
+                memory: 2Gi
               limits:
                 cpu: "3"
                 memory: 4Gi

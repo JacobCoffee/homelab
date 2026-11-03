@@ -77,6 +77,15 @@ spec:
       securityContext:
         seccompProfile:
           type: RuntimeDefault
+      # Not on Jellyfin's node: both are busiest at the same time (guide refreshes, a channel
+      # being watched), and together they ran hnk8s03 out of memory once.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: jellyfin
+              topologyKey: kubernetes.io/hostname
     service:
       app:
         controller: dispatcharr
