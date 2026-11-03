@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vpn
+  labels:
+    # gluetun needs NET_ADMIN, which the cluster default "baseline" PodSecurity level forbids.
+    pod-security.kubernetes.io/enforce: privileged

@@ -9,6 +9,8 @@
 		// tags the proxies it creates for tenant apps; tag:cabotage is its tenant-device prefix.
 		"tag:cabotage-operator": ["autogroup:admin"],
 		"tag:cabotage":          ["tag:cabotage-operator"],
+		// AirVPN exit node (kubernetes/apps/vpn/airvpn-exit): internet through the VPN on demand.
+		"tag:vpn-exit": ["autogroup:admin"],
 	},
 
 	// OPNsense's lab routes go live without a click in the admin console.
@@ -18,11 +20,14 @@
 			"{{ cidr }}": ["tag:router"],
 {% endfor %}
 		},
+		"exitNode": ["tag:vpn-exit"],
 	},
 
 	"grants": [
 		// You and anyone you invite reach every device and every lab subnet.
 		// Tagged devices start nothing on their own; replies to your connections still flow.
 		{"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
+		// "*" stops at the tailnet; picking an exit node needs the internet granted separately.
+		{"src": ["autogroup:member"], "dst": ["autogroup:internet"], "ip": ["*"]},
 	],
 }

@@ -1,0 +1,116 @@
+# Tailscale exit node `airvpn`: pick it in the Tailscale menu and your internet traffic leaves
+# through AirVPN (device `vpn`, its own WireGuard key: one key can only be connected once, so it
+# can't share the torrent tunnel's).
+#
+# One pod, one network namespace owned by gluetun (ghcr.io/qdm12/gluetun): its kill switch only
+# lets traffic out through the WireGuard tunnel, plus FIREWALL_OUTBOUND_SUBNETS -- the pod and
+# service networks, the K8S zone (Cilium's socket load balancing turns the kubernetes Service into
+# the control planes' 10.10.30.x:6443, which containerboot needs for its state Secret) and the
+# house LAN (so a device at home can reach the exit node directly instead of through a relay).
+# Tailscale (containerboot, userspace networking: no tun, no capabilities) runs inside that
+# namespace, so everything it forwards for exit-node clients, and its own control traffic, goes
+# through the VPN. DNS for the pod is gluetun's resolver on 127.0.0.1 (DNS over TLS through the
+# tunnel), which is also what exit-node clients' lookups use: no DNS outside the VPN.
+#
+# Region: SERVER_COUNTRIES picks from gluetun's AirVPN server list; the device key works on any.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: airvpn-exit
+  namespace: vpn
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      airvpn-exit:
+        strategy: Recreate
+        serviceAccount:
+          identifier: airvpn-exit
+        containers:
+          gluetun:
+            image:
+              repository: ghcr.io/qdm12/gluetun
+              tag: "v3.41.3"
+            env:
+              TZ: America/Chicago
+              VPN_SERVICE_PROVIDER: airvpn
+              VPN_TYPE: wireguard
+              SERVER_COUNTRIES: United States
+              FIREWALL_OUTBOUND_SUBNETS: 10.244.0.0/16,10.96.0.0/12,10.10.30.0/24,192.168.1.0/24
+              WIREGUARD_PRIVATE_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: airvpn-exit
+                    key: WIREGUARD_PRIVATE_KEY
+              WIREGUARD_PRESHARED_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: airvpn-exit
+                    key: WIREGUARD_PRESHARED_KEY
+              WIREGUARD_ADDRESSES:
+                valueFrom:
+                  secretKeyRef:
+                    name: airvpn-exit
+                    key: WIREGUARD_ADDRESSES
+            securityContext:
+              runAsUser: 0
+              runAsGroup: 0
+              readOnlyRootFilesystem: false
+              capabilities:
+                add: ["NET_ADMIN"]
+                drop: ["ALL"]
+            resources:
+              requests:
+                cpu: 25m
+                memory: 64Mi
+              limits:
+                memory: 256Mi
+          tailscale:
+            image:
+              repository: ghcr.io/tailscale/tailscale
+              tag: "v1.104.4"
+            env:
+              TS_HOSTNAME: airvpn
+              TS_USERSPACE: "true"
+              TS_ACCEPT_DNS: "false"
+              TS_AUTH_ONCE: "true"
+              TS_KUBE_SECRET: airvpn-exit-tailscale-state
+              TS_EXTRA_ARGS: --advertise-tags=tag:vpn-exit --advertise-exit-node
+              TS_SOCKET: /tmp/tailscaled.sock
+              # OAuth client secret (tag:vpn-exit, auth_keys) with ?ephemeral=false&preauthorized=true,
+              # from vault_vpn_exit_tailscale_oauth_client_secret; only used for the first login.
+              TS_AUTHKEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: airvpn-exit
+                    key: TS_AUTHKEY
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+            resources:
+              requests:
+                cpu: 25m
+                memory: 64Mi
+              limits:
+                memory: 256Mi
+    defaultPodOptions:
+      dnsPolicy: None
+      dnsConfig:
+        nameservers: [127.0.0.1]
+    serviceAccount:
+      airvpn-exit: {}
+    persistence:
+      tmp:
+        type: emptyDir
+        advancedMounts:
+          airvpn-exit:
+            tailscale:
+              - path: /tmp

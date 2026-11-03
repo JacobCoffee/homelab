@@ -10,7 +10,7 @@ which every node trusts from install.
 | `pve_cluster` | all nodes | one cluster `homelab`: the first node creates it, every other node joins over node-to-node SSH (no password); a node with guests is refused; joined nodes get their ZFS pools registered and HA turned on |
 | `pve_sdn` | all nodes | SDN VXLAN zone `lab` over the house LAN with one vnet per lab zone, so lab guests can run on any node |
 | `pve_acme` | all nodes | trusted pveproxy cert per node via Let's Encrypt DNS-01 (Cloudflare): account `default` and the `cloudflare` challenge plugin live cluster-wide in `/etc/pve`, each node gets `acmedomain0=<node>.internal.z7x.org,plugin=cloudflare` and a cert ordered once it's missing, self-signed, wrong name, or <30 days from expiry |
-| `tailscale_tailnet` | the Mac (API) | tailnet policy pushed from [`roles/tailscale_tailnet/templates/policy.hujson.j2`](roles/tailscale_tailnet/templates/policy.hujson.j2): tags `tag:pve`/`tag:router`, lab routes auto-approved, members reach everything |
+| `tailscale_tailnet` | the Mac (API) | tailnet policy pushed from [`roles/tailscale_tailnet/templates/policy.hujson.j2`](roles/tailscale_tailnet/templates/policy.hujson.j2): tags `tag:pve`/`tag:router`/`tag:vpn-exit`, lab routes and the `airvpn` exit node auto-approved, members reach everything and may use exit nodes |
 | `tailscale` | all nodes | node joined to your tailnet as `tag:pve` (`--accept-dns=false`), reachable even when OPNsense is down |
 | `opnsense` | nodes in `firewalls` (`hnhv01`, `hnhv02`) | VMs 100 `hnfw01` / 110 `hnfw02`: OPNsense 26.7 nano CARP pair, bootstrapped unattended, kept patched, sharing the lab subnets on Tailscale (see below); also forwards WAN 853/8443 to AdGuard for Fire TV DNS-over-TLS (`tasks/firetv_dot.yml`, see `../fire-tv/DECISIONS.md` "DNS") |
 | `adguard` | nodes in `dns_servers` (`hnhv01`, `hnhv02`) | CTs 101 `hndns01` (10.10.10.54) / 111 `hndns02` (10.10.10.55): AdGuard Home, with keepalived floating the lab DNS address 10.10.10.53 between them; also registers the Fire TV's AdGuard client and telemetry blocklist (`tasks/firetv_dot.yml`) -- its DoT/HTTPS TLS cert is pushed separately by a k8s CronJob (`../kubernetes/apps/network/adguard-dot`) |
@@ -81,6 +81,53 @@ would have to be gone).
 Already-connected devices are left alone, so to move the nodes to another tailnet: run
 `tailscale logout` on each, swap the token, re-run `site.yml`. (Moving OPNsense this way is
 untested; the plugin only passes the auth key when tailscaled has no logged-in profile.)
+
+### Windows desktop (`hnwjacob01`)
+
+Not managed by ansible; joined by hand over its OpenSSH (`jacob@192.168.1.240`). Tailscale MSI
+installed with `TS_UNATTENDEDMODE=always`, then `tailscale up --hostname=hnwjacob01 --unattended
+--accept-routes` with a single-use, untagged key minted from `tailscale_api_key`, so it's a normal
+device owned by you (reaches the lab like the Mac) rather than a tag. Key expiry is disabled on
+the device (`POST /device/<id>/key {"keyExpiryDisabled": true}`) so it doesn't fall off the tailnet.
+The Tailscale adapter is a Private network, so Windows' stock `OpenSSH-Server-In-TCP` rule
+(Private profile) already admits SSH over the tailnet: `ssh jacob@hnwjacob01` from anywhere.
+Remote Desktop is on, with the `RemoteDesktop-UserMode-In-TCP/UDP` rules scoped to the tailnet
+(`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and `LocalSubnet`. From the Mac: Windows App → Add PC →
+`hnwjacob01`, signing in with the Microsoft account's email and password.
+
+**Apollo/Moonlight game streaming.** [Apollo](https://github.com/ClassicOldSong/Apollo) (a
+Sunshine fork) v0.4.6 is installed as `ApolloService` (Automatic start), hash-verified against
+the published release digest (`winget show` also carries the same SHA-256) since the installer
+isn't Authenticode-signed. Installed with the official NSIS installer run silently (`/S`), not
+winget's cask (winget's manifest is typed `portable` and skips the service/driver setup
+`install-service.bat`/SudoVDA does). The SudoVDA virtual display driver installed alongside it
+(`ROOT\DISPLAY\0000`, `CM_PROB_NONE`). Web UI creds (`sunshine.exe --creds <user> <pass>`, run
+once with the service stopped) live in the vault as `vault_apollo_username` /
+`vault_apollo_password`.
+
+Firewall: the installer's own `Apollo` rules (TCP/UDP, any port, any profile, any remote
+address) are disabled; two scoped rules replace them, matching the RDP rules' addresses
+(`100.64.0.0/10`, `fd7a:115c:a1e0::/48`, `LocalSubnet`) on the Private profile only: TCP
+47984/47989/47990/48010 and UDP 47998-48000. Apollo's own `origin_web_ui_allowed = lan` check
+(`sunshine.conf`) already treats `100.64.0.0/10` and `fc00::/7` as LAN -- this fork's
+`net::lan_ips_v4`/`v6` include the Tailscale/CGNAT ranges, unlike upstream Sunshine -- so the
+default `lan` setting (kept, just made explicit in the config) covers the tailnet without
+opening the web UI to `wan`.
+
+From the Mac: `brew install --cask moonlight` installs Moonlight 6.2.0 and the `moonlight` CLI.
+Pair unattended with `moonlight pair hnwjacob01 --pin <4 digits>` (from
+`/Applications/Moonlight.app/Contents/MacOS`, since the Homebrew-linked binary can't find its
+bundled QML resources run directly) in the background, while logging into Apollo's web API
+(`POST /api/login {"username":...,"password":...}` for a session cookie, then
+`POST /api/pin {"pin":"<same 4 digits>","name":"<device>"}`) with the vault creds -- confirm with
+`moonlight list hnwjacob01`. **Reboot once after installing over SSH**: until then Apollo finds
+no display (`Currently available display devices: []`, `Failed to collect path source data or
+none was available!` every 5s, no working encoder) and a launch returns `503 Failed to initialize
+video capture/encoding`, though the monitor is on and the console unlocked (Apollo issue #892:
+installed from a remote session). After `shutdown /r` it lists the XV275K at 3840x2160@144, finds
+NVENC H.264/HEVC (no AV1 on the 2070 SUPER), and `moonlight stream hnwjacob01 Desktop` streams.
+sshd is not set to start on boot: after a reboot only Apollo, RDP and Tailscale come back until
+`Set-Service sshd -StartupType Automatic` is run on the PC.
 
 ## OPNsense
 

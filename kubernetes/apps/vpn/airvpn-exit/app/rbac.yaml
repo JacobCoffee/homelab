@@ -1,0 +1,32 @@
+# containerboot keeps the node's Tailscale state (keys, node identity) in a Secret it creates and
+# updates, so a restarted pod comes back as the same exit node without a new login.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airvpn-exit
+  namespace: vpn
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [airvpn-exit-tailscale-state]
+    verbs: [get, update, patch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airvpn-exit
+  namespace: vpn
+subjects:
+  - kind: ServiceAccount
+    name: airvpn-exit
+    namespace: vpn
+roleRef:
+  kind: Role
+  name: airvpn-exit
+  apiGroup: rbac.authorization.k8s.io
