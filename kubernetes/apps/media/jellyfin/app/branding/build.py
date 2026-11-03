@@ -8,7 +8,7 @@
   logo.svg    the header logo: a lit 35mm film gate and HOMENET set in Antonio (fonts/, OFL),
               outlined to paths so Jellyfin needs no webfont for it. plugins.py inlines it into
               the Custom CSS as a data URI.
-  splash.jpg  the splash screen (the backdrop behind Jellyfin's login and server pages):
+  splash.webp the splash screen (the backdrop behind Jellyfin's login and server pages):
               splash.html's WebGL shader rendered at 2560x1440 in headless Chromium.
 
 Both outputs are committed; ../plugins.py uploads the splash and sets the CSS. Re-run this after
@@ -17,6 +17,7 @@ changing splash.html or the logo below, then commit.
 
 from __future__ import annotations
 
+import base64
 import io
 import sys
 from pathlib import Path
@@ -104,11 +105,10 @@ def build_splash(width: int = 2560, height: int = 1440) -> None:
         page.wait_for_function("window.splashDone === true", timeout=300_000)
         data = page.evaluate("document.getElementById('c').toDataURL('image/png')")
         browser.close()
-    import base64
-
+    # WebP, not JPEG/PNG: Flux's source-controller leaves *.jpg and *.png out of its artifacts.
     png = Image.open(io.BytesIO(base64.b64decode(data.split(",", 1)[1]))).convert("RGB")
-    png.save(HERE / "splash.jpg", "JPEG", quality=86, optimize=True, progressive=True, subsampling=0)
-    print(f"wrote splash.jpg ({width}x{height}, {(HERE / 'splash.jpg').stat().st_size // 1024} KiB)")
+    png.save(HERE / "splash.webp", "WEBP", quality=88, method=6)
+    print(f"wrote splash.webp ({width}x{height}, {(HERE / 'splash.webp').stat().st_size // 1024} KiB)")
 
 
 if __name__ == "__main__":

@@ -191,7 +191,7 @@ scripts/media-secrets.py                                                        
 
 Branding (`app/branding/`): the header logo (a lit 35mm film gate and HOMENET, Antonio outlined
 to paths, `logo.svg`) replaces Jellyfin's mark and server name through the same Custom CSS block,
-and the splash screen (`splash.jpg`, the view from a projection booth, rendered from the WebGL
+and the splash screen (`splash.webp`, the view from a projection booth, rendered from the WebGL
 shader in `splash.html`) is the backdrop behind the login and server pages, in the browser and
 the official TV app (Wholphin doesn't show it). Change either, run `branding/build.py`, commit;
 the Job uploads a new splash when its hash differs from the one recorded in the CSS block.

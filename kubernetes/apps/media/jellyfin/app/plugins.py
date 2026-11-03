@@ -13,7 +13,7 @@
    Modern layout, pinned, then the HomeNet logo (branding/logo.svg, inlined) in place of
    Jellyfin's mark and server name in the header; all one marked block at the very top of the
    Custom CSS (an @import after any other rule is ignored). The SSO login-button CSS after it is
-   untouched. The splash screen (branding/splash.jpg, the backdrop behind the login and server
+   untouched. The splash screen (branding/splash.webp, the backdrop behind the login and server
    pages) is uploaded and switched on; its hash in the block says which one is up.
 4. Libraries and their options: Movies, Shows and Music on the arrs' root folders under
    /media/library (created if missing, the folder added if a library lost it), English subtitles
@@ -161,13 +161,13 @@ def set_scripts() -> None:
 
 
 def set_branding() -> None:
-    splash = (BRANDING / "splash.jpg").read_bytes()
+    splash = (BRANDING / "splash.webp").read_bytes()
     sha = hashlib.sha256(splash).hexdigest()[:16]
     _, branding = call("GET", "/System/Configuration/branding")
     css = branding.get("CustomCss") or ""
     # Jellyfin re-encodes the splash it serves, so the upload is tracked by its hash in the block.
     if f"/* splash {sha} */" not in css or not branding.get("SplashscreenEnabled"):
-        raw("POST", "/Branding/Splashscreen", base64.b64encode(splash), "image/jpeg")
+        raw("POST", "/Branding/Splashscreen", base64.b64encode(splash), "image/webp")
         print(f"branding: splash {sha} uploaded")
         _, branding = call("GET", "/System/Configuration/branding")
         css = branding.get("CustomCss") or ""

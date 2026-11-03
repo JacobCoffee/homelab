@@ -20,5 +20,5 @@ configMapGenerator:
   # changes the Job's pod template, so Flux re-runs it.
   - name: jellyfin-branding
     files:
-      - ./branding/splash.jpg
+      - ./branding/splash.webp
       - ./branding/logo.svg
