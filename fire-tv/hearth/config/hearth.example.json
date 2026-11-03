@@ -28,6 +28,7 @@
       "com.disney.disneyplus",
       "com.amazon.firetv.youtube",
       "com.hulu.plus",
+      "com.apple.atve.amazon.appletv",
       "com.amazon.firebat",
       "com.nvidia.geforcenow",
       "gamepass.fire.tv",
@@ -35,7 +36,8 @@
       "com.spotify.tv.android"
     ],
     "hidden": [
-      "com.amazon.smarthomemapviewapp"
+      "com.amazon.smarthomemapviewapp",
+      "com.netflix.ninja"
     ]
   },
   "tv": {
