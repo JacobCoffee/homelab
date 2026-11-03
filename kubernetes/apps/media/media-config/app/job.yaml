@@ -29,6 +29,14 @@ spec:
                 name: arr-api-keys
             - secretRef:
                 name: media-config
+          env:
+            # Jellyfin admin key (scripts/jellyfin-sso-key.py), for the *arrs' library-refresh hook.
+            - name: JELLYFIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jellyfin-sso
+                  key: JELLYFIN_API_KEY
+                  optional: true
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

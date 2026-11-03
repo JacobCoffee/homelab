@@ -9,12 +9,14 @@ SABnzbd   Folders: completed jobs land in /media/downloads/usenet/<category>, in
 Prowlarr  Sonarr/Radarr/Lidarr as full-sync applications, so every indexer added here appears in
           them by itself; NZBFinder and Anime Tosho (the animetosho.net successor; the original
           animetosho.org shut its feed down in October 2026) as indexers.
-*arrs     SABnzbd as download client (its category per app) and the /media/library/<kind> root
-          folder.
+*arrs     SABnzbd as download client (its category per app), the /media/library/<kind> root
+          folder, and a Jellyfin connection that refreshes the library on every import, upgrade,
+          rename or delete (Jellyfin can't watch the NFS tree for changes itself).
 
 Each step reads the current state and writes only what differs, so re-runs are safe. A step whose
-credential is empty (NEWSHOSTING_USERNAME/PASSWORD, NZBFINDER_API_KEY) is skipped with a note:
-scripts/media-config-secrets.py fills them from the vault.
+credential is empty (NEWSHOSTING_USERNAME/PASSWORD, NZBFINDER_API_KEY, JELLYFIN_API_KEY) is
+skipped with a note: scripts/media-config-secrets.py fills the first three from the vault,
+JELLYFIN_API_KEY comes from the jellyfin-sso Secret (scripts/jellyfin-sso-key.py).
 """
 
 import json
@@ -36,6 +38,16 @@ ARRS = [
     ("Radarr", f"http://radarr.{SVC}:7878", "v3", os.environ["RADARR_API_KEY"], "movieCategory", "movies", "/media/library/movies"),
     ("Lidarr", f"http://lidarr.{SVC}:8686", "v1", os.environ["LIDARR_API_KEY"], "musicCategory", "music", "/media/library/music"),
 ]
+JELLYFIN_KEY = os.environ.get("JELLYFIN_API_KEY", "")
+# Events after which each app asks Jellyfin to rescan what changed.
+JELLYFIN_EVENTS = {
+    "Sonarr": ["onDownload", "onUpgrade", "onImportComplete", "onRename", "onSeriesDelete",
+               "onEpisodeFileDelete", "onEpisodeFileDeleteForUpgrade"],
+    "Radarr": ["onDownload", "onUpgrade", "onRename", "onMovieDelete", "onMovieFileDelete",
+               "onMovieFileDeleteForUpgrade"],
+    "Lidarr": ["onReleaseImport", "onUpgrade", "onRename", "onArtistDelete", "onAlbumDelete",
+               "onTrackRetag"],
+}
 
 USENET = "/media/downloads/usenet"
 CATEGORIES = ["movies", "tv", "music", "books"]
@@ -220,10 +232,23 @@ def configure_arr(name: str, url: str, version: str, key: str, cat_field: str, c
     print(f"{name}: root folder {root} added")
 
 
+def configure_jellyfin_connection(name: str, url: str, version: str, key: str, *_) -> None:
+    if not JELLYFIN_KEY:
+        print(f"{name}: JELLYFIN_API_KEY not set, Jellyfin connection skipped")
+        return
+    api = f"{url}/api/{version}"
+    schema = next(s for s in call("GET", f"{api}/notification/schema", key) if s["implementation"] == "MediaBrowser")
+    upsert(f"{name} connection", f"{api}/notification", key, call("GET", f"{api}/notification", key),
+           schema, "Jellyfin", {event: True for event in JELLYFIN_EVENTS[name]},
+           {"host": f"jellyfin.{SVC}", "port": 8096, "useSsl": False, "apiKey": JELLYFIN_KEY,
+            "notify": False, "updateLibrary": True})
+
+
 def main() -> int:
     configure_sabnzbd()
     for arr in ARRS:
         configure_arr(*arr)
+        configure_jellyfin_connection(*arr)
     configure_prowlarr()
     print("done")
     return 0
