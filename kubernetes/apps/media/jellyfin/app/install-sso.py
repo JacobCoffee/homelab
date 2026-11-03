@@ -68,7 +68,9 @@ PROVIDER_CONFIG = {
     "OverrideDefaultScopes": True,
     "OidAuthorizationParameters": None,
     "DefaultProvider": None,
-    "SchemeOverride": None,
+    # Envoy talks plain HTTP to Jellyfin, so without this the plugin builds an http:// callback,
+    # which Pocket ID rejects (only https://media.z7x.org/sso/OID/redirect/pocket-id is registered).
+    "SchemeOverride": "https",
     "PortOverride": None,
     "NewPath": True,
     "CanonicalLinks": {},
