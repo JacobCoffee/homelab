@@ -245,7 +245,15 @@ HelmRelease here.
   override convention) so Recyclarr and Unpackerr already know them, plus SABnzbd's (its image
   writes `SABNZBD__API_KEY` into `sabnzbd.ini` on start). Bazarr (Python, no such env
   override) and its "Settings" links to Sonarr/Radarr stay manual UI steps, along with the
-  Jellyfin admin account and Seerr's first-run wizard (which needs that Jellyfin account).
+  Jellyfin admin account.
+- **Seerr:** Jellyfin at `jellyfin.media.svc.cluster.local:8096` (external `https://media.z7x.org`),
+  Movies and Shows libraries enabled, Radarr/Sonarr as default servers with the 2160p-first
+  profiles and `/media/library/{movies,tv}`. Settings live in `settings.json` on its PVC. Its
+  setup wizard can strand you: once a media server is saved, `/setup` jumps straight to the
+  libraries step, and without a session cookie every call there is a 401 ("Unable to load
+  libraries"). Finish it with Seerr's own API key instead (`main.apiKey` in `settings.json`,
+  `X-Api-Key`): `POST /api/v1/settings/jellyfin/library/sync`, `PUT .../library/<id>`
+  `{"enabled":true}`, `POST /api/v1/settings/{radarr,sonarr}`, `POST /api/v1/settings/initialize`.
 - **Usenet wiring (`apps/media/media-config`):** a Job (`app/configure.py`) puts TRaSH's SABnzbd
   settings in place (completed jobs in `/media/downloads/usenet/<category>`, in-progress in
   `.../usenet/incomplete`, categories movies/tv/music/books, the unwanted-extension blacklist
