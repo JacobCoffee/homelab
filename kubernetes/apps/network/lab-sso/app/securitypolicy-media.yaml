@@ -38,6 +38,9 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: wizarr-internal
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: jellyball
   oidc:
     provider:
       issuer: https://id.z7x.org

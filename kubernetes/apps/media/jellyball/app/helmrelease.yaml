@@ -1,0 +1,132 @@
+# Jellyball (github.com/DarthBitBeard/Jellyball): a live-sports tuner. You tick teams in its
+# dashboard (jellyball.z7x.org); it finds each game on several stream-aggregator sites, keeps a
+# ranked list of backups per channel and serves Jellyfin one continuous HLS stream per channel,
+# switching sources mid-game without breaking playback. Jellyfin reads its M3U (/playlist.m3u)
+# and XMLTV guide (/epg.xml) directly, as a second tuner next to Dispatcharr's (setup.py): the
+# seamless failover relies on Jellyfin's ffmpeg reading Jellyball's HLS itself.
+#
+# Its egress is direct, not through gluetun: it only downloads, nothing seeds.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: jellyball
+  namespace: media
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      jellyball:
+        # SQLite on an RWO volume: never two pods on the same database.
+        strategy: Recreate
+        containers:
+          app:
+            image:
+              repository: ghcr.io/darthbitbeard/jellyball
+              tag: "3.0.0"
+            env:
+              TZ: America/Chicago
+              # Stream links in the playlist are built from this, not from whoever fetched it, so
+              # opening the M3U through jellyball.z7x.org can't hand Jellyfin unreachable URLs.
+              PUBLIC_BASE_URL: http://jellyball.media.svc.cluster.local:8000
+              # It asks Jellyfin to refresh its guide whenever the channels or schedule change.
+              JELLYFIN_URL: http://jellyfin.media.svc.cluster.local:8096
+              JELLYFIN_API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: jellyfin-sso
+                    key: JELLYFIN_API_KEY
+              # Sign-in is the gateway's passkey check (network/lab-sso). Jellyball only has Basic
+              # auth, and on a non-loopback bind it can't be turned off, so the route sends these
+              # credentials on every request it forwards (route below). They're no secret: the
+              # gate is the passkey, and CiliumNetworkPolicy lab-sso-ingress keeps everything but
+              # the gateway and the media/status/observability pods off this pod, the same trust
+              # Dispatcharr's X-Lab-User header gets. The playback paths (/playlist.m3u, /epg.xml,
+              # /stream/*) never needed a password.
+              DASHBOARD_USERNAME: admin
+              DASHBOARD_PASSWORD: behind-lab-sso
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: &port 8000
+                  initialDelaySeconds: 20
+                  periodSeconds: 30
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthz
+                    port: *port
+                  periodSeconds: 15
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+            resources:
+              requests:
+                cpu: 100m
+                memory: 384Mi
+              # Headless Chromium (Cloudflare fallback) and ffmpeg (Multi-View, software
+              # encoding here) are the heavy parts; upstream's compose caps it at 2g.
+              limits:
+                memory: 2Gi
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+    service:
+      app:
+        controller: jellyball
+        ports:
+          http:
+            port: *port
+    persistence:
+      # sports_proxy.db (channels, team picks, settings), the relay signing key and its log.
+      data:
+        type: persistentVolumeClaim
+        storageClass: proxmox-vmdata
+        accessMode: ReadWriteOnce
+        size: 1Gi
+        globalMounts:
+          - path: /app/data
+      # Scratch for the app and Chromium, whose per-launch profile lives under $HOME.
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /tmp
+          - path: /run
+            subPath: run
+          - path: /home/jellyball
+            subPath: home
+    route:
+      app:
+        hostnames: ["jellyball.z7x.org"]
+        parentRefs:
+          - name: internal
+            namespace: network
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: app
+                port: *port
+            filters:
+              # admin:behind-lab-sso (DASHBOARD_PASSWORD above). Set, not add: whatever a client
+              # sends in this header is replaced.
+              - type: RequestHeaderModifier
+                requestHeaderModifier:
+                  set:
+                    - name: Authorization
+                      value: Basic YWRtaW46YmVoaW5kLWxhYi1zc28=

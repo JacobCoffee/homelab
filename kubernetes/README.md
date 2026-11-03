@@ -51,7 +51,7 @@ flux get kustomizations
 | Spegel | nodes share pulled images with each other |
 | echo | smoke test at `echo.z7x.org` on the internal gateway |
 | home-assistant | `home.z7x.org` on both gateways, backed by the HA VM (selector-less Service + EndpointSlice to 10.10.10.20:80) |
-| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), Wizarr invites (`invite.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
+| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), Wizarr invites (`invite.z7x.org`), Jellyball live sports (`jellyball.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
 | Proxmox CSI plugin | `csi-proxmox`: provisions the `proxmox-vmdata` (default) and `proxmox-fast` StorageClasses -- see "Storage" below |
 | VolSync, etcd-backup, opnsense-backup | `apps/backup/`: restic-to-R2 offsite backups -- see "Backups and restore" below |
 
@@ -97,7 +97,7 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
   web UI have their own "Sign in with Pocket ID".
 - The rest of the internal apps have no SSO of their own, so Envoy's OIDC filter sits in front of
   them (`apps/network/lab-sso`) and their own logins are off: the *arrs, Bazarr, SABnzbd, Bindery,
-  Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma's admin UI (`status.z7x.org`), Wizarr's admin UI (`invite.z7x.org`) and the start page. Their pods
+  Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma's admin UI (`status.z7x.org`), Wizarr's admin UI (`invite.z7x.org`), Jellyball (the route sends its login, see "Media stack") and the start page. Their pods
   only take traffic from the gateway, their own namespace, `status` and `observability`
   (CiliumNetworkPolicy `lab-sso-ingress`), so going to a pod directly can't skip the passkey.
   In-cluster callers keep using API keys; through the gateway every request needs the passkey
@@ -248,7 +248,8 @@ zone), standing in for a NAS until one exports the same layout. `nfs-kernel-serv
 
 `apps/media/`: Jellyfin, Seerr (the project formerly called Jellyseerr), Sonarr, Radarr,
 Lidarr, Prowlarr, Bazarr, [Bindery](https://github.com/vavallee/bindery) (Readarr replacement),
-qBittorrent+gluetun, SABnzbd, Recyclarr, Unpackerr, FlareSolverr and Cleanuparr. One shared
+qBittorrent+gluetun, SABnzbd, Recyclarr, Unpackerr, FlareSolverr, Cleanuparr and
+[Jellyball](https://github.com/DarthBitBeard/Jellyball) (live sports). One shared
 `app-template` OCIRepository (`apps/media/app-template`) is the chart source for every
 HelmRelease here.
 
@@ -295,6 +296,20 @@ HelmRelease here.
   `jellyfin-sso` Secret's API key), Settings > Wizard has the "Automatic requests" preset.
   Wizarr has no Discord bot; its Discord option is a server-widget step in the wizard, which
   needs the Discord server's ID (Server Settings > Engagement > Server Widget).
+- **Live sports (`apps/media/jellyball`, `jellyball.z7x.org`):**
+  [Jellyball](https://github.com/DarthBitBeard/Jellyball) finds the games of the teams ticked in
+  its dashboard (Channels & Streams > Sports Catalog > Apply Selected Teams; also always-live
+  channels like ESPN and NFL RedZone) on several stream-aggregator sites and serves each channel
+  as one continuous HLS stream, switching sources mid-game without a stall. Jellyfin reads it
+  directly, as a tuner of its own next to Dispatcharr's (going through Dispatcharr would put a
+  second proxy in front of that failover): the `jellyball-setup` Job (`app/setup.py`) adds the M3U
+  tuner (`/playlist.m3u`) and an XMLTV guide (`/epg.xml`) limited to that tuner, and Jellyball
+  asks Jellyfin for a guide refresh itself whenever its channels change. Team picks and settings
+  live in its SQLite on the PVC. Its traffic leaves directly, not through gluetun: it only
+  downloads. Sign-in: Jellyball only has Basic auth, which it won't turn off on a network bind,
+  so behind the passkey check the route sends `admin:behind-lab-sso` (`DASHBOARD_PASSWORD`); the
+  playback paths have no auth at all, and `lab-sso-ingress` keeps all but the gateway and the
+  media/status/observability pods off the pod.
 - **Download wiring (`apps/media/media-config`):** a Job (`app/configure.py`) puts TRaSH's SABnzbd
   settings in place (completed jobs in `/media/downloads/usenet/<category>`, in-progress in
   `.../usenet/incomplete`, categories movies/tv/music/books, the unwanted-extension blacklist

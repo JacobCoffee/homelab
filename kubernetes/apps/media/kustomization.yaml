@@ -20,3 +20,4 @@ resources:
   - ./jellyfin/ks.yaml
   - ./seerr/ks.yaml
   - ./wizarr/ks.yaml
+  - ./jellyball/ks.yaml
