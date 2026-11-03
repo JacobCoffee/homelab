@@ -189,9 +189,16 @@ scripts/vault-set.py vault_opensubtitles_username vault_opensubtitles_password  
 scripts/media-secrets.py                                                         # commit what it lists
 ```
 
+Branding (`app/branding/`): the header logo (a lit 35mm film gate and HOMENET, Antonio outlined
+to paths, `logo.svg`) replaces Jellyfin's mark and server name through the same Custom CSS block,
+and the splash screen (`splash.jpg`, the view from a projection booth, rendered from the WebGL
+shader in `splash.html`) is the backdrop behind the login and server pages, in the browser and
+the official TV app (Wholphin doesn't show it). Change either, run `branding/build.py`, commit;
+the Job uploads a new splash when its hash differs from the one recorded in the CSS block.
+
 Not installed: Artisan Jelly (built against Jellyfin 10.10, doesn't load on 12). The plugins, scripts
-and theme only change the web client and the mobile apps that render it; the Android TV app on
-the Fire TV draws its own UI.
+and theme only change the web client and the mobile apps that render it; Wholphin on the Fire TV
+draws its own UI.
 
 ## Storage
 

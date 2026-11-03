@@ -75,7 +75,13 @@ spec:
             - name: script
               mountPath: /script
               readOnly: true
+            - name: branding
+              mountPath: /branding
+              readOnly: true
       volumes:
         - name: script
           configMap:
             name: jellyfin-plugins-script
+        - name: branding
+          configMap:
+            name: jellyfin-branding

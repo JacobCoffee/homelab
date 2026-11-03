@@ -9,9 +9,12 @@
 2. JavaScript Injector scripts for the web client: KefinTweaks and jf-avatars, pinned to a
    release. Scripts other plugins or the UI add (KefinTweaks writes its own config entries) are
    left alone; only entries named here are managed.
-3. Branding CSS: ElegantFin (+ its Media Bar add-on) and mihaif7's companion sheet for Jellyfin
-   12's Modern layout, pinned, kept as one marked block at the very top of the Custom CSS (an
-   @import after any other rule is ignored). The SSO login-button CSS after it is untouched.
+3. Branding: ElegantFin (+ its Media Bar add-on) and mihaif7's companion sheet for Jellyfin 12's
+   Modern layout, pinned, then the HomeNet logo (branding/logo.svg, inlined) in place of
+   Jellyfin's mark and server name in the header; all one marked block at the very top of the
+   Custom CSS (an @import after any other rule is ignored). The SSO login-button CSS after it is
+   untouched. The splash screen (branding/splash.jpg, the backdrop behind the login and server
+   pages) is uploaded and switched on; its hash in the block says which one is up.
 4. Libraries and their options: Movies, Shows and Music on the arrs' root folders under
    /media/library (created if missing, the folder added if a library lost it), English subtitles
    downloaded for Movies and Shows (Open Subtitles), Fanart added to the image fetchers of type
@@ -23,11 +26,14 @@ These only change the web client and the mobile apps that render it; the Fire TV
 client (Wholphin) draws its own UI.
 """
 
+import base64
+import hashlib
 import os
 import sys
 import urllib.parse
+from pathlib import Path
 
-from jellyfin_api import (ApiError, call, ensure_repositories, install_missing, uninstall,
+from jellyfin_api import (ApiError, call, ensure_repositories, install_missing, raw, uninstall,
                           wait_for_server)
 
 OFFICIAL = "https://repo.jellyfin.org/files/plugin/manifest.json"
@@ -99,16 +105,34 @@ SCRIPTS = {
     ),
 }
 
+BRANDING = Path(os.environ.get("BRANDING_DIR", "/branding"))  # branding/ (a ConfigMap in the Job)
 THEME_START = "/* homelab theme (kubernetes/apps/media/jellyfin/app/plugins.py) */"
 THEME_END = "/* end homelab theme */"
-THEME = "\n".join([
-    THEME_START,
+IMPORTS = [
     '@import url("https://cdn.jsdelivr.net/gh/lscambo13/ElegantFin@v26.09.05/Theme/ElegantFin-jellyfin-theme-build-latest-minified.css");',
     '@import url("https://cdn.jsdelivr.net/gh/lscambo13/ElegantFin@v26.09.05/Theme/assets/add-ons/media-bar-plugin-support-latest-min.css");',
     # Has to come after ElegantFin: fixes it up for Jellyfin 12's Modern layout.
     '@import url("https://cdn.jsdelivr.net/gh/mihaif7/elegantfin-jf12@v26.10.13/Theme/ElegantFin-jf12-modern-latest.css");',
-    THEME_END,
-])
+]
+# The Modern header's home button holds Jellyfin's icon (<img src=".../icon-transparent...">) and
+# the server name; the logo replaces both. The Legacy header's .pageTitleWithDefaultLogo too.
+LOGO_CSS = """\
+header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]) {
+  width: 124px; min-width: 124px; height: 40px; padding: 0; border-radius: 8px;
+  background: url("LOGO") left center / contain no-repeat; color: transparent; font-size: 0;
+}
+header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]) > * { visibility: hidden; }
+header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]):focus-visible {
+  outline: 2px solid #FFC27A; outline-offset: 4px;
+}
+.pageTitleWithDefaultLogo { background-image: url("LOGO") !important; background-size: contain !important; }"""
+
+
+def theme_block(splash_sha: str) -> str:
+    logo = "data:image/svg+xml;base64," + base64.b64encode((BRANDING / "logo.svg").read_bytes()).decode()
+    return "\n".join([THEME_START, *IMPORTS, f"/* splash {splash_sha} */",
+                      LOGO_CSS.replace("LOGO", logo), THEME_END])
+
 
 SUBTITLE_LANGUAGES = ["eng"]
 SUBTITLED_TYPES = {"movies", "tvshows"}
@@ -136,19 +160,27 @@ def set_scripts() -> None:
         print(f"JavaScript Injector: {', '.join(changed)} set")
 
 
-def set_theme() -> None:
+def set_branding() -> None:
+    splash = (BRANDING / "splash.jpg").read_bytes()
+    sha = hashlib.sha256(splash).hexdigest()[:16]
     _, branding = call("GET", "/System/Configuration/branding")
     css = branding.get("CustomCss") or ""
+    # Jellyfin re-encodes the splash it serves, so the upload is tracked by its hash in the block.
+    if f"/* splash {sha} */" not in css or not branding.get("SplashscreenEnabled"):
+        raw("POST", "/Branding/Splashscreen", base64.b64encode(splash), "image/jpeg")
+        print(f"branding: splash {sha} uploaded")
+        _, branding = call("GET", "/System/Configuration/branding")
+        css = branding.get("CustomCss") or ""
     if THEME_START in css:
         before, _, rest = css.partition(THEME_START)
         _, _, after = rest.partition(THEME_END)
         css = (before + after).strip()
-    new = (THEME + "\n" + css).strip()
-    if new == (branding.get("CustomCss") or "").strip():
+    new = (theme_block(sha) + "\n" + css).strip()
+    if new == (branding.get("CustomCss") or "").strip() and branding.get("SplashscreenEnabled"):
         return
-    branding["CustomCss"] = new
+    branding.update(CustomCss=new, SplashscreenEnabled=True)
     call("POST", "/System/Configuration/branding", branding)
-    print("branding: theme CSS set")
+    print("branding: theme, logo and splash set")
 
 
 def ensure_libraries() -> None:
@@ -206,7 +238,7 @@ def main():
     uninstall(REMOVED_PLUGINS)
     install_missing(PLUGINS)
     set_scripts()
-    set_theme()
+    set_branding()
     ensure_libraries()
     set_library_options()
     set_open_subtitles()

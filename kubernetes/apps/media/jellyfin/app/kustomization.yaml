@@ -16,3 +16,9 @@ configMapGenerator:
     files:
       - ./plugins.py
       - ./jellyfin_api.py
+  # The splash and logo plugins.py sets (branding/build.py makes them). Hashed name: a new image
+  # changes the Job's pod template, so Flux re-runs it.
+  - name: jellyfin-branding
+    files:
+      - ./branding/splash.jpg
+      - ./branding/logo.svg

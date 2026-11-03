@@ -41,6 +41,21 @@ def call(method: str, path: str, body=None, ok=(200, 204)):
         raise ApiError(err.code, f"{method} {path}: {err.code} {raw.decode(errors='replace')[:400]}")
 
 
+def raw(method: str, path: str, data: bytes | None = None, content_type: str = "") -> bytes | None:
+    """A non-JSON request (images): the body on success, None on 404."""
+    headers = {"Authorization": f'MediaBrowser Token="{API_KEY}"'}
+    if content_type:
+        headers["Content-Type"] = content_type
+    req = urllib.request.Request(JELLYFIN_URL + path, method=method, data=data, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read()
+    except urllib.error.HTTPError as err:
+        if err.code == 404:
+            return None
+        raise ApiError(err.code, f"{method} {path}: {err.code} {err.read().decode(errors='replace')[:400]}")
+
+
 def wait_for_server(tries=60, delay=5):
     for _ in range(tries):
         try:
