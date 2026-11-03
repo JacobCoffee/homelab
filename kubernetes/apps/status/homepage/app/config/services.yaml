@@ -167,6 +167,13 @@
         description: Dashboards, logs, metrics
         namespace: observability
         app: grafana
+    - Flux:
+        href: https://flux.z7x.org
+        siteMonitor: https://flux.z7x.org
+        icon: flux-cd.svg
+        description: GitOps reconcilers, sync and drift
+        namespace: flux-system
+        app: flux-web
     - Cabotage:
         href: https://cabotage.apps.z7x.org
         siteMonitor: https://cabotage.apps.z7x.org

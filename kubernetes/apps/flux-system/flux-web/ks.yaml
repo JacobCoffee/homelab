@@ -1,0 +1,29 @@
+# Flux web UI (Flux Operator's web server on its own) at flux.z7x.org, signing in with Pocket ID.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-web
+  namespace: flux-system
+spec:
+  targetNamespace: flux-system
+  path: ./kubernetes/apps/flux-system/flux-web/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 5m
+  dependsOn:
+    - name: envoy-gateway-config
+    - name: pocket-id
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: flux-web
+      namespace: flux-system

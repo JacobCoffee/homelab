@@ -1,0 +1,47 @@
+# Only the Flux Operator's web server (web.serverOnly): no operator, no FluxInstance. Flux here is
+# the `flux bootstrap` install, which upstream doesn't officially support for the web UI; it needs
+# the operator's CRDs (installCRDs, nothing creates objects of them) to start.
+#
+# Sign-in is Pocket ID client `flux` (only lab-admins may use it). The UI impersonates the user's
+# email and groups claims against the Kubernetes API, so what you can see and do is plain RBAC:
+# clusterrolebinding.yaml gives lab-admins the chart's flux-web-admin role (read everything;
+# reconcile/suspend/resume Flux objects, restart workloads, delete pods).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flux-web
+  namespace: flux-system
+spec:
+  interval: 1h
+  releaseName: flux-web
+  chartRef:
+    kind: OCIRepository
+    name: flux-operator
+  values:
+    nameOverride: flux-web
+    fullnameOverride: flux-web
+    installCRDs: true
+    web:
+      serverOnly: true
+      config:
+        baseURL: https://flux.z7x.org
+        authentication:
+          type: OAuth2
+          sessionDuration: 24h
+          oauth2:
+            provider: OIDC
+            issuerURL: https://id.z7x.org
+            clientID: flux
+            # The other Pocket ID clients' scopes, without the default offline_access: the session
+            # lasts sessionDuration, then autoLogin sends you back through the passkey.
+            scopes: [openid, profile, email, groups]
+            autoLogin: true
+        userActions:
+          audit: ["*"]
+  valuesFrom:
+    # client-secret of Pocket ID client flux (vault_pocket_id_flux_secret), kept in step by
+    # scripts/pocket-id.py.
+    - kind: Secret
+      name: flux-web-oidc
+      valuesKey: client-secret
+      targetPath: web.config.authentication.oauth2.clientSecret

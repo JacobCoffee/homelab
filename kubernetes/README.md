@@ -44,6 +44,7 @@ flux get kustomizations
 | theme-catalog | `apps/network/theme-catalog`: public static site at `themes.z7x.org`, built from a pinned commit of the public `github.com/JacobCoffee/hearth` mirror |
 | uptime-kuma | `apps/status/uptime-kuma` (namespace `status`): admin UI internal-only at `kuma.z7x.org`, public read-only status API at `status.z7x.org` -- see `fire-tv/DECISIONS.md` "Homelab services" |
 | homepage | `apps/status/homepage`: start page at `start.z7x.org` (internal only): every app with an up/down dot, pod CPU/memory, Proxmox VM/LXC stats, the apps' own widgets, and news feeds. Edit `app/config/services.yaml`; changes reach the pod within a minute, no restart. Credentials are `app/secret.sops.yaml`, written by `ansible-playbook playbooks/site.yml --tags homepage` (`../ansible/roles/homepage`); after it changes, `kubectl -n status rollout restart deploy/homepage` |
+| flux-web | `apps/flux-system/flux-web`: Flux web UI at `flux.z7x.org` (internal only), the Flux Operator chart's web server alone (`web.serverOnly`, operator CRDs installed, no operator). Signs in with Pocket ID itself and acts as you in Kubernetes: `lab-admins` is bound to `flux-web-admin` (read everything; reconcile/suspend/resume, restart workloads, delete pods). Upstream only supports the UI on Flux-Operator-managed clusters; this one is `flux bootstrap`. Capacitor was the first pick, but its in-cluster server won't start without a Gimlet beta license and the old free one doesn't work on Flux 2.8+ |
 | firetv-reapply | `apps/firetv/reapply` (namespace `firetv`): CronJob re-running the Fire TV debloat/tweaks after a reboot -- see `fire-tv/DECISIONS.md` |
 | metrics-server, kubelet-csr-approver | `kubectl top`; approves kubelet serving certificates |
 | Spegel | nodes share pulled images with each other |
@@ -91,8 +92,8 @@ token in `cert-manager-issuers` and `external-dns-cloudflare` is the vault's
 
 You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/pocket-id`):
 
-- Grafana, Proxmox (realm `pocket-id`, Ansible `pve_oidc`) and Jellyfin in the browser have their
-  own "Sign in with Pocket ID".
+- Grafana, Proxmox (realm `pocket-id`, Ansible `pve_oidc`), Jellyfin in the browser and the Flux
+  web UI have their own "Sign in with Pocket ID".
 - The rest of the internal apps have no SSO of their own, so Envoy's OIDC filter sits in front of
   them (`apps/network/lab-sso`) and their own logins are off: the *arrs, Bazarr, SABnzbd, Bindery,
   Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma (`kuma.z7x.org`) and the start page. Their pods

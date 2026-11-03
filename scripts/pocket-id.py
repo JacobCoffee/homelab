@@ -44,6 +44,8 @@ SOPS = {
         {"OIDC_CLIENT_SECRET": "vault_pocket_id_jellyfin_secret"},
     "kubernetes/apps/observability/kube-prometheus-stack/app/secret-grafana-oidc.sops.yaml":
         {"client-secret": "vault_pocket_id_grafana_secret"},
+    "kubernetes/apps/flux-system/flux-web/app/secret.sops.yaml":
+        {"client-secret": "vault_pocket_id_flux_secret"},
 }
 GROUP = {"name": "lab-admins", "friendlyName": "Lab admins"}
 # Created with these values; afterwards only isAdmin and the group are enforced, so profile edits
@@ -87,6 +89,11 @@ CLIENTS: dict[str, dict] = {
         "name": "Jellyfin",
         "callbackURLs": ["https://media.z7x.org/sso/OID/redirect/pocket-id"],
         "launchURL": "https://media.z7x.org",
+    },
+    "flux": {
+        "name": "Flux",
+        "callbackURLs": ["https://flux.z7x.org/oauth2/callback"],
+        "launchURL": "https://flux.z7x.org",
     },
 }
 COMPARED = ("name", "callbackURLs", "launchURL", "pkceEnabled", "isPublic", "isGroupRestricted")
@@ -178,18 +185,21 @@ def ensure_client(api: Api, cid: str, spec: dict, gid: str | None, vault: dict) 
 
 def sync_sops(api: Api, path: Path, key: str, value: str) -> None:
     """Set stringData[key] unless it already holds value; the value never goes on argv."""
+    index = f'["stringData"]["{key}"]'
+
     def sops(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
-        return subprocess.run(["mise", "-C", str(ROOT), "exec", "--", "sops", *args, str(path)],
+        return subprocess.run(["mise", "-C", str(ROOT), "exec", "--", "sops", *args],
                               input=stdin, capture_output=True, text=True)
     if not path.exists():
         return
-    if sops("-d", "--extract", f'["stringData"]["{key}"]').stdout == value:
+    if sops("-d", "--extract", index, str(path)).stdout == value:
         return
     rel = path.relative_to(ROOT)
     api.changes.append(f"{rel}:{key}")
     print(f"{'would update' if api.check else 'update'} {rel} {key}; commit it")
     if not api.check:
-        sops("set", "--value-stdin", f'["stringData"]["{key}"]', stdin=json.dumps(value)).check_returncode()
+        # `sops set` takes the file before the index (`-d --extract` takes it last).
+        sops("set", "--value-stdin", str(path), index, stdin=json.dumps(value)).check_returncode()
 
 
 def main() -> None:

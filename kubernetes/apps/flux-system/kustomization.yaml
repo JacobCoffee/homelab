@@ -1,0 +1,6 @@
+# flux-system itself is written by `flux bootstrap` (kubernetes/flux/cluster/flux-system); this
+# only adds apps that live next to the controllers. No namespace.yaml: bootstrap owns it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./flux-web/ks.yaml
