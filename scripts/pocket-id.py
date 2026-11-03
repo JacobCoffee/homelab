@@ -94,6 +94,7 @@ CLIENTS: dict[str, dict] = {
         "name": "Flux",
         "callbackURLs": ["https://flux.z7x.org/oauth2/callback"],
         "launchURL": "https://flux.z7x.org",
+        "pkceEnabled": True,
     },
 }
 COMPARED = ("name", "callbackURLs", "launchURL", "pkceEnabled", "isPublic", "isGroupRestricted")
