@@ -1,0 +1,74 @@
+# Wizarr lives at invite.z7x.org. The invite flow is open on both gateways; everything else is
+# the admin UI, lab/tailnet only (internal gateway) and behind the Pocket ID gate (lab-sso
+# SecurityPolicy on wizarr-internal). Same split as Uptime Kuma (apps/status/uptime-kuma).
+#
+# Public: Wizarr's documented unauthenticated paths (docs/using-wizarr/single-sign-on-sso.md),
+# minus /plex/callback (no Plex) and /setup (first-run admin creation; anyone reaching it before
+# that is done becomes admin). PathPrefix matches whole segments: /j covers /j/<code> and
+# /j/<code>/password, not /join.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: wizarr-public
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+    - name: external
+      namespace: network
+      sectionName: https
+  hostnames:
+    - invite.z7x.org
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /j }
+        - path: { type: PathPrefix, value: /join }
+        - path: { type: PathPrefix, value: /invitation/process }
+        - path: { type: PathPrefix, value: /wizard }
+        - path: { type: PathPrefix, value: /reset }
+        - path: { type: PathPrefix, value: /static }
+        - path: { type: Exact, value: /image-proxy }
+        - path: { type: Exact, value: /cinema-posters }
+        - path: { type: Exact, value: /favicon.ico }
+      backendRefs:
+        - name: wizarr
+          port: 5690
+---
+# From the internet, "/" opens the invite-code page; nothing of the admin UI is routed there.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: wizarr-external
+spec:
+  parentRefs:
+    - name: external
+      namespace: network
+      sectionName: https
+  hostnames:
+    - invite.z7x.org
+  rules:
+    - matches:
+        - path: { type: Exact, value: / }
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path: { type: ReplaceFullPath, replaceFullPath: /join }
+            statusCode: 302
+---
+# Admin UI (invites, users, settings), internal gateway only, behind Pocket ID.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: wizarr-internal
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - invite.z7x.org
+  rules:
+    - backendRefs:
+        - name: wizarr
+          port: 5690

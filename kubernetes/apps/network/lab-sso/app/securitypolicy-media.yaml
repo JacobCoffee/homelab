@@ -35,6 +35,9 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: unpackerr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: wizarr-internal
   oidc:
     provider:
       issuer: https://id.z7x.org

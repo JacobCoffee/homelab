@@ -19,3 +19,4 @@ resources:
   - ./media-config/ks.yaml
   - ./jellyfin/ks.yaml
   - ./seerr/ks.yaml
+  - ./wizarr/ks.yaml
