@@ -200,11 +200,50 @@ Every run then applies these settings through the REST API (`roles/opnsense/task
   Dnsmasq, so DHCP client names resolve. AdGuard uses it (via the CARP `.1`) as its only upstream.
 - **DMZ isolation:** DMZ → INT and DMZ → K8S are blocked, ahead of the DMZ allow-any rule.
 - **Tailscale** (`os-tailscale` plugin) as `tag:router`, advertising the lab subnets.
+- **Sign in with Pocket ID** (`os-sso` plugin, `tasks/sso.yml`) -- see below.
 - **Port-forward** WAN CARP address 53 → AdGuard, so house devices can use it: set a device's
   DNS to `192.168.1.189`.
 
 The `oxlorg.opnsense` collection is pinned to OPNsense versions (latest supports 26.1), so it
 isn't used. Endpoint and field details: [`roles/opnsense/NOTES.md`](roles/opnsense/NOTES.md).
+
+### Sign in with Pocket ID (os-sso)
+
+Adds an OIDC login button to each firewall's WebGUI login page, against
+[Pocket ID](https://id.z7x.org) (`scripts/pocket-id.py`, client `opnsense`). The
+[`os-sso`](https://github.com/MaximeWewer/os-sso) plugin isn't in the official OPNsense plugin
+repo, so `tasks/sso.yml` installs it differently from every other plugin here: it downloads the
+release `.pkg` matching the firewall's `pkg config ABI` straight to the box over SSH (root, the
+automation key -- `opnsense_sso_sha256` in `defaults/main.yml` pins and checksum-verifies it,
+since the only per-asset checksum GitHub publishes is the release API's own digest field), then
+`pkg add`s it and restarts the WebGUI to pick up the new server type.
+
+The provider itself (issuer, client ID/secret, group mapping) also has no REST API -- `System >
+Access > Servers` is core's legacy, non-MVC page -- so it's written straight into
+`<system><authserver>` in `config.xml` over the same SSH connection
+(`templates/sso-authserver.php.j2`, idempotent: only the fields it owns are touched, and it
+changes nothing on a second run), the same way os-sso's own lab scripts configure it.
+
+- Pocket ID's `lab-admins` group maps to the local `admins` group (`sso_group_map`, an explicit
+  operator mapping -- the plugin refuses the 1:1 name fallback for any group carrying firewall
+  privileges) and gates who can sign in at all (`sso_required_groups`).
+- **No Base URL is set**, so sign-in works at any of a firewall's addresses: the VIP
+  `10.10.10.1`, its own `10.10.10.2` / `.3`, or its `hnfwNN.int.z7x.org` name. os-sso then
+  builds the callback from the request's Host, and only accepts a Host that is this firewall's
+  own hostname or the address the connection actually arrived on (`SiteUrl::detect()`), so a
+  spoofed Host can't redirect it (that would change if a reverse proxy ever sat in front of the
+  WebGUI). A pinned Base URL broke VIP logins: the login cookie was set on `10.10.10.1` but the
+  callback landed on the firewall's own address, which never got it ("missing provider").
+  Pocket ID's `opnsense` client lists all of those callback URLs (`scripts/pocket-id.py`).
+- **The WebGUI runs as root**, not OPNsense's hardened `wwwonly` user (`config.xml.j2` no longer
+  sets `<noroot>`; `tasks/sso.yml` clears it, and the `/var/run/www_non_root` lock core latches
+  it behind, on an existing box). OPNsense's stock WebGUI runs as root too; `noroot` is opt-in
+  hardening. os-sso refuses its state directory `/var/db/os-sso` unless it's owned by a uid it
+  trusts (`StateDir::assertSafe()`), and without PHP's posix extension (OPNsense's php has none)
+  the only uid it can see is 0. A `wwwonly`-owned directory is rejected ("owned by another
+  user", tested on hnfw02), so noroot and os-sso can't both be on. Turn `noroot` back on if
+  os-sso ever stops needing it. Local password login (root break-glass) works either way.
+- The local `root` password stays the break-glass login; os-sso never touches it.
 
 ## AdGuard Home
 
@@ -247,53 +286,11 @@ two on `hnhv01`, one on `hnhv02`) and workers (`role: worker`, e.g. `hnk8s04` on
 Losing `hnhv01` takes etcd down until it returns; moving a control plane to a third host fixes
 that (a control plane can't become a worker in place: Talos reinstalls it). Control planes get
 `kubernetes/talos/patches/controlplane.yaml` on top of `cluster.yaml`. The role creates the VMs
-- **Sign in with Pocket ID** (`os-sso` plugin, `tasks/sso.yml`) -- see below.
 from the Image Factory ISO, renders each
 node's config from `kubernetes/talos` plus `roles/talos/templates/machine.yaml.j2`, bootstraps
 etcd, installs Cilium and runs `flux bootstrap`; after that, the cluster is whatever is in
 [`../kubernetes`](../kubernetes). `talosctl` and `kubectl` work from the repo root (paths come
 from `mise.toml`).
-
-### Sign in with Pocket ID (os-sso)
-
-Adds an OIDC login button to each firewall's WebGUI login page, against
-[Pocket ID](https://id.z7x.org) (`scripts/pocket-id.py`, client `opnsense`). The
-[`os-sso`](https://github.com/MaximeWewer/os-sso) plugin isn't in the official OPNsense plugin
-repo, so `tasks/sso.yml` installs it differently from every other plugin here: it downloads the
-release `.pkg` matching the firewall's `pkg config ABI` straight to the box over SSH (root, the
-automation key -- `opnsense_sso_sha256` in `defaults/main.yml` pins and checksum-verifies it,
-since the only per-asset checksum GitHub publishes is the release API's own digest field), then
-`pkg add`s it and restarts the WebGUI to pick up the new server type.
-
-The provider itself (issuer, client ID/secret, group mapping) also has no REST API -- `System >
-Access > Servers` is core's legacy, non-MVC page -- so it's written straight into
-`<system><authserver>` in `config.xml` over the same SSH connection
-(`templates/sso-authserver.php.j2`, idempotent: only the fields it owns are touched, and it
-changes nothing on a second run), the same way os-sso's own lab scripts configure it.
-
-- Pocket ID's `lab-admins` group maps to the local `admins` group (`sso_group_map`, an explicit
-  operator mapping -- the plugin refuses the 1:1 name fallback for any group carrying firewall
-  privileges) and gates who can sign in at all (`sso_required_groups`).
-- **Base URL is per-firewall**, not the shared CARP VIP: each firewall points at its own
-  INT-zone address (`10.10.10.2` / `.3`), since os-sso requires one and there's no config sync
-  to keep a shared value consistent. Pocket ID's `opnsense` client is registered with every
-  callback URL that implies (`scripts/pocket-id.py`): the VIP, both firewalls' own addresses,
-  and both `hnfwNN.int.z7x.org` hostnames -- the VIP entry only keeps the IdP from refusing a
-  request that reaches it (e.g. the WAN CARP address isn't an SSO door); **start the SSO login
-  at a firewall's own address, not `10.10.10.1`**. The login's session cookie is bound to
-  whichever host it started at, but the callback always lands on this firewall's own Base URL;
-  starting at the shared VIP can round-trip to the *other* firewall's cookie-less session and
-  fail with "missing provider" if `.1` resolves to the other box by the time the IdP redirects
-  back. The local password form has no such redirect and works the same at any address.
-- **The WebGUI runs as root**, not OPNsense's hardened `wwwonly` user (`config.xml.j2` no longer
-  sets `<noroot>`; `tasks/sso.yml` clears it, and the `/var/run/www_non_root` lock core latches
-  it behind, on an existing box). OPNsense's stock WebGUI runs as root too; `noroot` is opt-in
-  hardening. os-sso refuses its state directory `/var/db/os-sso` unless it's owned by a uid it
-  trusts (`StateDir::assertSafe()`), and without PHP's posix extension (OPNsense's php has none)
-  the only uid it can see is 0. A `wwwonly`-owned directory is rejected ("owned by another
-  user", tested on hnfw02), so noroot and os-sso can't both be on. Turn `noroot` back on if
-  os-sso ever stops needing it. Local password login (root break-glass) works either way.
-- The local `root` password stays the break-glass login; os-sso never touches it.
 
 ## Netboot (hnpxe01)
 

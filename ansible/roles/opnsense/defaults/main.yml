@@ -96,9 +96,18 @@ opnsense_sso_sha256:
 # has no REST API -- only the legacy System > Access > Servers form -- so it's set directly
 # through OPNsense's own Config class over SSH (templates/sso-authserver.php.j2), the same way
 # os-sso's own lab scripts (test/vagrant/add_authserver.php) do it.
-# Base URL is per-firewall (no config sync, and os-sso requires one): this firewall's own
-# INT-zone address, never the shared CARP VIP, so the redirect/callback URL it hands Pocket ID
-# is always one it can itself answer, whichever of the VIP/.2/.3/hostnames the browser used.
+#
+# No Base URL (sso_base_url left empty): with no config sync, a single fixed value can't be
+# correct for both firewalls, and a value pinned to one firewall's own address breaks the login
+# round-trip from any OTHER address (CARP VIP, the peer's own address, a hostname) -- the
+# session cookie set at /login is bound to whichever host the browser used, but the callback
+# would land on the pinned Base URL's host instead, arrive with no session, and fail ("missing
+# provider"; reproduced with a real browser hitting the VIP). Left empty, os-sso's own
+# SiteUrl::detect() builds it from the request Host instead, but ONLY when that Host matches
+# this firewall's own hostname/FQDN/althostnames or SERVER_ADDR (the real local socket address,
+# which is genuinely the CARP VIP when this box is master) -- never an arbitrary client-supplied
+# value, so it's safe with no reverse proxy or port-forward in front of the WebGUI (there isn't
+# one here). That keeps /login and /callback on the same origin whichever address was used.
 opnsense_sso_provider_name: opnsense
 opnsense_sso_issuer: https://id.z7x.org
 opnsense_sso_client_id: opnsense
@@ -111,4 +120,3 @@ opnsense_sso_username_claim: preferred_username
 opnsense_sso_required_groups: lab-admins
 opnsense_sso_group_map: "lab-admins:admins"
 opnsense_sso_button_label: "Pocket ID"
-opnsense_sso_base_url: "https://{{ (opnsense_zones | selectattr('descr', 'equalto', 'INT') | first).ip }}"

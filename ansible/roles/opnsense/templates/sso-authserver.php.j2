@@ -32,7 +32,8 @@ $want = [
     'sso_create_users' => '1',
     'sso_strict_binding' => '1',
     'sso_button_label' => '{{ opnsense_sso_button_label }}',
-    'sso_base_url' => '{{ opnsense_sso_base_url }}',
+    // No sso_base_url: left empty on purpose, see defaults/main.yml. Cleared below if an
+    // earlier run left one (this field used to be pinned to this firewall's own address).
 ];
 
 $cfg = Config::getInstance()->object();
@@ -57,6 +58,13 @@ if ($node === null) {
 // (/var/run/www_non_root) is handled by the task that runs this script.
 if (isset($cfg->system->webgui->noroot)) {
     unset($cfg->system->webgui->noroot);
+    $changed = true;
+}
+
+// Previously pinned to this firewall's own address; left empty now (see defaults/main.yml),
+// so an earlier run's value is cleared explicitly since it's absent from $want above.
+if ((string)($node->sso_base_url ?? '') !== '') {
+    $node->sso_base_url = '';
     $changed = true;
 }
 
