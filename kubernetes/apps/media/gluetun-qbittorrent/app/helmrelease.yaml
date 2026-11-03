@@ -31,6 +31,11 @@ spec:
           # admin login from gluetun-secret stays for anything outside that subnet. It also drops
           # the image's legacy [Preferences] WebUI\* defaults so a fresh PVC can't migrate the old
           # bypass back in. (No ${...} in the script: Flux postBuild substitution would rewrite it.)
+          #
+          # [BitTorrent] is bound to gluetun's tun0: qBittorrent starts alongside gluetun, before
+          # the tunnel exists, and unbound it only ever listened on eth0/lo, so its peer and DHT
+          # traffic left with the pod address, which the tunnel can't carry (0 DHT nodes, always
+          # "firewalled"). Bound, it waits for tun0 and follows it across reconnects.
           harden-webui:
             image:
               repository: ghcr.io/home-operations/qbittorrent
@@ -61,7 +66,17 @@ spec:
                         if (!web) { print ""; print "[WebUI]"; for (j = 1; j <= n; j++) print ord[j] "=" v[ord[j]] } }
                 ' "$f" > "$f.new"
                 mv "$f.new" "$f"
-                grep -E '^(AuthSubnetWhitelist|AuthSubnetWhitelistEnabled|LocalHostAuth|CSRFProtection|Username)=' "$f"
+                awk -v want='Session\\Interface=tun0|Session\\InterfaceName=tun0' '
+                  BEGIN { n = split(want, L, "|"); for (i = 1; i <= n; i++) { k[i] = substr(L[i], 1, index(L[i], "=") - 1); v[k[i]] = L[i] } }
+                  function flush(j) { for (j = 1; j <= n; j++) if (!(k[j] in seen)) print v[k[j]]; flushed = 1 }
+                  /^\[.*\]$/ { if (sec == "BitTorrent") flush(); sec = substr($0, 2, length($0) - 2); if (sec == "BitTorrent") bt = 1; print; next }
+                  sec == "BitTorrent" { key = substr($0, 1, index($0, "=") - 1); if (key in v) { print v[key]; seen[key] = 1; next } }
+                  { print }
+                  END { if (sec == "BitTorrent" && !flushed) flush()
+                        if (!bt) { print ""; print "[BitTorrent]"; for (j = 1; j <= n; j++) print v[k[j]] } }
+                ' "$f" > "$f.new"
+                mv "$f.new" "$f"
+                grep -E '^(AuthSubnetWhitelist|AuthSubnetWhitelistEnabled|LocalHostAuth|CSRFProtection|Username|Session\\Interface|Session\\InterfaceName)=' "$f"
             env:
               QBT_WEBUI_PASSWORD_PBKDF2:
                 valueFrom:
