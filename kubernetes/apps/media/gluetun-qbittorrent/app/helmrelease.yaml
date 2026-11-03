@@ -177,6 +177,14 @@ spec:
       securityContext:
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
+      # The pod resolves through gluetun (127.0.0.1). For <name>.int.z7x.org it answers NOERROR
+      # with no records instead of NXDOMAIN, and musl (qBittorrent's image) stops searching at the
+      # first NOERROR, so with the default ndots:5 every tracker/DHT lookup walked the search list
+      # into that and failed ("bad address"). ndots:1 looks dotted names up as written first.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
     service:
       app:
         controller: qbittorrent
