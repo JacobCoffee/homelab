@@ -16,5 +16,6 @@ resources:
   - ./cleanuparr/ks.yaml
   - ./gluetun-qbittorrent/ks.yaml
   - ./sabnzbd/ks.yaml
+  - ./media-config/ks.yaml
   - ./jellyfin/ks.yaml
   - ./seerr/ks.yaml

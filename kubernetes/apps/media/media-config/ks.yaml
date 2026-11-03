@@ -1,0 +1,31 @@
+# Wires SABnzbd/Prowlarr/Sonarr/Radarr/Lidarr together with TRaSH Guides settings and the Usenet
+# provider/indexer credentials (app/configure.py). force: true re-creates the (immutable) Job when
+# its script or the credentials revision annotation changes, so each change runs it once.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: media-config
+  namespace: flux-system
+spec:
+  targetNamespace: media
+  path: ./kubernetes/apps/media/media-config/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 10m
+  force: true
+  dependsOn:
+    - name: arr-api-keys
+    - name: sabnzbd
+    - name: prowlarr
+    - name: sonarr
+    - name: radarr
+    - name: lidarr
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age

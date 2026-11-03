@@ -244,9 +244,24 @@ HelmRelease here.
   Sonarr/Radarr/Lidarr/Prowlarr, injected via `<APP>__AUTH__APIKEY` env vars (the Servarr config
   override convention) so Recyclarr and Unpackerr already know them, plus SABnzbd's (its image
   writes `SABNZBD__API_KEY` into `sabnzbd.ini` on start). Bazarr (Python, no such env
-  override) and the Prowlarr "Apps"/Bazarr "Settings" links to Sonarr/Radarr have no declarative
-  equivalent upstream -- those stay manual UI steps, along with indexer/Usenet provider accounts,
-  the Jellyfin admin account, and Seerr's first-run wizard (which needs that Jellyfin account).
+  override) and its "Settings" links to Sonarr/Radarr stay manual UI steps, along with the
+  Jellyfin admin account and Seerr's first-run wizard (which needs that Jellyfin account).
+- **Usenet wiring (`apps/media/media-config`):** a Job (`app/configure.py`) puts TRaSH's SABnzbd
+  settings in place (completed jobs in `/media/downloads/usenet/<category>`, in-progress in
+  `.../usenet/incomplete`, categories movies/tv/music/books, the unwanted-extension blacklist
+  that fails fake `.exe`/`.scr` releases), the Newshosting server, SABnzbd as download client and
+  `/media/library/<kind>` as root folder in Sonarr/Radarr/Lidarr, and Prowlarr's full-sync links
+  to those three plus the NZBFinder and Anime Tosho (`feed.animetosho.net`) indexers. It runs
+  once per change of the script or of the credentials, which live in the vault:
+
+  ```sh
+  scripts/vault-set.py vault_newshosting_username vault_newshosting_password vault_nzbfinder_api_key
+  scripts/media-config-secrets.py   # copies them into app/secret.sops.yaml, bumps the Job; commit both
+  ```
+
+- **Quality:** Recyclarr syncs 2160p-first profiles: Sonarr `WEB-2160p (Combined)`, Radarr `UHD
+  Bluray + WEB` with Bluray/WEB 1080p added below the 2160p qualities as a fallback (upgraded to
+  2160p when one appears), and TRaSH's Jellyfin naming for both.
 - **Shared media volume:** every app that touches files mounts the NFS export from
   `MEDIA_NFS_SERVER`/`MEDIA_NFS_PATH` (`cluster-settings.yaml`, owned by Storage) at `/media`,
   TRaSH-style (`/media/downloads/...`, `/media/library/...`) so imports hardlink instead of copy.
