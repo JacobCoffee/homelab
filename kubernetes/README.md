@@ -254,13 +254,17 @@ HelmRelease here.
   libraries"). Finish it with Seerr's own API key instead (`main.apiKey` in `settings.json`,
   `X-Api-Key`): `POST /api/v1/settings/jellyfin/library/sync`, `PUT .../library/<id>`
   `{"enabled":true}`, `POST /api/v1/settings/{radarr,sonarr}`, `POST /api/v1/settings/initialize`.
-- **Usenet wiring (`apps/media/media-config`):** a Job (`app/configure.py`) puts TRaSH's SABnzbd
+- **Download wiring (`apps/media/media-config`):** a Job (`app/configure.py`) puts TRaSH's SABnzbd
   settings in place (completed jobs in `/media/downloads/usenet/<category>`, in-progress in
   `.../usenet/incomplete`, categories movies/tv/music/books, the unwanted-extension blacklist
-  that fails fake `.exe`/`.scr` releases), the Newshosting server, SABnzbd as download client and
-  `/media/library/<kind>` as root folder in Sonarr/Radarr/Lidarr, and Prowlarr's full-sync links
-  to those three plus the NZBFinder and Anime Tosho (`feed.animetosho.net`) indexers. It runs
-  once per change of the script or of the credentials, which live in the vault:
+  that fails fake `.exe`/`.scr` releases) and the Newshosting server; qBittorrent's (save path
+  `/media/downloads/torrents`, Automatic torrent management, the same four categories). In
+  Sonarr/Radarr/Lidarr: both as download clients, `/media/library/<kind>` as root folder, and a
+  Jellyfin connection that refreshes the library after imports. Prowlarr gets full-sync links to
+  those three plus the NFZBFinder and Anime Tosho (`feed.animetosho.net`) indexers. Downloads and
+  library share one filesystem, so imports never copy: usenet ones are moves, torrent ones
+  hardlinks (a seeding torrent and its library file are the same blocks). It runs once per
+  change of the script or of the credentials, which live in the vault:
 
   ```sh
   scripts/vault-set.py vault_newshosting_username vault_newshosting_password vault_nzbfinder_api_key

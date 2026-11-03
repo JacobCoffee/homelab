@@ -1,4 +1,4 @@
-"""Wire the Usenet side of the media stack to TRaSH Guides settings, idempotently.
+"""Wire the download side of the media stack to TRaSH Guides settings, idempotently.
 
 SABnzbd   Folders: completed jobs land in /media/downloads/usenet/<category>, in-progress ones in
           /media/downloads/usenet/incomplete (same NFS tree as the library, so imports hardlink).
@@ -6,12 +6,17 @@ SABnzbd   Folders: completed jobs land in /media/downloads/usenet/<category>, in
           fails the job (fake .exe/.scr releases), encrypted rars abort instead of pausing,
           duplicates are tagged, folders inside archives are flattened, final filenames
           deobfuscated. The Newshosting server, then a connection test against it.
+qBittorrent  TRaSH Saving Management: default save path /media/downloads/torrents (its default was
+          /config/Downloads, on the config PVC and not hardlinkable into the library), Automatic
+          torrent management with relocate-on-change, categories movies/tv/music/books.
 Prowlarr  Sonarr/Radarr/Lidarr as full-sync applications, so every indexer added here appears in
           them by itself; NZBFinder and Anime Tosho (the animetosho.net successor; the original
           animetosho.org shut its feed down in October 2026) as indexers.
-*arrs     SABnzbd as download client (its category per app), the /media/library/<kind> root
-          folder, and a Jellyfin connection that refreshes the library on every import, upgrade,
-          rename or delete (Jellyfin can't watch the NFS tree for changes itself).
+*arrs     SABnzbd and qBittorrent as download clients (their category per app), the
+          /media/library/<kind> root folder, and a Jellyfin connection that refreshes the library
+          on every import, upgrade, rename or delete (Jellyfin can't watch the NFS tree itself).
+          Downloads and library are one NFS filesystem, so usenet imports are moves and torrent
+          imports hardlinks: a seeding torrent and its library copy share the same blocks.
 
 Each step reads the current state and writes only what differs, so re-runs are safe. A step whose
 credential is empty (NEWSHOSTING_USERNAME/PASSWORD, NZBFINDER_API_KEY, JELLYFIN_API_KEY) is
@@ -29,6 +34,10 @@ import urllib.request
 SVC = "media.svc.cluster.local"
 SAB_URL = f"http://sabnzbd.{SVC}:8080"
 PROWLARR_URL = f"http://prowlarr.{SVC}:9696"
+# Same pod network as the *arrs, which qBittorrent lets in without a login (its auth subnet
+# whitelist is the pod CIDR; gluetun-qbittorrent's HelmRelease).
+QBIT_URL = f"http://gluetun-qbittorrent.{SVC}:8080"
+TORRENTS = "/media/downloads/torrents"
 SAB_KEY = os.environ["SABNZBD_API_KEY"]
 PROWLARR_KEY = os.environ["PROWLARR_API_KEY"]
 
@@ -210,13 +219,45 @@ def configure_prowlarr() -> None:
                {"enable": True, "appProfileId": profile, "priority": 25}, values)
 
 
+def configure_qbittorrent() -> None:
+    api = f"{QBIT_URL}/api/v2"
+    wanted = {
+        "save_path": TORRENTS,
+        "temp_path_enabled": False,
+        "auto_tmm_enabled": True,  # Automatic: downloads go to the category's folder
+        "torrent_changed_tmm_enabled": True,  # relocate when a torrent's category changes
+        "save_path_changed_tmm_enabled": True,  # ... when the default save path changes
+        "category_changed_tmm_enabled": True,  # ... when a category's save path changes
+    }
+    prefs = call("GET", f"{api}/app/preferences")
+    changed = {k: v for k, v in wanted.items() if prefs.get(k) != v}
+    if changed:
+        call("POST", f"{api}/app/setPreferences", form={"json": json.dumps(changed)})
+        print(f"qBittorrent: {', '.join(changed)} set")
+    categories = call("GET", f"{api}/torrents/categories") or {}
+    for cat in CATEGORIES:
+        path = f"{TORRENTS}/{cat}"
+        if cat not in categories:
+            call("POST", f"{api}/torrents/createCategory", form={"category": cat, "savePath": path})
+        elif categories[cat].get("savePath") != path:
+            call("POST", f"{api}/torrents/editCategory", form={"category": cat, "savePath": path})
+        else:
+            continue
+        print(f"qBittorrent: category {cat} -> {path}")
+
+
 def configure_arr(name: str, url: str, version: str, key: str, cat_field: str, category: str, root: str) -> None:
     api = f"{url}/api/{version}"
-    schema = next(s for s in call("GET", f"{api}/downloadclient/schema", key) if s["implementation"] == "Sabnzbd")
-    upsert(f"{name} download client", f"{api}/downloadclient", key,
-           call("GET", f"{api}/downloadclient", key), schema, "SABnzbd",
-           {"enable": True, "priority": 1, "removeCompletedDownloads": True, "removeFailedDownloads": True},
+    schema = call("GET", f"{api}/downloadclient/schema", key)
+    clients = call("GET", f"{api}/downloadclient", key)
+    removes = {"enable": True, "priority": 1, "removeCompletedDownloads": True, "removeFailedDownloads": True}
+    upsert(f"{name} download client", f"{api}/downloadclient", key, clients,
+           next(s for s in schema if s["implementation"] == "Sabnzbd"), "SABnzbd", removes,
            {"host": f"sabnzbd.{SVC}", "port": 8080, "useSsl": False, "apiKey": SAB_KEY, cat_field: category})
+    # removeCompletedDownloads only removes a torrent once qBittorrent has met its seeding goal.
+    upsert(f"{name} download client", f"{api}/downloadclient", key, clients,
+           next(s for s in schema if s["implementation"] == "QBittorrent"), "qBittorrent", removes,
+           {"host": f"gluetun-qbittorrent.{SVC}", "port": 8080, "useSsl": False, cat_field: category})
 
     if any(r["path"].rstrip("/") == root for r in call("GET", f"{api}/rootfolder", key)):
         return
@@ -246,6 +287,7 @@ def configure_jellyfin_connection(name: str, url: str, version: str, key: str, *
 
 def main() -> int:
     configure_sabnzbd()
+    configure_qbittorrent()
     for arr in ARRS:
         configure_arr(*arr)
         configure_jellyfin_connection(*arr)
