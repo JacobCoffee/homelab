@@ -31,7 +31,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: fetch
-          image: alpine/git:v2.47.1
+          image: alpine/git:v2.54.0
           workingDir: /repo
           env:
             - name: HOME
@@ -53,7 +53,7 @@ spec:
             - name: repo
               mountPath: /repo
         - name: build
-          image: python:3.12-slim
+          image: python:3.15-slim
           workingDir: /repo
           env:
             - name: HOME

@@ -23,7 +23,7 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: push-cert
-              image: python:3.12-alpine
+              image: python:3.15-alpine
               command: ["python3", "/scripts/push-cert.py"]
               securityContext:
                 allowPrivilegeEscalation: false

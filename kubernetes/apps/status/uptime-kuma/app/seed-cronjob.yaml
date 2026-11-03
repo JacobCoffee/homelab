@@ -122,7 +122,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: seed
-              image: python:3.12-slim
+              image: python:3.15-slim
               command: ["/bin/sh", "-c"]
               args:
                 - |

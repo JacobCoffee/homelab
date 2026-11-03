@@ -49,7 +49,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: install-sso
-          image: python:3.12-slim
+          image: python:3.15-slim
           # -u: unbuffered, so `kubectl logs` shows each step as it happens.
           command: ["python3", "-u", "/script/install-sso.py"]
           envFrom:

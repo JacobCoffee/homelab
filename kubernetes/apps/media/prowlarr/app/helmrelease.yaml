@@ -1,4 +1,4 @@
-# Latest ghcr.io/home-operations/prowlarr tag as of 2026-11-01. PROWLARR_API_KEY from
+# ghcr.io/home-operations/prowlarr (Servarr develop branch builds). PROWLARR_API_KEY from
 # arr-api-keys. No /media mount: Prowlarr only manages indexers, it never touches files.
 # Adding Sonarr/Radarr/Lidarr as "Apps" inside Prowlarr is a manual UI step (see README) --
 # there is no supported env/file based way to pre-wire that linkage.
@@ -19,7 +19,7 @@ spec:
           app:
             image:
               repository: ghcr.io/home-operations/prowlarr
-              tag: "2.1.5.5216"
+              tag: "3.0.0.5737"
             env:
               TZ: America/Chicago
               # External: the login is the gateway's passkey check (network/lab-sso), and pods can

@@ -1,4 +1,4 @@
-# ghcr.io/recyclarr/recyclarr:7.4.0, latest as of 2026-11-01. Runs `recyclarr sync` daily against
+# ghcr.io/recyclarr/recyclarr (v8 config format). Runs `recyclarr sync` daily against
 # Sonarr/Radarr using recyclarr-config (secret.sops.yaml next to this file).
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -22,7 +22,7 @@ spec:
           app:
             image:
               repository: ghcr.io/recyclarr/recyclarr
-              tag: "7.4.0"
+              tag: "8.8.1"
             env:
               RECYCLARR_DATA_DIR: /tmp
             args:
