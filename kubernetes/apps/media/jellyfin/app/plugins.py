@@ -116,7 +116,9 @@ IMPORTS = [
 ]
 # The Modern header's home button holds Jellyfin's icon (<img src=".../icon-transparent...">) and
 # the server name; the logo replaces both. The Legacy header's .pageTitleWithDefaultLogo too.
-LOGO_CSS = """\
+# On the login and server pages (.standalonePage.backdropPage) ElegantFin's veils over the
+# backdrop are near-opaque and would hide the splash; there they're thinned. Item pages keep theirs.
+BRAND_CSS = """\
 header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]) {
   width: 124px; min-width: 124px; height: 40px; padding: 0; border-radius: 8px;
   background: url("LOGO") left center / contain no-repeat; color: transparent; font-size: 0;
@@ -125,13 +127,15 @@ header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]) > * { v
 header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]):focus-visible {
   outline: 2px solid #FFC27A; outline-offset: 4px;
 }
-.pageTitleWithDefaultLogo { background-image: url("LOGO") !important; background-size: contain !important; }"""
+.pageTitleWithDefaultLogo { background-image: url("LOGO") !important; background-size: contain !important; }
+body:has(.standalonePage.backdropPage:not(.hide)) .backgroundContainer.withBackdrop { opacity: 0.5 !important; }
+.standalonePage.backdropPage { background: linear-gradient(rgba(8, 11, 20, 0.20), rgba(8, 11, 20, 0.58)) !important; }"""
 
 
 def theme_block(splash_sha: str) -> str:
     logo = "data:image/svg+xml;base64," + base64.b64encode((BRANDING / "logo.svg").read_bytes()).decode()
     return "\n".join([THEME_START, *IMPORTS, f"/* splash {splash_sha} */",
-                      LOGO_CSS.replace("LOGO", logo), THEME_END])
+                      BRAND_CSS.replace("LOGO", logo), THEME_END])
 
 
 SUBTITLE_LANGUAGES = ["eng"]
