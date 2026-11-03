@@ -51,7 +51,7 @@ flux get kustomizations
 | Spegel | nodes share pulled images with each other |
 | echo | smoke test at `echo.z7x.org` on the internal gateway |
 | home-assistant | `home.z7x.org` on both gateways, backed by the HA VM (selector-less Service + EndpointSlice to 10.10.10.20:80) |
-| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
+| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), Wizarr invites (`invite.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
 | Proxmox CSI plugin | `csi-proxmox`: provisions the `proxmox-vmdata` (default) and `proxmox-fast` StorageClasses -- see "Storage" below |
 | VolSync, etcd-backup, opnsense-backup | `apps/backup/`: restic-to-R2 offsite backups -- see "Backups and restore" below |
 
@@ -97,7 +97,7 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
   web UI have their own "Sign in with Pocket ID".
 - The rest of the internal apps have no SSO of their own, so Envoy's OIDC filter sits in front of
   them (`apps/network/lab-sso`) and their own logins are off: the *arrs, Bazarr, SABnzbd, Bindery,
-  Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma's admin UI (`status.z7x.org`) and the start page. Their pods
+  Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma's admin UI (`status.z7x.org`), Wizarr's admin UI (`invite.z7x.org`) and the start page. Their pods
   only take traffic from the gateway, their own namespace, `status` and `observability`
   (CiliumNetworkPolicy `lab-sso-ingress`), so going to a pod directly can't skip the passkey.
   In-cluster callers keep using API keys; through the gateway every request needs the passkey
@@ -276,6 +276,18 @@ HelmRelease here.
   libraries"). Finish it with Seerr's own API key instead (`main.apiKey` in `settings.json`,
   `X-Api-Key`): `POST /api/v1/settings/jellyfin/library/sync`, `PUT .../library/<id>`
   `{"enabled":true}`, `POST /api/v1/settings/{radarr,sonarr}`, `POST /api/v1/settings/initialize`.
+- **Wizarr (`invite.z7x.org`):** invite links for Jellyfin. Create one on the admin page
+  (internal gateway, Pocket ID; Wizarr's own login is off, `DISABLE_BUILTIN_AUTH`) and paste it
+  into Discord or a text: `/j/<code>`, `/join` and the onboarding wizard are open on both
+  gateways, nothing else of Wizarr is routed from the internet (`app/httproute.yaml`). Accepting
+  creates a Jellyfin account (Movies, Shows, Music) and ends on a Seerr step; new Jellyfin users
+  can sign in to Seerr and request. Settings live in its SQLite on the PVC, set once through its
+  forms: `/setup` created an `admin` account (unused while the built-in login is off; its
+  `recovery_tool.py` resets it), Settings > Media Servers holds Jellyfin
+  (`jellyfin.media.svc.cluster.local:8096`, external `https://media.z7x.org`, the
+  `jellyfin-sso` Secret's API key), Settings > Wizard has the "Automatic requests" preset.
+  Wizarr has no Discord bot; its Discord option is a server-widget step in the wizard, which
+  needs the Discord server's ID (Server Settings > Engagement > Server Widget).
 - **Download wiring (`apps/media/media-config`):** a Job (`app/configure.py`) puts TRaSH's SABnzbd
   settings in place (completed jobs in `/media/downloads/usenet/<category>`, in-progress in
   `.../usenet/incomplete`, categories movies/tv/music/books, the unwanted-extension blacklist

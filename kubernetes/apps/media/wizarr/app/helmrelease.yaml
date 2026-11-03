@@ -24,9 +24,10 @@ spec:
             env:
               TZ: America/Chicago
               DISABLE_BUILTIN_AUTH: "true"
-              # Started as uid 1000 (not root), the entrypoint skips its chown of the root-owned
-              # /.cache, so uv must not try to cache there.
-              UV_NO_CACHE: "1"
+              # uid 1000 has no passwd entry in the image (the entrypoint only creates one when
+              # started as root), so HOME would be "/": uv's cache and gunicorn's control socket
+              # (~/.gunicorn) need a writable one.
+              HOME: /tmp
             probes:
               liveness:
                 enabled: true
