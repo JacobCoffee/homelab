@@ -12,7 +12,7 @@ services:
       - adguard-conf:/opt/adguardhome/conf
 
   uptime-kuma:
-    image: louislam/uptime-kuma:1
+    image: louislam/uptime-kuma:2
     container_name: hearth-teststack-kuma
     restart: unless-stopped
     ports:
