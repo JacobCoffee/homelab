@@ -29,6 +29,24 @@ spec:
         strategy: Recreate
         serviceAccount:
           identifier: airvpn-exit
+        pod:
+          # containerboot reads and writes its state Secret with the pod's own token.
+          automountServiceAccountToken: true
+        initContainers:
+          # gluetun treats any IPv6 route as working IPv6 (netlink.IsIPv6Supported), and the pod's
+          # link-local fe80::/64 counts, so it may pick an AirVPN IPv6 endpoint the IPv4-only
+          # cluster can't reach (the tunnel never comes up). Dropping IPv6 routes from the main
+          # table first makes it always connect over IPv4.
+          no-ipv6-routes:
+            image:
+              repository: ghcr.io/qdm12/gluetun
+              tag: "v3.41.3"
+            command: ["sh", "-c", "ip -6 route flush table main && ip -6 route show table main"]
+            securityContext:
+              runAsUser: 0
+              capabilities:
+                add: ["NET_ADMIN"]
+                drop: ["ALL"]
         containers:
           gluetun:
             image:
