@@ -6,8 +6,8 @@
     ":semanticCommits",
     ":timezone(America/Chicago)",
   ],
-  // One batch of PRs a week instead of a trickle.
-  schedule: ["every weekend"],
+  // Nightly: anything due lands overnight, and automerged updates go straight to main.
+  schedule: ["before 6am"],
   // Flux HelmReleases/OCIRepositories, chart values images and plain manifests.
   flux: { managerFilePatterns: ["/^kubernetes/.+\\.ya?ml$/"] },
   "helm-values": { managerFilePatterns: ["/^kubernetes/.+\\.ya?ml$/"] },
@@ -24,11 +24,27 @@
   ],
   packageRules: [
     {
+      // The cluster's images, charts and pinned tools update themselves: patch, minor and digest
+      // bumps merge to main (no PR) once the release is 3 days old, and Flux rolls them out. A
+      // failed HelmRelease upgrade rolls back on its own (kubernetes/flux/cluster/apps.yaml) and
+      // FluxResourceNotReady alerts Discord. There's no CI, so there are no tests to wait for.
+      matchFileNames: ["kubernetes/**", "ansible/**", "mise.toml"],
+      matchUpdateTypes: ["minor", "patch", "digest", "pinDigest"],
+      automerge: true,
+      automergeType: "branch",
+      ignoreTests: true,
+      minimumReleaseAge: "3 days",
+      // ghcr.io images often carry no release timestamp; don't hold those back forever.
+      minimumReleaseAgeBehaviour: "timestamp-optional",
+    },
+    {
       // Talos image, talosctl and the cluster's Kubernetes move together; Talos decides
-      // which Kubernetes versions are supported, so these wait for approval.
+      // which Kubernetes versions are supported, and upgrading is a talosctl rollout, so these
+      // wait for approval and never merge on their own.
       groupName: "talos and kubernetes",
       matchDepNames: ["siderolabs/talos", "talosctl", "/siderolabs\\/talosctl/", "kubernetes/kubernetes", "kubectl", "/kubectl/"],
       dependencyDashboardApproval: true,
+      automerge: false,
     },
     {
       // Bootstrap pin in the talos role and the Flux HelmRelease must stay equal.
@@ -36,8 +52,11 @@
       matchDepNames: ["cilium"],
     },
     {
+      // Majors (Kuma 2, Radarr 7, Prowlarr 3, ...) change APIs or migrate databases: approve on the
+      // dashboard, then read the PR before merging.
       matchUpdateTypes: ["major"],
       dependencyDashboardApproval: true,
+      automerge: false,
     },
   ],
 }

@@ -395,10 +395,14 @@ Never name a folder "General": that's Grafana's reserved root folder.
 
 ## Updates
 
-Renovate ([`../.github/renovate.json5`](../.github/renovate.json5)) opens PRs on weekends for
-chart versions, images, `mise.toml` tools and the annotated pins in the Ansible defaults
-(Talos, Kubernetes, Cilium bootstrap). Merging a chart/image PR is the deploy: Flux applies it.
-Majors, and Talos/Kubernetes, wait for approval on the Dependency Dashboard issue.
+Renovate ([`../.github/renovate.json5`](../.github/renovate.json5)) runs nightly over chart
+versions, images, `mise.toml` tools and the annotated pins in the Ansible defaults (Talos,
+Kubernetes, Cilium bootstrap). Patch, minor and digest updates under `kubernetes/`, `ansible/` and
+`mise.toml` merge to main by themselves once the release is 3 days old, and Flux deploys them.
+Every HelmRelease rolls back a failed upgrade (`flux/cluster/apps.yaml` patches that into all app
+Kustomizations, so they mustn't set `spec.patches` themselves), and FluxResourceNotReady alerts
+Discord. Majors and Talos/Kubernetes wait for approval on the Dependency Dashboard issue, then
+come as PRs to read before merging; so do the Fire TV app's dependencies and the Cabotage module.
 
 A merged Talos or Kubernetes bump only changes config for new installs; upgrade the running
 nodes one at a time, then Kubernetes:
