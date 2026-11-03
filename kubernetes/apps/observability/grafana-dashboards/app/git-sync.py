@@ -13,7 +13,10 @@ import time
 import urllib.error
 import urllib.request
 
-API = os.environ["GRAFANA_URL"].rstrip("/") + "/apis/provisioning.grafana.app/v0alpha1/namespaces/default"
+GRAFANA = os.environ["GRAFANA_URL"].rstrip("/")
+API = GRAFANA + "/apis/provisioning.grafana.app/v0alpha1/namespaces/default"
+# Grafana's home page: the Lab Overview dashboard (dashboards/lab/lab-overview.json).
+HOME_DASHBOARD_UID = "lab-overview"
 AUTH = "Basic " + base64.b64encode(
     f"{os.environ['GRAFANA_USER']}:{os.environ['GRAFANA_PASSWORD']}".encode()
 ).decode()
@@ -55,9 +58,9 @@ REPOSITORY = {
 }
 
 
-def call(method, path, body=None):
+def call(method, path, body=None, base=API):
     req = urllib.request.Request(
-        API + path,
+        base + path,
         method=method,
         data=json.dumps(body).encode() if body is not None else None,
         headers={"Authorization": AUTH, "Content-Type": "application/json", "Accept": "application/json"},
@@ -112,8 +115,20 @@ def main():
             sys.exit(f"sync {state or 'unhealthy'}: {json.dumps(st)}")
         if health.get("healthy") and state == "success":
             print("stats:", json.dumps(st.get("stats", [])), flush=True)
+            set_home_dashboard()
             return
     sys.exit("sync did not finish within 5 minutes")
+
+
+def set_home_dashboard():
+    status, prefs = call("GET", "/api/org/preferences", base=GRAFANA)
+    if status == 200 and prefs.get("homeDashboardUID") == HOME_DASHBOARD_UID:
+        print(f"home dashboard already {HOME_DASHBOARD_UID}", flush=True)
+        return
+    status, result = call("PATCH", "/api/org/preferences", {"homeDashboardUID": HOME_DASHBOARD_UID}, base=GRAFANA)
+    if status >= 300:
+        sys.exit(f"home dashboard: {status} {result.get('message', result)}")
+    print(f"home dashboard set to {HOME_DASHBOARD_UID}", flush=True)
 
 
 if __name__ == "__main__":
