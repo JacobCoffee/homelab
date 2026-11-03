@@ -4,7 +4,8 @@
 # dependencies = ["requests>=2.32", "pyyaml>=6"]
 # ///
 """Keep Pocket ID (https://id.z7x.org) in step with this file: the lab-admins group, the owner
-account in it, and one OIDC client per app, each only open to lab-admins.
+account in it, one OIDC client per app, each only open to lab-admins, and the Homelab branding
+(background, logos, favicon, client logos from kubernetes/apps/auth/pocket-id/branding/).
 
     scripts/pocket-id.py            # apply
     scripts/pocket-id.py --check    # only report what would change
@@ -46,6 +47,14 @@ SOPS = {
         {"client-secret": "vault_pocket_id_grafana_secret"},
     "kubernetes/apps/flux-system/flux-web/app/secret.sops.yaml":
         {"client-secret": "vault_pocket_id_flux_secret"},
+}
+BRANDING = ROOT / "kubernetes/apps/auth/pocket-id/branding"
+# application image endpoint -> (file in BRANDING, query); built by BRANDING/build.py.
+IMAGES = {
+    "background": ("background.svg", {}),
+    "logo-light": ("logo-light.svg", {"light": "true"}),
+    "logo-dark": ("logo-dark.svg", {"light": "false"}),
+    "favicon": ("favicon.svg", {}),
 }
 GROUP = {"name": "lab-admins", "friendlyName": "Lab admins"}
 # Created with these values; afterwards only isAdmin and the group are enforced, so profile edits
@@ -130,6 +139,15 @@ class Api:
             sys.exit(f"{method} {path}: {r.status_code} {r.text[:300]}")
         return r.json() if r.content else None
 
+    def get_bytes(self, path: str, params: dict) -> bytes | None:
+        """The raw body, or None when Pocket ID has no such image."""
+        r = self.s.get(f"{BASE}/api{path}", params=params, timeout=20)
+        if r.status_code == 404:
+            return None
+        if r.status_code >= 400:
+            sys.exit(f"GET {path}: {r.status_code} {r.text[:300]}")
+        return r.content
+
     def get_all(self, path: str) -> list[dict]:
         return self.req("GET", path, params={"pagination[limit]": 100})["data"]
 
@@ -201,6 +219,26 @@ def ensure_client(api: Api, cid: str, spec: dict, gid: str | None, vault: dict) 
                json={"secret": secret})
 
 
+def ensure_image(api: Api, what: str, method: str, path: str, query: dict, file: Path) -> None:
+    """Upload file unless Pocket ID already serves exactly these bytes (it stores SVGs as sent)."""
+    data = file.read_bytes()
+    if api.get_bytes(path, {**query, "default": "false"}) == data:
+        return
+    api.change(f"upload {what} from {file.relative_to(ROOT)}", method, path, params=query,
+               files={"file": (file.name, data, "image/svg+xml")})
+
+
+def ensure_branding(api: Api) -> None:
+    for name, (fname, query) in IMAGES.items():
+        endpoint = "logo" if name.startswith("logo") else name
+        ensure_image(api, name, "PUT", f"/application-images/{endpoint}", query, BRANDING / fname)
+    have = {c["id"] for c in api.get_all("/oidc/clients")}
+    for cid in CLIENTS:
+        logo = BRANDING / "clients" / f"{cid}.svg"
+        if logo.exists() and cid in have:
+            ensure_image(api, f"logo of {cid}", "POST", f"/oidc/clients/{cid}/logo", {"light": "true"}, logo)
+
+
 def sync_sops(api: Api, path: Path, key: str, value: str) -> None:
     """Set stringData[key] unless it already holds value; the value never goes on argv."""
     index = f'["stringData"]["{key}"]'
@@ -232,6 +270,7 @@ def main() -> None:
     uid = ensure_owner(api, gid)
     for cid, spec in CLIENTS.items():
         ensure_client(api, cid, spec, gid, vault)
+    ensure_branding(api)
     for rel, keys in SOPS.items():
         for key, vkey in keys.items():
             sync_sops(api, ROOT / rel, key, vault[vkey])

@@ -1,0 +1,13 @@
+{
+	admin off
+	auto_https off
+}
+
+:8088 {
+	uri strip_prefix /_lab
+	root * /srv
+	# revalidate on every load (a 304 via ETag), so a theme change shows up without a cache bust
+	header Cache-Control "no-cache"
+	header X-Content-Type-Options nosniff
+	file_server
+}

@@ -4,3 +4,16 @@ resources:
   - ./helmrelease.yaml
   - ./secret.sops.yaml
   - ./httproute.yaml
+  - ./theme-server.yaml
+  - ./envoyextensionpolicy.yaml
+configMapGenerator:
+  - name: pocket-id-theme
+    files:
+      - ./theme/lab.css
+      - ./theme/background-still.svg
+      - ./theme/hubot-sans-expanded-bold.woff2
+      - ./theme/mona-sans.woff2
+      - ./theme/departure-mono.woff2
+  - name: pocket-id-theme-caddy
+    files:
+      - ./Caddyfile

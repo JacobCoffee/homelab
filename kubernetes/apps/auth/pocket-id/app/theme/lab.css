@@ -1,0 +1,294 @@
+/*
+ * Homelab theme for Pocket ID, served at id.z7x.org/_lab/lab.css and linked into every HTML page by
+ * the Lua filter in ../envoyextensionpolicy.yaml. These rules are unlayered, so they win over
+ * Pocket ID's Tailwind layers. They target Pocket ID's own classes, so a Pocket ID release can stop
+ * a rule from matching; the page then falls back to stock Pocket ID for that element. Check the
+ * sign-in page after each Pocket ID bump.
+ *
+ * The accent is ACCENT_COLOR in helmrelease.yaml, which Pocket ID sets as --primary on <html>.
+ */
+
+@font-face {
+	font-family: 'Lab Display';
+	src: url('/_lab/hubot-sans-expanded-bold.woff2') format('woff2');
+	font-weight: 700;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'Lab Sans';
+	src: url('/_lab/mona-sans.woff2') format('woff2');
+	font-weight: 200 900;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'Lab Mono';
+	src: url('/_lab/departure-mono.woff2') format('woff2');
+	font-display: swap;
+}
+
+/* ---- tokens: graphite in the dark, cool paper in the light ------------------------------- */
+:root {
+	--lab-amber: #ffb224;
+	--lab-led: #3ddc84;
+	--lab-tile: #ffffff;
+	--lab-tile-edge: rgb(14 19 25 / 0.1);
+	--lab-grid: rgb(14 19 25 / 0.14);
+	--lab-shadow: rgb(38 52 70 / 0.22);
+	--background: #eef1f4;
+	--foreground: #0e1319;
+	--card: #ffffff;
+	--card-foreground: #0e1319;
+	--popover: #ffffff;
+	--popover-foreground: #0e1319;
+	--secondary: #e1e6eb;
+	--secondary-foreground: #0e1319;
+	--muted: #e1e6eb;
+	--muted-foreground: #525c67;
+	--accent: #e1e6eb;
+	--accent-foreground: #0e1319;
+	--border: rgb(14 19 25 / 0.1);
+	--input: rgb(14 19 25 / 0.14);
+}
+.dark {
+	--lab-tile: #151b23;
+	--lab-tile-edge: rgb(230 234 238 / 0.12);
+	--lab-grid: rgb(230 234 238 / 0.1);
+	--lab-shadow: rgb(0 0 0 / 0.7);
+	--background: #0b0e12;
+	--foreground: #e6eaee;
+	--card: #11161d;
+	--card-foreground: #e6eaee;
+	--popover: #11161d;
+	--popover-foreground: #e6eaee;
+	--secondary: #18202a;
+	--secondary-foreground: #e6eaee;
+	--muted: #18202a;
+	--muted-foreground: #98a3af;
+	--accent: #18202a;
+	--accent-foreground: #e6eaee;
+	--border: rgb(230 234 238 / 0.09);
+	--input: rgb(230 234 238 / 0.14);
+}
+
+/* ---- type and browser surfaces ------------------------------------------------------------ */
+html {
+	font-family: 'Lab Sans', ui-sans-serif, system-ui, sans-serif;
+	font-feature-settings: 'ss01', 'calt';
+	caret-color: var(--lab-amber);
+	scrollbar-color: var(--input) transparent;
+	-webkit-font-smoothing: antialiased;
+}
+::selection {
+	background: color-mix(in srgb, var(--lab-amber) 38%, transparent);
+	color: var(--foreground);
+}
+.font-gloock {
+	font-family: 'Lab Display', 'Lab Sans', sans-serif;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+	line-height: 1.08;
+	text-wrap: balance;
+}
+/* Pocket ID's buttons draw their own --ring focus ring; links get ours */
+a:not([class~='group/button']):focus-visible {
+	outline: 2px solid var(--lab-amber);
+	outline-offset: 3px;
+	border-radius: 4px;
+}
+/* the accent is bright, so its label is ink in both themes (beats the inline value Pocket ID
+   computes from ACCENT_COLOR) */
+:root {
+	--primary-foreground: #0e1319 !important;
+}
+
+/* ---- buttons: squared-off pills in the rack's corner radius -------------------------------- */
+[class~='group/button'][class~='rounded-4xl'] {
+	border-radius: 12px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	transition:
+		background-color 160ms ease-out,
+		border-color 160ms ease-out,
+		box-shadow 160ms ease-out,
+		transform 160ms ease-out;
+}
+[class~='group/button'][class~='bg-primary'] {
+	box-shadow:
+		inset 0 1px 0 rgb(255 255 255 / 0.35),
+		0 10px 24px -14px color-mix(in srgb, var(--primary) 80%, transparent);
+}
+[class~='group/button'][class~='bg-primary']:hover {
+	background-color: color-mix(in srgb, var(--primary) 88%, white);
+	box-shadow:
+		inset 0 1px 0 rgb(255 255 255 / 0.4),
+		0 14px 28px -14px color-mix(in srgb, var(--primary) 90%, transparent);
+}
+[class~='group/button'][class~='bg-secondary'] {
+	background-color: var(--lab-tile);
+	border-color: var(--lab-tile-edge);
+}
+[class~='group/button'][class~='bg-secondary']:hover {
+	background-color: var(--lab-tile);
+	border-color: color-mix(in srgb, var(--foreground) 28%, transparent);
+}
+
+/* ---- sign-in pages (Pocket ID's login wrapper) --------------------------------------------- */
+/* desktop root: form column + background panel; mobile root: card over the background */
+:is(.h-screen.overflow-hidden.text-center, .min-h-dvh.bg-cover.text-center) {
+	isolation: isolate;
+}
+
+/* hostname tag, top left: the page is the lab's own */
+:is(.h-screen.overflow-hidden.text-center, .min-h-dvh.bg-cover.text-center)::before {
+	content: 'id.z7x.org';
+	position: absolute;
+	top: 34px;
+	left: 40px;
+	z-index: 20;
+	padding-left: 16px;
+	font: 13px/1 'Lab Mono', ui-monospace, monospace;
+	letter-spacing: 0.06em;
+	color: var(--muted-foreground);
+	background: radial-gradient(circle at 4px 50%, var(--lab-led) 3px, transparent 3.5px);
+}
+.min-h-dvh.bg-cover.text-center {
+	position: relative;
+}
+.min-h-dvh.bg-cover.text-center::before {
+	top: 22px;
+	left: 22px;
+}
+
+/* the background panel gets an edge, so the orbit reads as a screen, not a void */
+.h-screen.overflow-hidden.text-center > .absolute.z-0.overflow-hidden {
+	border-radius: 32px;
+	box-shadow: 0 30px 60px -30px var(--lab-shadow);
+}
+.h-screen.overflow-hidden.text-center > .absolute.z-0.overflow-hidden::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	box-shadow: inset 0 0 0 1px var(--lab-tile-edge);
+	pointer-events: none;
+}
+
+/* a dot grid behind the heading, fading out from the tiles */
+.grow.flex-col.items-center.justify-center {
+	position: relative;
+}
+.grow.flex-col.items-center.justify-center::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image: radial-gradient(circle, var(--lab-grid) 1px, transparent 1.4px);
+	background-size: 22px 22px;
+	background-position: center;
+	mask-image: radial-gradient(ellipse 260px 210px at 50% 38%, #000 10%, transparent 72%);
+}
+
+.grow.flex-col.items-center.justify-center > h1 {
+	font-size: clamp(1.9rem, 1.2rem + 1.5vw, 2.6rem);
+	margin-top: 1.75rem;
+}
+.grow.flex-col.items-center.justify-center > p.text-muted-foreground {
+	font-size: 0.975rem;
+	line-height: 1.55;
+	max-width: 52ch;
+	margin-inline: auto;
+	text-wrap: pretty;
+}
+
+/* tiles: the Pocket ID mark and the client logo, as rack faceplates */
+.grow.flex-col.items-center.justify-center :is(.bg-muted.rounded-2xl.p-3) {
+	background-color: var(--lab-tile);
+	border-radius: 18px;
+	box-shadow:
+		inset 0 0 0 1px var(--lab-tile-edge),
+		inset 0 1px 0 rgb(255 255 255 / 0.06),
+		0 14px 30px -16px var(--lab-shadow);
+}
+
+/* the link between the two tiles: a patch cable with a packet on it, Pocket ID to the app */
+.flex.justify-center.gap-3:has(> svg.w-32) {
+	position: relative;
+}
+.flex.justify-center.gap-3 > svg.w-32 {
+	visibility: hidden;
+}
+.flex.justify-center.gap-3:has(> svg.w-32)::before {
+	content: '';
+	position: absolute;
+	top: 50%;
+	left: 84px;
+	right: 84px;
+	height: 2px;
+	margin-top: -1px;
+	background: repeating-linear-gradient(90deg, var(--input) 0 6px, transparent 6px 11px);
+}
+.flex.justify-center.gap-3:has(> svg.w-32)::after {
+	content: '';
+	position: absolute;
+	top: 50%;
+	left: 84px;
+	right: 84px;
+	height: 4px;
+	margin-top: -2px;
+	background: linear-gradient(90deg, transparent, var(--lab-amber)) no-repeat;
+	background-size: 26px 4px;
+	border-radius: 2px;
+	animation: lab-packet 2.4s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+@keyframes lab-packet {
+	0% {
+		background-position: 0% 0;
+		opacity: 0;
+	}
+	12% {
+		opacity: 1;
+	}
+	62% {
+		background-position: 100% 0;
+		opacity: 1;
+	}
+	72%,
+	100% {
+		background-position: 100% 0;
+		opacity: 0;
+	}
+}
+
+/* "Alternative Sign In Methods" */
+.h-screen.overflow-hidden.text-center a.text-muted-foreground.text-xs,
+.min-h-dvh.bg-cover.text-center a.text-muted-foreground.text-xs {
+	font-size: 0.8rem;
+	text-underline-offset: 4px;
+}
+
+/* mobile: the card sits over the animated background, so it needs to hold its text */
+.min-h-dvh.bg-cover.text-center > [data-slot='card'] {
+	background-color: color-mix(in srgb, var(--card) 82%, transparent);
+	backdrop-filter: blur(14px) saturate(1.1);
+	border: 1px solid var(--lab-tile-edge);
+	border-radius: 24px;
+	box-shadow: 0 30px 60px -30px var(--lab-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.flex.justify-center.gap-3:has(> svg.w-32)::after {
+		animation: none;
+		background-position: 50% 0;
+	}
+	/* the animated orbit can't see this preference from inside its <img>; show the still one */
+	.h-screen.overflow-hidden.text-center > .absolute.z-0.overflow-hidden {
+		background: url('/_lab/background-still.svg') center / cover;
+	}
+	.h-screen.overflow-hidden.text-center > .absolute.z-0.overflow-hidden > img {
+		visibility: hidden;
+	}
+	.min-h-dvh.bg-cover.text-center {
+		background-image: url('/_lab/background-still.svg') !important;
+	}
+}

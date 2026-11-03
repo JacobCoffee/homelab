@@ -41,6 +41,8 @@ spec:
               ALLOW_INSECURE_CALLBACK_URLS: "false"
               UI_CONFIG_DISABLED: "true"
               APP_NAME: Homelab
+              # The Homelab theme's amber (app/theme/lab.css, branding/build.py).
+              ACCENT_COLOR: "#FFB224"
               SESSION_DURATION: "720"
               ALLOW_USER_SIGNUPS: disabled
               # No SMTP: mark addresses verified so apps that check email_verified accept them.

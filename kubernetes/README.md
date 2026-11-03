@@ -105,6 +105,14 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
   owner account, the OIDC clients and their secrets (`vault_pocket_id_<client>_secret`, copied
   into the sops Secrets that need them; commit what it lists). `--link` prints a one-time
   sign-in link (30 minutes) for adding a passkey on a new device or after losing one.
+- The sign-in pages carry the Homelab theme, in two parts. `apps/auth/pocket-id/branding/` holds
+  the images: the animated orbit of the lab's apps (the right-hand panel), the rack logo, the
+  favicon and a logo per OIDC client. `branding/build.py` builds them from `branding/icons/`, and
+  `scripts/pocket-id.py` uploads any that changed. The CSS is `app/theme/lab.css` plus its fonts;
+  Caddy serves it at `id.z7x.org/_lab/`, and Envoy's Lua filter (`app/envoyextensionpolicy.yaml`)
+  links it into every Pocket ID page. The CSS targets Pocket ID's own class names, so open
+  `/login` after each Pocket ID bump. A rule that no longer matches leaves stock Pocket ID
+  styling for that element.
 
 `../scripts/lab-logins.py` keeps the apps' own logins off (`--check` only reports), and keeps the
 shared login, `admin` and `vault_lab_admin_password`, on the accounts that still have a job:

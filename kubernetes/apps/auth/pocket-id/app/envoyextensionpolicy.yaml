@@ -1,0 +1,37 @@
+# Links the Homelab theme (theme/lab.css, served by theme-server.yaml at /_lab/) into every HTML
+# page Pocket ID serves. Pocket ID has no custom-CSS setting (pocket-id/pocket-id#1380), so this
+# rewrites its HTML shell: one <link> before </head>. Only text/html responses are buffered;
+# everything else (JS, images, the API) streams through untouched. Pocket ID sends the shell
+# uncompressed; a compressed response is left alone rather than mangled.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyExtensionPolicy
+metadata:
+  name: pocket-id-theme
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: pocket-id-internal
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: pocket-id-external
+  lua:
+    - type: Inline
+      inline: |
+        function envoy_on_response(response_handle)
+          local headers = response_handle:headers()
+          local ct = headers:get("content-type") or ""
+          if not string.find(ct, "text/html", 1, true) or headers:get("content-encoding") then
+            return
+          end
+          headers:remove("content-length")
+          local body = response_handle:body()
+          if body == nil then
+            return
+          end
+          local html = body:getBytes(0, body:length())
+          local out, n = string.gsub(html, "</head>", '<link rel="stylesheet" href="/_lab/lab.css"></head>', 1)
+          if n == 1 then
+            body:setBytes(out)
+          end
+        end

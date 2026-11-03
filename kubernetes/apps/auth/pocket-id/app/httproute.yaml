@@ -1,6 +1,7 @@
 # id.z7x.org on both gateways. Public because Jellyfin's browser sign-in from outside (and any
 # device off the tailnet) needs the issuer. Safe to publish: sign-in is passkey-only, signups are
 # disabled, and /setup is closed (scripts/pocket-id.py created the owner, so it answers 409).
+# /_lab/ is the theme (theme-server.yaml); Pocket ID itself never serves that path.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -13,6 +14,13 @@ spec:
   hostnames:
     - id.z7x.org
   rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /_lab/
+      backendRefs:
+        - name: pocket-id-theme
+          port: 8088
     - backendRefs:
         - name: pocket-id
           port: 1411
@@ -29,6 +37,13 @@ spec:
   hostnames:
     - id.z7x.org
   rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /_lab/
+      backendRefs:
+        - name: pocket-id-theme
+          port: 8088
     - backendRefs:
         - name: pocket-id
           port: 1411
