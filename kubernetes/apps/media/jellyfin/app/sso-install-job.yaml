@@ -50,7 +50,8 @@ spec:
       containers:
         - name: install-sso
           image: python:3.12-slim
-          command: ["python3", "/script/install-sso.py"]
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/install-sso.py"]
           envFrom:
             - secretRef:
                 name: jellyfin-sso

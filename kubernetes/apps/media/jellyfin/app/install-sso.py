@@ -137,7 +137,9 @@ def ensure_repository():
 
 def plugin_installed() -> bool:
     _, plugins = call("GET", "/Plugins")
-    return any(p.get("Id", "").lower() == PLUGIN_GUID for p in (plugins or []))
+    # /Plugins lists Ids without dashes (505ce9d1d916...), so compare the bare hex.
+    want = PLUGIN_GUID.replace("-", "")
+    return any(p.get("Id", "").replace("-", "").lower() == want for p in (plugins or []))
 
 
 def ensure_plugin_installed():
