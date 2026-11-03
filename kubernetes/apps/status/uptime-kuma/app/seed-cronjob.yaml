@@ -1,7 +1,8 @@
 # Ports fire-tv/hearth/teststack/seed-kuma.py against the in-cluster Kuma Service: creates the
 # admin user on first run, then (idempotently, by name/slug) a handful of monitors and the
 # public status page slug "home". Runs weekly to re-assert state after any manual edits; cheap
-# and a no-op when nothing has drifted.
+# and a no-op when nothing has drifted. Uses uptime-kuma-api2 (a maintained fork of the
+# abandoned uptime-kuma-api, same `uptime_kuma_api` import name) for Kuma 2.x support.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -126,7 +127,7 @@ spec:
               args:
                 - |
                   set -e
-                  pip install --quiet --no-cache-dir uptime-kuma-api
+                  pip install --quiet --no-cache-dir uptime-kuma-api2
                   python /script/seed-kuma.py
               envFrom:
                 - secretRef:

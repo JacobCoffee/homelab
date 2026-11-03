@@ -1,8 +1,10 @@
-# louislam/uptime-kuma:1.23.17-alpine, latest 1.23.x (v1) release as of 2026-11-01. Pinned to
-# v1 rather than 2.x because uptime-kuma-api (the PyPI client the seed CronJob reuses from
-# fire-tv/hearth/teststack/seed-kuma.py) isn't guaranteed compatible with v2's socket.io/auth
-# protocol changes yet. Admin setup is driven by the seed CronJob (seed-cronjob.yaml), not this
-# HelmRelease -- Kuma has no "set admin via env" first-run option.
+# louislam/uptime-kuma:2.5.9-slim, latest 2.x (v2) release as of 2026-11-02. Upgraded from v1
+# (1.23.17-alpine) after verifying the v1->v2 SQLite migration and the uptime-kuma-api2 PyPI
+# client (the seed CronJob's dependency, replacing the abandoned uptime-kuma-api) against a
+# throwaway copy of the live database. No alpine variant exists for v2; -slim is upstream's
+# closest equivalent (plain Debian base, same root-entrypoint behaviour as v1's alpine image).
+# Admin setup is driven by the seed CronJob (seed-cronjob.yaml), not this HelmRelease -- Kuma
+# has no "set admin via env" first-run option.
 #
 # No runAsNonRoot/fsGroup here: the upstream image's entrypoint runs as root to chown/prepare
 # /app/data (PUID/PGID env vars are the opt-in way to drop privileges, and even then upstream
@@ -26,7 +28,7 @@ spec:
           app:
             image:
               repository: louislam/uptime-kuma
-              tag: "1.23.17-alpine"
+              tag: "2.5.9-slim"
             env:
               TZ: America/Chicago
             probes:

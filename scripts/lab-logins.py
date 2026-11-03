@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["requests>=2.32", "pyyaml>=6", "uptime-kuma-api==1.2.1"]
+# dependencies = ["requests>=2.32", "pyyaml>=6", "uptime-kuma-api2>=2.9.0"]
 # ///
 """Keep the lab apps' own logins in line with the passkey sign-in.
 
