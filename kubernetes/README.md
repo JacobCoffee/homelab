@@ -175,9 +175,10 @@ next Flux apply.
 
 The `jellyfin-plugins` Job (`apps/media/jellyfin/app/plugins.py`; it shares `jellyfin_api.py`
 with the SSO Job) installs, from their repositories' Jellyfin 12 builds: Open Subtitles, Fanart,
-Intro Skipper, Editor's Choice, InPlayerEpisodePreview (episode list in the player), File
-Transformation + Media Bar, JavaScript Injector + Jellyfin Enhanced. TMDb ships with Jellyfin.
-It then restarts Jellyfin once to load what's new. Through the JavaScript Injector it adds
+Intro Skipper, InPlayerEpisodePreview (episode list in the player), File Transformation + Media
+Bar, JavaScript Injector + Jellyfin Enhanced. TMDb ships with Jellyfin. It then restarts Jellyfin
+once to load what's new. Editor's Choice is uninstalled (its banner stacked on Media Bar's;
+`REMOVED_PLUGINS`). Through the JavaScript Injector it adds
 KefinTweaks and jf-avatars, and at the top of the branding Custom CSS a marked block importing
 ElegantFin, its Media Bar add-on and the `elegantfin-jf12` companion sheet for Jellyfin 12's
 Modern layout. Every web script and stylesheet is pinned to a release tag in `plugins.py`; bump

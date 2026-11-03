@@ -56,15 +56,20 @@ def wait_for_server(tries=60, delay=5):
     sys.exit(f"Jellyfin never became reachable at {JELLYFIN_URL}")
 
 
-def ensure_repositories(wanted: list[tuple[str, str]]) -> None:
-    """Add any (name, manifest URL) not registered yet; leaves the others alone."""
+def ensure_repositories(wanted: list[tuple[str, str]], remove: tuple[str, ...] = ()) -> None:
+    """Add any (name, manifest URL) not registered yet and drop the manifest URLs in `remove`;
+    leaves the others alone."""
     _, repos = call("GET", "/Repositories")
     repos = repos or []
+    dropped = [r for r in repos if r.get("Url") in remove]
+    repos = [r for r in repos if r.get("Url") not in remove]
     have = {r.get("Url") for r in repos}
     missing = [{"Name": name, "Url": url, "Enabled": True} for name, url in wanted if url not in have]
-    if missing:
+    if missing or dropped:
         call("POST", "/Repositories", repos + missing)
-        print(f"added repositories: {', '.join(r['Name'] for r in missing)}")
+        for verb, changed in (("added", missing), ("removed", dropped)):
+            if changed:
+                print(f"{verb} repositories: {', '.join(r['Name'] for r in changed)}")
 
 
 def installed_plugins() -> dict[str, dict]:
@@ -106,6 +111,34 @@ def install_missing(wanted: list[tuple[str, str, str]]) -> None:
         time.sleep(5)
     sys.exit("plugins did not appear in /Plugins after install + restart: "
              + ", ".join(n for n, g, _ in missing if bare(g) not in have))
+
+
+def uninstall(unwanted: list[tuple[str, str]]) -> None:
+    """Uninstall every (name, GUID) still present, then restart Jellyfin once and wait until they
+    are gone: an uninstalled plugin stays loaded (status Deleted) until the process restarts."""
+    have = installed_plugins()
+    present = [(name, guid) for name, guid in unwanted if bare(guid) in have]
+    if not present:
+        return
+    for name, guid in present:
+        print(f"uninstalling {name}")
+        call("DELETE", f"/Plugins/{guid}")
+    print("restarting the jellyfin Deployment to unload them")
+    restart_deployment()
+    time.sleep(20)
+    for _ in range(60):
+        try:
+            have = installed_plugins()
+            if not any(bare(guid) in have for _, guid in present):
+                return
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            pass
+        except ApiError as e:
+            if e.code != 503:
+                raise
+        time.sleep(5)
+    sys.exit("plugins still in /Plugins after uninstall + restart: "
+             + ", ".join(n for n, g in present if bare(g) in have))
 
 
 def restart_deployment():

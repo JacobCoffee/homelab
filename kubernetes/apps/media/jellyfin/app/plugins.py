@@ -1,10 +1,11 @@
 """Jellyfin's plugins, web scripts and theme, idempotently.
 
 1. Plugin repositories and plugins (Jellyfin 12 builds only; 10.x plugins don't load on 12):
-   Open Subtitles, Fanart (official repo); Intro Skipper; Editor's Choice; InPlayerEpisodePreview
-   (episode list in the player); File Transformation + Media Bar (IAmParadox27); JavaScript
-   Injector + Jellyfin Enhanced (n00bcodr's Jellyfin 12 manifest). TMDb ships with Jellyfin.
-   Anything missing is installed, then Jellyfin is restarted once to load it.
+   Open Subtitles, Fanart (official repo); Intro Skipper; InPlayerEpisodePreview (episode list
+   in the player); File Transformation + Media Bar (IAmParadox27); JavaScript Injector + Jellyfin
+   Enhanced (n00bcodr's Jellyfin 12 manifest). TMDb ships with Jellyfin. Anything missing is
+   installed, then Jellyfin is restarted once to load it. Editor's Choice is uninstalled: its
+   home-page banner stacked on top of Media Bar's.
 2. JavaScript Injector scripts for the web client: KefinTweaks and jf-avatars, pinned to a
    release. Scripts other plugins or the UI add (KefinTweaks writes its own config entries) are
    left alone; only entries named here are managed.
@@ -23,7 +24,8 @@ TV) draws its own UI.
 import os
 import sys
 
-from jellyfin_api import ApiError, call, ensure_repositories, install_missing, wait_for_server
+from jellyfin_api import (ApiError, call, ensure_repositories, install_missing, uninstall,
+                          wait_for_server)
 
 OFFICIAL = "https://repo.jellyfin.org/files/plugin/manifest.json"
 INTRO_SKIPPER = "https://intro-skipper.org/manifest.json"
@@ -34,21 +36,23 @@ N00BCODR = "https://raw.githubusercontent.com/n00bcodr/jellyfin-plugins/main/12/
 
 REPOSITORIES = [
     ("Intro Skipper", INTRO_SKIPPER),
-    ("Editor's Choice", EDITORS_CHOICE),
     ("InPlayerEpisodePreview", INPLAYER),
     ("IAmParadox27", PARADOX),
     ("n00bcodr (Jellyfin 12)", N00BCODR),
 ]
-# (package name, GUID, repository). Dependencies first: Media Bar, Editor's Choice and
-# InPlayerEpisodePreview inject through File Transformation; KefinTweaks/jf-avatars need the
-# JavaScript Injector.
+# Uninstalled when present, with their repositories. Editor's Choice duplicated Media Bar's
+# home-page banner.
+REMOVED_REPOSITORIES = (EDITORS_CHOICE,)
+REMOVED_PLUGINS = [("Editor's Choice", "70bb2ec1-f19e-46b5-b49a-942e6b96ebae")]
+
+# (package name, GUID, repository). Dependencies first: Media Bar and InPlayerEpisodePreview
+# inject through File Transformation; KefinTweaks/jf-avatars need the JavaScript Injector.
 PLUGINS = [
     ("File Transformation", "5e87cc92-571a-4d8d-8d98-d2d4147f9f90", PARADOX),
     ("JavaScript Injector", "f5a34f7b-2e8a-4e6a-a722-3a216a81b374", N00BCODR),
     ("Open Subtitles", "4b9ed42f-5185-48b5-9803-6ff2989014c4", OFFICIAL),
     ("Fanart", "170a157f-ac6c-437a-abdd-ca9c25cebd39", OFFICIAL),
     ("Intro Skipper", "c83d86bb-a1e0-4c35-a113-e2101cf4ee6b", INTRO_SKIPPER),
-    ("Editor's Choice", "70bb2ec1-f19e-46b5-b49a-942e6b96ebae", EDITORS_CHOICE),
     ("InPlayerEpisodePreview", "73833d5f-0bcb-45dc-ab8b-7ce668f4345d", INPLAYER),
     ("Media Bar", "08f615ea-2107-4f04-89cc-091035f54448", PARADOX),
     ("Jellyfin Enhanced", "f69e946a-4b3c-4e9a-8f0a-8d7c1b2c4d9b", N00BCODR),
@@ -171,7 +175,8 @@ def set_open_subtitles() -> None:
 
 def main():
     wait_for_server()
-    ensure_repositories(REPOSITORIES)
+    ensure_repositories(REPOSITORIES, remove=REMOVED_REPOSITORIES)
+    uninstall(REMOVED_PLUGINS)
     install_missing(PLUGINS)
     set_scripts()
     set_theme()
