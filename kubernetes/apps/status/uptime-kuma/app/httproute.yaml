@@ -1,22 +1,40 @@
-# Internal: full admin UI access at kuma.z7x.org, lab/tailnet only.
+# Uptime Kuma lives at status.z7x.org. The public status page (slug "home") is open on both
+# gateways; everything else is the admin UI, lab/tailnet only (internal gateway) and behind the
+# Pocket ID gate (lab-sso SecurityPolicy on uptime-kuma-internal). Lab clients resolve
+# status.z7x.org to the internal gateway (external-dns-adguard), the internet to Cloudflare.
+#
+# Public: just what the status page loads (/status/<slug>, its JSON under /api/status-page,
+# the built assets and icons, uploaded logos) plus badges. The Fire TV app polls
+# /api/status-page too, so this must stay ungated.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: uptime-kuma-internal
+  name: uptime-kuma-public
 spec:
   parentRefs:
     - name: internal
       namespace: network
       sectionName: https
+    - name: external
+      namespace: network
+      sectionName: https
   hostnames:
-    - kuma.z7x.org
+    - status.z7x.org
   rules:
-    - backendRefs:
+    - matches:
+        - path: { type: PathPrefix, value: /status/ }
+        - path: { type: PathPrefix, value: /api/status-page/ }
+        - path: { type: PathPrefix, value: /api/badge/ }
+        - path: { type: PathPrefix, value: /assets/ }
+        - path: { type: PathPrefix, value: /upload/ }
+        - path: { type: Exact, value: /icon.svg }
+        - path: { type: Exact, value: /favicon.ico }
+        - path: { type: Exact, value: /apple-touch-icon.png }
+      backendRefs:
         - name: uptime-kuma
           port: 3001
 ---
-# External: only the public status-page JSON API at status.z7x.org/api/status-page/*, so the
-# admin UI (everything else, including "/") stays unreachable from the internet.
+# From the internet, "/" opens the status page; nothing else of the admin UI is routed there.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -30,9 +48,45 @@ spec:
     - status.z7x.org
   rules:
     - matches:
-        - path:
-            type: PathPrefix
-            value: /api/status-page
-      backendRefs:
+        - path: { type: Exact, value: / }
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path: { type: ReplaceFullPath, replaceFullPath: /status/home }
+            statusCode: 302
+---
+# Admin UI (dashboard, settings, socket.io), internal gateway only, behind Pocket ID.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: uptime-kuma-internal
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - status.z7x.org
+  rules:
+    - backendRefs:
         - name: uptime-kuma
           port: 3001
+---
+# Old admin hostname: send bookmarks to status.z7x.org.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: uptime-kuma-legacy
+spec:
+  parentRefs:
+    - name: internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - kuma.z7x.org
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            hostname: status.z7x.org
+            statusCode: 301

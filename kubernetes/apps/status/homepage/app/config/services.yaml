@@ -148,7 +148,7 @@
         proxmoxNode: hnhv02
         proxmoxVMID: 301
     - Uptime Kuma:
-        href: https://kuma.z7x.org
+        href: https://status.z7x.org
         siteMonitor: http://uptime-kuma.status.svc.cluster.local:3001
         icon: uptime-kuma.svg
         description: Status monitors

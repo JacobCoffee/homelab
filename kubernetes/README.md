@@ -42,7 +42,7 @@ flux get kustomizations
 | cloudflared | tunnel `homelab`: Cloudflare → `external` gateway, no open ports at home |
 | adguard-dot | `apps/network/adguard-dot`: cert-manager cert for `dns.z7x.org`/`*.dns.z7x.org` (AdGuard's own DoT/HTTPS TLS, separate from `z7x-org-tls`) plus a CronJob pushing it into both AdGuard instances -- see `fire-tv/DECISIONS.md` "DNS" |
 | theme-catalog | `apps/network/theme-catalog`: public static site at `themes.z7x.org`, built from a pinned commit of the public `github.com/JacobCoffee/hearth` mirror |
-| uptime-kuma | `apps/status/uptime-kuma` (namespace `status`): admin UI internal-only at `kuma.z7x.org`, public read-only status API at `status.z7x.org` -- see `fire-tv/DECISIONS.md` "Homelab services" |
+| uptime-kuma | `apps/status/uptime-kuma` (namespace `status`) at `status.z7x.org`: public status page on both gateways, admin UI internal-only behind Pocket ID (`kuma.z7x.org` redirects there) -- see `fire-tv/DECISIONS.md` "Homelab services" |
 | homepage | `apps/status/homepage`: start page at `start.z7x.org` (internal only): every app with an up/down dot, pod CPU/memory, Proxmox VM/LXC stats, the apps' own widgets, and news feeds. Edit `app/config/services.yaml`; changes reach the pod within a minute, no restart. Credentials are `app/secret.sops.yaml`, written by `ansible-playbook playbooks/site.yml --tags homepage` (`../ansible/roles/homepage`); after it changes, `kubectl -n status rollout restart deploy/homepage` |
 | flux-web | `apps/flux-system/flux-web`: Flux web UI at `flux.z7x.org` (internal only), the Flux Operator chart's web server alone (`web.serverOnly`, operator CRDs installed, no operator). Signs in with Pocket ID itself and acts as you in Kubernetes: `lab-admins` is bound to `flux-web-admin` (read everything; reconcile/suspend/resume, restart workloads, delete pods). Upstream only supports the UI on Flux-Operator-managed clusters; this one is `flux bootstrap`. Capacitor was the first pick, but its in-cluster server won't start without a Gimlet beta license and the old free one doesn't work on Flux 2.8+ |
 | airvpn-exit | `apps/vpn/airvpn-exit` (namespace `vpn`): Tailscale exit node `airvpn` (`tag:vpn-exit`). Pick it in the Tailscale menu and your internet traffic leaves through AirVPN (US). One pod: gluetun owns the network namespace and its kill switch, Tailscale (userspace, OAuth client `vault_vpn_exit_tailscale_oauth_client_*`) runs behind it, DNS is gluetun's DoT resolver. AirVPN device `vpn` (`vault_vpn_exit_wireguard_*`), separate from the torrent tunnel's key: one AirVPN key can only be connected once, so a second region running at the same time needs a second device |
@@ -97,7 +97,7 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
   web UI have their own "Sign in with Pocket ID".
 - The rest of the internal apps have no SSO of their own, so Envoy's OIDC filter sits in front of
   them (`apps/network/lab-sso`) and their own logins are off: the *arrs, Bazarr, SABnzbd, Bindery,
-  Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma (`kuma.z7x.org`) and the start page. Their pods
+  Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma's admin UI (`status.z7x.org`) and the start page. Their pods
   only take traffic from the gateway, their own namespace, `status` and `observability`
   (CiliumNetworkPolicy `lab-sso-ingress`), so going to a pod directly can't skip the passkey.
   In-cluster callers keep using API keys; through the gateway every request needs the passkey

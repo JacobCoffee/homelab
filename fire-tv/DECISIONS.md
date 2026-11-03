@@ -90,13 +90,12 @@ Fire OS 8.1.8.5 (2026-11-02) re-enabled Amazon Music, Shopping, Kindle connect a
 
 ## Homelab services (Hearth's Uptime Kuma / AdGuard / theme-catalog widgets)
 - Uptime Kuma: `kubernetes/apps/status/uptime-kuma` (namespace `status`, SQLite on a
-  `proxmox-vmdata` PVC, `strategy: Recreate`). Admin UI at `kuma.z7x.org` (internal gateway only);
-  the read-only status-page API (`/api/status-page/home`, `/api/status-page/heartbeat/home`) is
-  public at `status.z7x.org` (external gateway, `PathPrefix: /api/status-page` only -- the admin
-  UI 404s there). Monitors (Home Assistant, Jellyfin, Seerr, both Proxmox hosts, OPNsense, AdGuard
-  DNS, Grafana, internet) and the `home` status page are seeded idempotently by the `kuma-seed`
-  CronJob (`uptime-kuma-api`, same approach as `hearth/teststack/seed-kuma.py`); image pinned to
-  Kuma 1.23.x, not 2.x, since `uptime-kuma-api` isn't confirmed compatible with 2.x yet.
+  `proxmox-vmdata` PVC, `strategy: Recreate`), all at `status.z7x.org`. The public status page
+  (`/status/home`, its JSON under `/api/status-page/`, assets, badges) is open on both gateways
+  and `/` redirects there from the internet; the admin UI is internal gateway only, behind the
+  Pocket ID gate (`kuma.z7x.org` redirects to it). Monitors for every service on the start page,
+  in the start page's groups, and the `home` status page are seeded idempotently by the
+  `kuma-seed` CronJob (`uptime-kuma-api2`, same approach as `hearth/teststack/seed-kuma.py`).
 - Theme catalog: `kubernetes/apps/network/theme-catalog`, public at `themes.z7x.org`. An
   initContainer shallow-clones the public mirror `github.com/JacobCoffee/hearth` at a pinned
   commit SHA and runs `tools/build-catalog.py`; bump the SHA in `app/deployment.yaml` to update.

@@ -1,5 +1,5 @@
 # Ports fire-tv/hearth/teststack/seed-kuma.py against the in-cluster Kuma Service: creates the
-# admin user on first run, then (idempotently, by name/slug) a handful of monitors and the
+# admin user on first run, then (idempotently, by name/slug) a monitor per start-page service and the
 # public status page slug "home". Runs weekly to re-assert state after any manual edits; cheap
 # and a no-op when nothing has drifted. Uses uptime-kuma-api2 (a maintained fork of the
 # abandoned uptime-kuma-api, same `uptime_kuma_api` import name) for Kuma 2.x support.
@@ -22,6 +22,69 @@ data:
     BASE_URL = "http://uptime-kuma.status.svc.cluster.local:3001"
     ADGUARD_DNS_RESOLVER = "10.10.10.53"
     EDIT_FIELD = {"ignore_tls": "ignoreTls"}
+    MEDIA = "media.svc.cluster.local"
+
+    # Status page groups, in the start page's order. Apps behind the Pocket ID gateway are checked
+    # on their in-cluster Service: through the gateway they always answer with a sign-in redirect.
+    GROUPS = {
+        "Media": [
+            dict(type=MonitorType.HTTP, name="Jellyfin", url="https://media.z7x.org"),
+            dict(type=MonitorType.HTTP, name="Seerr", url="https://requests.z7x.org"),
+            dict(type=MonitorType.HTTP, name="Sonarr", url=f"http://sonarr.{MEDIA}:8989/ping"),
+            dict(type=MonitorType.HTTP, name="Radarr", url=f"http://radarr.{MEDIA}:7878/ping"),
+            dict(type=MonitorType.HTTP, name="Lidarr", url=f"http://lidarr.{MEDIA}:8686/ping"),
+            dict(type=MonitorType.HTTP, name="Bindery", url=f"http://bindery.{MEDIA}:8787"),
+            dict(type=MonitorType.HTTP, name="Bazarr", url=f"http://bazarr.{MEDIA}:6767"),
+        ],
+        "Downloads": [
+            dict(type=MonitorType.HTTP, name="Prowlarr", url=f"http://prowlarr.{MEDIA}:9696/ping"),
+            dict(type=MonitorType.HTTP, name="qBittorrent", url=f"http://gluetun-qbittorrent.{MEDIA}:8080"),
+            dict(type=MonitorType.HTTP, name="SABnzbd", url=f"http://sabnzbd.{MEDIA}:8080"),
+            dict(type=MonitorType.HTTP, name="Cleanuparr", url=f"http://cleanuparr.{MEDIA}:11011"),
+            dict(type=MonitorType.HTTP, name="Unpackerr", url=f"http://unpackerr.{MEDIA}:5656"),
+        ],
+        "Home": [
+            dict(type=MonitorType.HTTP, name="Home Assistant", url="https://home.z7x.org"),
+            # Homepage only answers to its allowed host name.
+            dict(type=MonitorType.HTTP, name="Start page",
+                 url="http://homepage.status.svc.cluster.local:3000/api/healthcheck",
+                 headers='{"Host": "start.z7x.org"}'),
+        ],
+        "Platform": [
+            dict(type=MonitorType.HTTP, name="Pocket ID", url="https://id.z7x.org/healthz"),
+            dict(type=MonitorType.HTTP, name="Grafana", url="https://grafana.z7x.org"),
+            dict(type=MonitorType.HTTP, name="Flux", url="https://flux.z7x.org"),
+            dict(type=MonitorType.HTTP, name="Cabotage", url="https://cabotage.apps.z7x.org"),
+            dict(type=MonitorType.HTTP, name="Kubernetes API",
+                 url="https://10.10.30.10:6443/livez", ignore_tls=True),
+        ],
+        "Infrastructure": [
+            # By IP from the cluster (their *.internal.z7x.org names are tailnet IPs pods can't
+            # reach), so their certs don't match: these check "is the UI up", not TLS.
+            dict(type=MonitorType.HTTP, name="Proxmox hnhv01",
+                 url="https://192.168.1.220:8006", ignore_tls=True),
+            dict(type=MonitorType.HTTP, name="Proxmox hnhv02",
+                 url="https://192.168.1.192:8006", ignore_tls=True),
+            dict(type=MonitorType.HTTP, name="OPNsense (VIP)", url="https://10.10.10.1", ignore_tls=True),
+            dict(type=MonitorType.HTTP, name="OPNsense hnfw01", url="https://10.10.30.2", ignore_tls=True),
+            dict(type=MonitorType.HTTP, name="OPNsense hnfw02", url="https://10.10.30.3", ignore_tls=True),
+            dict(type=MonitorType.DNS, name="AdGuard DNS (VIP)", hostname="cloudflare.com",
+                 dns_resolve_server=ADGUARD_DNS_RESOLVER, port=53),
+            dict(type=MonitorType.DNS, name="AdGuard hndns01", hostname="cloudflare.com",
+                 dns_resolve_server="10.10.10.54", port=53),
+            dict(type=MonitorType.DNS, name="AdGuard hndns02", hostname="cloudflare.com",
+                 dns_resolve_server="10.10.10.55", port=53),
+            dict(type=MonitorType.PORT, name="Media NFS", hostname="10.10.30.20", port=2049),
+            dict(type=MonitorType.HTTP, name="Internet", url="https://1.1.1.1"),
+        ],
+    }
+    # Monitors created under earlier names: renamed in place so their history carries over.
+    RENAMED = {
+        "home-assistant": "Home Assistant", "jellyfin": "Jellyfin", "seerr": "Seerr",
+        "proxmox hnhv01": "Proxmox hnhv01", "proxmox hnhv02": "Proxmox hnhv02",
+        "opnsense": "OPNsense (VIP)", "adguard dns": "AdGuard DNS (VIP)",
+        "grafana": "Grafana", "internet": "Internet",
+    }
 
 
     def main() -> int:
@@ -35,54 +98,33 @@ data:
             api.login(username, password)
 
             existing = {m["name"]: m for m in api.get_monitors()}
+            for old, new in RENAMED.items():
+                if old in existing and new not in existing:
+                    api.edit_monitor(existing[old]["id"], name=new)
+                    existing[new] = existing.pop(old)
 
-            monitors = [
-                dict(type=MonitorType.HTTP, name="home-assistant",
-                     url="https://home.z7x.org", interval=60),
-                dict(type=MonitorType.HTTP, name="jellyfin",
-                     url="https://media.z7x.org", interval=60),
-                dict(type=MonitorType.HTTP, name="seerr",
-                     url="https://requests.z7x.org", interval=60),
-                # By IP from the cluster (their *.internal.z7x.org names are tailnet IPs pods can't
-                # reach), so their certs don't match: these check "is the UI up", not TLS.
-                dict(type=MonitorType.HTTP, name="proxmox hnhv01",
-                     url="https://192.168.1.220:8006", interval=60, ignore_tls=True),
-                dict(type=MonitorType.HTTP, name="proxmox hnhv02",
-                     url="https://192.168.1.192:8006", interval=60, ignore_tls=True),
-                dict(type=MonitorType.HTTP, name="opnsense",
-                     url="https://10.10.10.1", interval=60, ignore_tls=True),
-                dict(type=MonitorType.DNS, name="adguard dns",
-                     hostname="cloudflare.com", dns_resolve_server=ADGUARD_DNS_RESOLVER,
-                     port=53, interval=60),
-                dict(type=MonitorType.HTTP, name="grafana",
-                     url="https://grafana.z7x.org", interval=60),
-                dict(type=MonitorType.HTTP, name="internet",
-                     url="https://1.1.1.1", interval=60),
-            ]
-
-            created_ids = []
-            for mon in monitors:
-                if mon["name"] in existing:
-                    # Re-apply the definition so edits here reach monitors created earlier.
-                    # edit_monitor merges kwargs straight into Kuma's own field names (unlike
-                    # add_monitor, which translates), and Kuma spells this one ignoreTls.
-                    mid = existing[mon["name"]]["id"]
-                    fields = {EDIT_FIELD.get(k, k): v for k, v in mon.items() if k != "type"}
-                    api.edit_monitor(mid, **fields)
-                    created_ids.append(mid)
-                    continue
-                resp = api.add_monitor(**mon)
-                created_ids.append(resp["monitorID"])
+            public_group_list = []
+            for weight, (group, monitors) in enumerate(GROUPS.items(), start=1):
+                ids = []
+                for mon in monitors:
+                    mon = {"interval": 60, **mon}
+                    if mon["name"] in existing:
+                        # Re-apply the definition so edits here reach monitors created earlier.
+                        # edit_monitor merges kwargs straight into Kuma's own field names (unlike
+                        # add_monitor, which translates), and Kuma spells this one ignoreTls.
+                        mid = existing[mon["name"]]["id"]
+                        fields = {EDIT_FIELD.get(k, k): v for k, v in mon.items() if k != "type"}
+                        api.edit_monitor(mid, **fields)
+                    else:
+                        mid = api.add_monitor(**mon)["monitorID"]
+                    ids.append(mid)
+                public_group_list.append(
+                    {"name": group, "weight": weight, "monitorList": [{"id": i} for i in ids]})
 
             status_pages = {sp["slug"]: sp for sp in api.get_status_pages()}
             if "home" not in status_pages:
                 api.add_status_page(slug="home", title="Homelab")
 
-            public_group_list = [{
-                "name": "Homelab",
-                "weight": 1,
-                "monitorList": [{"id": mid} for mid in created_ids],
-            }]
             api.save_status_page(
                 "home",
                 title="Homelab",
@@ -91,7 +133,8 @@ data:
             )
 
             print("Uptime Kuma seeded.")
-            print(f"  monitors: {[m['name'] for m in monitors]}")
+            for group in public_group_list:
+                print(f"  {group['name']}: {len(group['monitorList'])} monitors")
             print("  status page slug: home")
             return 0
         except UptimeKumaException as e:
