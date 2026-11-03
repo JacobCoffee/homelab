@@ -67,10 +67,11 @@ spec:
                     path: /api/core/version/
                     port: *port
                   periodSeconds: 15
+            # ~1.2Gi with five playlists and three guides loaded (Postgres, Redis, Celery, uWSGI).
             resources:
               requests:
                 cpu: 100m
-                memory: 768Mi
+                memory: 1280Mi
               limits:
                 memory: 3Gi
     defaultPodOptions:
