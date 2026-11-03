@@ -36,13 +36,27 @@
           url: http://seerr.media.svc.cluster.local:5055
           key: "{{HOMEPAGE_VAR_SEERR_KEY}}"
           fields: [pending, approved, available]
+    - Wizarr:
+        href: https://invite.z7x.org
+        siteMonitor: http://wizarr.media.svc.cluster.local:5690/health
+        icon: wizarr.svg
+        description: Jellyfin invites
+        namespace: media
+        app: wizarr
     - Dispatcharr:
         href: https://dispatcharr.z7x.org
         siteMonitor: http://dispatcharr.media.svc.cluster.local:9191/api/core/version/
-        icon: mdi-television-classic
+        icon: dispatcharr.svg
         description: Live TV
         namespace: media
         app: dispatcharr
+    - Jellyball:
+        href: https://jellyball.z7x.org
+        siteMonitor: http://jellyball.media.svc.cluster.local:8000/healthz
+        icon: mdi-stadium
+        description: Live sports
+        namespace: media
+        app: jellyball
     - Sonarr:
         href: https://sonarr.z7x.org
         siteMonitor: http://sonarr.media.svc.cluster.local:8989/ping
@@ -165,6 +179,14 @@
           type: uptimekuma
           url: http://uptime-kuma.status.svc.cluster.local:3001
           slug: home
+    - Hearth themes:
+        href: https://themes.z7x.org
+        siteMonitor: http://theme-catalog.network.svc.cluster.local:8088
+        icon: mdi-palette
+        description: Fire TV launcher theme catalog
+        namespace: network
+        app: theme-catalog
+        podSelector: app=theme-catalog
 
 - Platform:
     - Grafana:
@@ -174,6 +196,13 @@
         description: Dashboards, logs, metrics
         namespace: observability
         app: grafana
+    - Pocket ID:
+        href: https://id.z7x.org
+        siteMonitor: http://pocket-id.auth.svc.cluster.local:1411/healthz
+        icon: pocket-id.svg
+        description: Passkey sign-in for the lab
+        namespace: auth
+        app: pocket-id
     - Flux:
         href: https://flux.z7x.org
         siteMonitor: https://flux.z7x.org
