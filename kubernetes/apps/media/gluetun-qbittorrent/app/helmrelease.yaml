@@ -20,6 +20,8 @@ spec:
   values:
     controllers:
       qbittorrent:
+        # One AirVPN key can only be connected once: never run the old and new pod together.
+        strategy: Recreate
         initContainers:
           # Sign-in is the gateway's passkey check (network/lab-sso), so the web UI skips its own
           # login for the pod network only (AuthSubnetWhitelist 10.244.0.0/16: Envoy's pod IPs, and
@@ -75,6 +77,19 @@ spec:
             image:
               repository: ghcr.io/qdm12/gluetun
               tag: "v3.41.3"
+            # Before every start (container restarts keep the pod's network namespace):
+            # - gluetun treats any IPv6 route as working IPv6 (netlink.IsIPv6Supported); the pod's
+            #   link-local fe80::/64 counts, and so do the tun0 routes a previous run left, so it
+            #   picks AirVPN IPv6 endpoints the IPv4-only cluster can't reach. Flush them.
+            # - A previous run's table-51820 rules make it fail with "adding IPv6 rule ... file
+            #   exists" (gluetun wiki, Kubernetes: delete them on start).
+            command:
+              - sh
+              - -c
+              - >-
+                ip rule del table 51820 2>/dev/null; ip -6 rule del table 51820 2>/dev/null;
+                ip -6 route flush table main; ip -6 route flush table 51820 2>/dev/null;
+                exec /gluetun-entrypoint
             env:
               TZ: America/Chicago
               VPN_SERVICE_PROVIDER: airvpn
