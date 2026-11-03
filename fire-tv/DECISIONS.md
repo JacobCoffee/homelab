@@ -19,7 +19,9 @@
 - Background process limit 2 via `service call activity 43 i32 2`. **Not persisted by Android**: run `./firetv.sh tweaks` after every reboot. Transaction codes 43/44 come from this device's `framework.jar` (re-checked on `RS8185.3898N`: unchanged); re-check after a Fire OS update.
 
 ## Apps added
-- Jellyfin `org.jellyfin.androidtv` v0.19.10, sideloaded from GitHub (sha256 `8510a517…4628`, matches the release digest; `apk/`). 0.20 needs Jellyfin server 10.11+.
+- Wholphin `com.github.damontecres.wholphin` v1.0.9 (GPL-2.0), the Jellyfin client in use: sideloaded from GitHub, armeabi-v7a build (the stick is 32-bit; sha256 `c6b3cc91…cb3df`, matches the release digest; `apk/`). The remote's Jellyfin button (bridge word `jellyfin`) and the first Hearth tile open it.
+- Jellyfin `org.jellyfin.androidtv` v0.19.10, sideloaded from GitHub (sha256 `8510a517…4628`, matches the release digest; `apk/`). Still installed as a fallback, hidden from Hearth. Works with the 12.4 server (Direct Play verified); 0.20, still beta, needs 10.11+.
+- Both reach Jellyfin at `https://media.z7x.org:8920`, signed in as `jacob` with Quick Connect. The stick is on the house LAN and can't route to the lab, and server discovery (UDP broadcast) never crosses OPNsense, so "no servers found" is expected. AdGuard answers `media.z7x.org` with the WAN CARP address for the `firetv` client only (`ansible/roles/adguard/files/firetv-telemetry.txt`), and OPNsense forwards WAN 8920 to the internal gateway's 443 (`ansible/roles/opnsense/tasks/firetv_dot.yml`). Video stays on the LAN instead of going out through the Cloudflare tunnel. 443 on that address is the OPNsense GUI, hence 8920.
 - YouTube `com.amazon.firetv.youtube`, Xbox `gamepass.fire.tv`, Spotify `com.spotify.tv.android`: Amazon Appstore.
 
 ## Home screen: Hearth (`hearth/`, GPL-3.0)
@@ -60,6 +62,7 @@ Fire OS 8.1.8.5 (2026-11-02) re-enabled Amazon Music, Shopping, Kindle connect a
 - `READ_LOGS` lets Hearth read the whole system log; it uses only ActivityManager lines from the system process.
 - Hearth is an enabled notification listener (`media/MediaListener`), which Android requires before an app may read other apps' media sessions. Hearth never reads notifications through it; it only follows media sessions while Home is in front.
 - TCP 47800 (stick) and 47801 (TCL) accept a fixed word list from anyone on the LAN; the worst a stranger can do is open an app, switch input or turn the TV off.
+- WAN 8920 forwards to the internal gateway for anything on the house LAN, not only the stick: the stick's address is a DHCP lease, so a source filter would silently break if it changed. Every app there keeps its own gate (Pocket ID through lab-sso, or its own login); what's new is house-LAN devices reaching them without the tailnet.
 
 ## DNS (AdGuard, whole-LAN)
 - DNS-over-TLS to AdGuard: `./firetv.sh tweaks` sets Android Private DNS to `firetv.dns.z7x.org`

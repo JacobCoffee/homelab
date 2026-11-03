@@ -30,6 +30,11 @@ lab_mtu: 1450
 observability_syslog_target: 10.10.30.210
 observability_syslog_port: 514
 
+# Envoy Gateway "internal" (kubernetes/apps/network/envoy-gateway-config): every *.z7x.org app
+# the lab and tailnet reach directly. The Fire TV, on the house LAN, gets to it through a WAN
+# forward (opnsense role, firetv_dot.yml).
+k8s_internal_gateway: 10.10.30.200
+
 # OPNsense HA pair: CARP addresses (.1 in every zone, firewall_wan_vip on the house LAN) and
 # pfsync state replication. The lowest advskew is master while it is up. lan_host = the
 # firewall's own last octet in every lab zone and on the sync network; the first entry serves

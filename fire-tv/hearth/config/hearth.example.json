@@ -23,7 +23,7 @@
   "themeCatalogUrl": "http://192.168.1.10:8088/index.json",
   "apps": {
     "order": [
-      "org.jellyfin.androidtv",
+      "com.github.damontecres.wholphin",
       "com.hbo.hbonow",
       "com.disney.disneyplus",
       "com.amazon.firetv.youtube",
@@ -37,6 +37,7 @@
     ],
     "hidden": [
       "com.amazon.smarthomemapviewapp",
+      "org.jellyfin.androidtv",
       "com.netflix.ninja"
     ]
   },

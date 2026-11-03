@@ -85,8 +85,12 @@
 # AdGuard only re-reads a local (file://) filter's content when told to; the add_url/set_url
 # calls above re-read it once on registration, so this only matters when the blocklist text
 # changed without touching its registration (the common case, e.g. adding a newly discovered host).
+# The refresh call takes a JSON body naming the list kind; without one AdGuard answers 400.
 - name: "Telemetry blocklist | refresh filters if the file changed"
   ansible.builtin.command:
-    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}", "http://127.0.0.1/control/filtering/refresh"]
+    argv: [pct, exec, "{{ adguard_ctid }}", --, curl, -fsS, -X, POST, -H, "{{ adguard_auth }}",
+           -H, "Content-Type: application/json", --data, '{"whitelist": false}',
+           "http://127.0.0.1/control/filtering/refresh"]
   when: adguard_firetv_blocklist_write is changed and adguard_firetv_filter_registered is not changed
   changed_when: true
+  no_log: true

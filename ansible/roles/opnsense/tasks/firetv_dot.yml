@@ -4,6 +4,11 @@
 # forwards to AdGuard's HTTPS API/UI (same cert, port 443 inside the CT) for house-LAN-only tools
 # (Hearth on the stick, this Mac); never port-forwarded on 80/443 directly, so the plain HTTP API
 # (used by external-dns-adguard, adguard-exporter, the Ansible role) stays lab-internal.
+# 8920 (Jellyfin's usual HTTPS port; 443 here is the OPNsense GUI) forwards to the internal
+# Envoy Gateway, so the Jellyfin app reaches https://media.z7x.org:8920 over the house LAN
+# instead of hairpinning video through Cloudflare: AdGuard answers media.z7x.org with this WAN
+# address for the firetv client only (adguard role, files/firetv-telemetry.txt). Every other app
+# on that gateway keeps its own gate (Pocket ID via lab-sso, or its own login).
 - name: Fire TV DoT | existing port forwards
   ansible.builtin.uri:
     url: "https://{{ opnsense_wan_ip }}/api/firewall/d_nat/search_rule"
@@ -14,7 +19,7 @@
   delegate_to: localhost
   register: opnsense_firetv_dnat_rules
 
-- name: Fire TV DoT | forward WAN CARP address port {{ item.wan_port }} to AdGuard {{ item.target_port }}
+- name: Fire TV DoT | forward WAN CARP address port {{ item.wan_port }} to {{ item.target }}:{{ item.target_port }}
   vars:
     existing: "{{ opnsense_firetv_dnat_rules.json.rows | selectattr('descr', 'equalto', item.descr) | list }}"
   ansible.builtin.uri:
@@ -31,20 +36,21 @@
         ipprotocol: inet
         protocol: TCP
         destination: {network: "{{ firewall_wan_vip }}", port: "{{ item.wan_port }}"}
-        target: "{{ lab_dns }}"
+        target: "{{ item.target }}"
         local-port: "{{ item.target_port }}"
         descr: "{{ item.descr }}"
         pass: pass
   delegate_to: localhost
   loop:
-    - { wan_port: "853", target_port: "853", descr: "Fire TV DoT: WAN 853 to AdGuard" }
-    - { wan_port: "8443", target_port: "443", descr: "Fire TV DoT: WAN 8443 to AdGuard HTTPS API" }
+    - { wan_port: "853", target: "{{ lab_dns }}", target_port: "853", descr: "Fire TV DoT: WAN 853 to AdGuard" }
+    - { wan_port: "8443", target: "{{ lab_dns }}", target_port: "443", descr: "Fire TV DoT: WAN 8443 to AdGuard HTTPS API" }
+    - { wan_port: "8920", target: "{{ k8s_internal_gateway }}", target_port: "443", descr: "Fire TV: WAN 8920 to the internal gateway (Jellyfin)" }
   loop_control:
     label: "{{ item.descr }}"
   register: opnsense_firetv_dnat_add
   when: >-
     not existing or existing[0]['destination.network'] != firewall_wan_vip or
-    existing[0].target != lab_dns or existing[0]['local-port'] != item.target_port
+    existing[0].target != item.target or existing[0]['local-port'] != item.target_port
   changed_when: opnsense_firetv_dnat_add.json.result == "saved"
   failed_when: opnsense_firetv_dnat_add.json.result is not defined or opnsense_firetv_dnat_add.json.result == "failed"
 

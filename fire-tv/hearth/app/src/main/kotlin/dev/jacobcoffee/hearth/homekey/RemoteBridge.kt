@@ -30,9 +30,10 @@ class RemoteBridge(private val context: Context) {
         private const val WAKE_MS = 3000L
         private const val SETTINGS = "settings"
 
-        /** Word -> package. "hearth" opens Hearth itself; "settings" opens Fire TV settings. */
+        /** Word -> package. "hearth" opens Hearth itself; "settings" opens Fire TV settings.
+         *  "jellyfin" (the remote's Jellyfin button) opens Wholphin, the Jellyfin client in use. */
         val APPS = mapOf(
-            "jellyfin" to "org.jellyfin.androidtv",
+            "jellyfin" to "com.github.damontecres.wholphin",
             "netflix" to "com.netflix.ninja",
             "prime" to "com.amazon.firebat",
             "youtube" to "com.amazon.firetv.youtube",
