@@ -8,7 +8,7 @@ Job's credentials-rev annotation so Flux re-runs it (force: true re-creates a Jo
 change).
 
     scripts/vault-set.py vault_newshosting_username vault_newshosting_password vault_nzbfinder_api_key \\
-        vault_opensubtitles_username vault_opensubtitles_password
+        vault_opensubtitles_username vault_opensubtitles_password vault_local_news_match
     scripts/media-secrets.py   # then commit the files it names
 
 Values never touch argv; each goes from the vault straight to `sops set --value-stdin`. Keys
@@ -37,6 +37,10 @@ TARGETS = [
     (MEDIA / "jellyfin/app/plugins-secret.sops.yaml", MEDIA / "jellyfin/app/plugins-job.yaml", {
         "vault_opensubtitles_username": "OPENSUBTITLES_USERNAME",
         "vault_opensubtitles_password": "OPENSUBTITLES_PASSWORD",
+    }),
+    # A regex for this market's local-news stations (Dispatcharr's setup.py), e.g. "Chicago|WGN".
+    (MEDIA / "dispatcharr/app/secret.sops.yaml", MEDIA / "dispatcharr/app/setup-job.yaml", {
+        "vault_local_news_match": "LOCAL_NEWS_MATCH",
     }),
 ]
 

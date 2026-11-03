@@ -313,12 +313,19 @@ HelmRelease here.
   media/status/observability pods off the pod.
 - **Live TV (`apps/media/dispatcharr`):** Dispatcharr (all-in-one image: its own Postgres and
   Redis on the `data` PVC) sits between the free playlists and Jellyfin. Its `dispatcharr-setup`
-  Job (`app/setup.py`) loads the Pluto TV guide (`i.mjh.nz`), then two playlists: Pluto TV US
-  (a daily-generated playlist, since i.mjh.nz only publishes Pluto's guide now; groups News +
-  Opinion, Local News, Sports as channels 100/200/300 up) and iptv-org's English list (groups with
-  a News or Sports category as 1000/2000 up, geo-blocked entries and Pluto relays filtered out;
-  no guide, and plenty of its streams are dead -- hide those in Dispatcharr's UI). Dispatcharr
-  refreshes them on its own (12 h / 24 h) and keeps the channels in step. Streams go through
+  Job (`app/setup.py`) loads the guides (`i.mjh.nz` for Pluto TV and Samsung TV Plus, Tubi's from
+  the same generator as its playlist), then the playlists: Pluto TV US (a daily-generated
+  playlist, since i.mjh.nz only publishes Pluto's guide now; groups News + Opinion, Local News,
+  Sports as channels 100/200/300 up), Samsung TV Plus (News & Opinion, 400 up: ABC News Live, NBC
+  News NOW, FOX Weather, AccuWeather...), Tubi (Local News 500, National News 520, Weather 540,
+  Sports On Now 600) and iptv-org's English list (groups with a News or Sports category as
+  1000/2000 up, geo-blocked entries and Pluto/Samsung relays filtered out; no guide, and plenty of
+  its streams are dead -- hide those in Dispatcharr's UI). The services' Local News groups carry
+  stations from every market; to keep only yours, put a regex for its stations (city, call
+  signs) in the vault and push it: `scripts/vault-set.py vault_local_news_match`,
+  `scripts/media-secrets.py`, commit. It lands in the SOPS secret (`LOCAL_NEWS_MATCH`), so the
+  public repo never names the market. Dispatcharr refreshes the playlists on its own (12 h / 24 h)
+  and keeps the channels in step. Streams go through
   Streamlink, which pulls one HLS rendition (the stock FFmpeg profile copies all of them). The
   Job then gives Jellyfin one M3U tuner (`/output/m3u`) and one XMLTV guide (`/output/epg`) at
   `dispatcharr.media.svc.cluster.local:9191`, with stream sharing on, and points recordings at

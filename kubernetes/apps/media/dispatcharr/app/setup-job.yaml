@@ -1,6 +1,7 @@
 # Sets up Dispatcharr's sources, guides and sign-in, and registers its lineup in Jellyfin
-# (setup.py). One run per change of the script (hashed ConfigMap name). A password rotation
-# doesn't need a re-run: scripts/lab-logins.py changes it in Dispatcharr and in the Secret together.
+# (setup.py). One run per change of the script (hashed ConfigMap name) or of LOCAL_NEWS_MATCH
+# (scripts/media-secrets.py bumps the credentials-rev annotation). A password rotation doesn't
+# need a re-run: scripts/lab-logins.py changes it in Dispatcharr and in the Secret together.
 # Re-run by hand:
 #   kubectl -n media delete job dispatcharr-setup && flux reconcile ks dispatcharr
 apiVersion: batch/v1
@@ -11,6 +12,9 @@ metadata:
 spec:
   backoffLimit: 10
   template:
+    metadata:
+      annotations:
+        media-config/credentials-rev: "2026-11-03T23:17:22Z"
     spec:
       restartPolicy: OnFailure
       securityContext:

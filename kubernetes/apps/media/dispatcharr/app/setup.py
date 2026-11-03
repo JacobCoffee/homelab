@@ -8,7 +8,9 @@
    from guide data that's already loaded.
 4. Playlists (PLAYLISTS): each gets its exclude filters, then only the groups whose categories are
    wanted are enabled, with automatic channel creation from a fixed number up. Dispatcharr then
-   keeps those channels in step with every scheduled refresh.
+   keeps those channels in step with every scheduled refresh. Local-news groups (a playlist's
+   "local") take only the channels whose names match LOCAL_NEWS_MATCH, a regex kept in the SOPS
+   secret so the public repo doesn't say which market this is; unset, they take every market.
 5. Jellyfin: one M3U tuner and one XMLTV guide, both Dispatcharr's own outputs, recordings on the
    media share instead of the config volume, then a guide refresh.
 
@@ -28,6 +30,7 @@ JELLYFIN = os.environ.get("JELLYFIN_URL", f"http://jellyfin.{SVC}:8096").rstrip(
 USERNAME = os.environ["DISPATCHARR_USERNAME"]
 PASSWORD = os.environ["DISPATCHARR_PASSWORD"]
 JELLYFIN_KEY = os.environ["JELLYFIN_API_KEY"]
+LOCAL_NEWS_MATCH = os.environ.get("LOCAL_NEWS_MATCH", "").strip()
 
 PROXY_AUTH = {"enabled": True, "header": "X-Lab-User"}
 # Most sources are HLS. The stock FFmpeg profile copies every rendition of the master playlist
@@ -37,11 +40,16 @@ STREAM_PROFILE = "Streamlink"
 # name -> (XMLTV url, refresh hours)
 GUIDES = {
     "Pluto TV": ("https://i.mjh.nz/PlutoTV/us.xml.gz", 12),
+    "Samsung TV Plus": ("https://i.mjh.nz/SamsungTVPlus/us.xml.gz", 12),
+    # Generated with the Tubi playlist below, same channel ids.
+    "Tubi": ("https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_epg.xml", 12),
 }
 
-# name -> url, refresh hours, {category: first channel number}, [(filter type, regex)] to exclude.
-# A group is enabled when one of its ;-separated categories is wanted (iptv-org's group titles
-# are category lists); the first wanted category in the dict decides its numbers.
+# name -> url, refresh hours, {category: first channel number}, [(filter type, regex)] to exclude,
+# and which of its groups are local news. A group is enabled when one of its ;-separated
+# categories is wanted (iptv-org's group titles are category lists); the first wanted category in
+# the dict decides its numbers. The free services' local-news groups list stations from every
+# market (Pluto ~18, Tubi ~11); LOCAL_NEWS_MATCH narrows them.
 PLAYLISTS = {
     # i.mjh.nz no longer publishes Pluto playlists, only the guide above; this one is generated
     # daily from it, with matching tvg-ids.
@@ -49,6 +57,22 @@ PLAYLISTS = {
         "url": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plutotv_us.m3u",
         "refresh": 12,
         "groups": {"News + Opinion": 100, "Local News": 200, "Sports": 300},
+        "local": {"Local News"},
+        "exclude": [],
+    },
+    # National news and weather (ABC News Live, NBC News NOW, CBS News 24/7, FOX Weather,
+    # AccuWeather NOW, a few market stations).
+    "Samsung TV Plus": {
+        "url": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/samsungtvplus_us.m3u",
+        "refresh": 12,
+        "groups": {"News & Opinion": 400},
+        "exclude": [],
+    },
+    "Tubi": {
+        "url": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/tubi_all.m3u",
+        "refresh": 12,
+        "groups": {"Local News": 500, "National News": 520, "Weather": 540, "Sports On Now": 600},
+        "local": {"Local News"},
         "exclude": [],
     },
     "iptv-org (English)": {
@@ -199,11 +223,16 @@ def ensure_playlist(d: Dispatcharr, name: str, spec: dict) -> None:
     group_names = {g["id"]: g["name"] for g in d.call("GET", "/channels/groups/")}
     settings = []
     for rel in account["channel_groups"]:
-        start = first_number(group_names[rel["channel_group"]], spec["groups"])
+        group = group_names[rel["channel_group"]]
+        start = first_number(group, spec["groups"])
         want = {"channel_group": rel["channel_group"], "enabled": start is not None,
                 "auto_channel_sync": start is not None, "auto_sync_channel_start": start}
+        # Auto-sync creates channels only for stream names matching name_match_regex.
+        match = LOCAL_NEWS_MATCH if group in spec.get("local", ()) else ""
+        want["custom_properties"] = {"name_match_regex": match} if match else {}
         settings.append(want)
-        changed |= any(rel.get(k) != v for k, v in want.items())
+        have = {**rel, "custom_properties": rel.get("custom_properties") or {}}
+        changed |= any(have.get(k) != v for k, v in want.items())
     if changed or account["status"] != "success":
         d.call("PATCH", f"{path}group-settings/", {"group_settings": settings})
         d.call("POST", f"/m3u/refresh/{account['id']}/", {})
