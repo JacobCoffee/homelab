@@ -1,0 +1,81 @@
+# Installs and configures Jellyfin's plugins, web scripts and theme (plugins.py). Like the SSO
+# Job, it may restart the jellyfin Deployment (and nothing else) after installing plugins.
+# One run per change of the scripts (hashed ConfigMap name) or of the credentials
+# (media-config/credentials-rev, bumped by scripts/media-secrets.py).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jellyfin-plugins
+  namespace: media
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jellyfin-plugins
+  namespace: media
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["jellyfin"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jellyfin-plugins
+  namespace: media
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jellyfin-plugins
+subjects:
+  - kind: ServiceAccount
+    name: jellyfin-plugins
+    namespace: media
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: jellyfin-plugins
+  namespace: media
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      annotations:
+        media-config/credentials-rev: "unset"
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: jellyfin-plugins
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: plugins
+          image: python:3.15-slim
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/plugins.py"]
+          envFrom:
+            - secretRef:
+                name: jellyfin-plugins
+          env:
+            - name: JELLYFIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jellyfin-sso
+                  key: JELLYFIN_API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: jellyfin-plugins-script

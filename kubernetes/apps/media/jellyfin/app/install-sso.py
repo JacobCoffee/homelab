@@ -16,17 +16,11 @@ Safe to re-run: every step checks current state first. Needs JELLYFIN_API_KEY (D
 Keys) -- see kubernetes/README.md "Jellyfin SSO" for how to provide it.
 """
 
-import json
-import ssl
 import os
 import sys
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 
-JELLYFIN_URL = os.environ.get("JELLYFIN_URL", "http://jellyfin.media.svc.cluster.local:8096").rstrip("/")
-API_KEY = os.environ["JELLYFIN_API_KEY"]
+from jellyfin_api import ApiError, call, ensure_repositories, install_missing, wait_for_server
+
 OIDC_CLIENT_SECRET = os.environ["OIDC_CLIENT_SECRET"]
 
 REPO_NAME = "SSO Authentication (K0lin)"
@@ -84,105 +78,6 @@ PROVIDER_CONFIG = {
 }
 
 
-def call(method: str, path: str, body=None, ok=(200, 204)):
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        JELLYFIN_URL + path,
-        method=method,
-        data=data,
-        # Jellyfin 12 dropped the legacy X-Emby-Token header; only this form authenticates.
-        headers={"Authorization": f'MediaBrowser Token="{API_KEY}"', "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            raw = r.read()
-            return r.status, (json.loads(raw) if raw else None)
-    except urllib.error.HTTPError as err:
-        raw = err.read()
-        if err.code in ok:
-            return err.code, (json.loads(raw) if raw else None)
-        raise ApiError(err.code, f"{method} {path}: {err.code} {raw.decode(errors='replace')[:400]}")
-
-
-class ApiError(Exception):
-    """A Jellyfin API answer outside `ok`. Polls retry 503 (Jellyfin still starting); else fatal."""
-
-    def __init__(self, code: int, message: str):
-        super().__init__(message)
-        self.code = code
-
-
-def wait_for_server(tries=60, delay=5):
-    for _ in range(tries):
-        try:
-            status, _ = call("GET", "/System/Info")
-            if status == 200:
-                return
-        except (urllib.error.URLError, TimeoutError, ConnectionError):
-            pass
-        except ApiError as e:
-            if e.code != 503:
-                raise
-        time.sleep(delay)
-    sys.exit(f"Jellyfin never became reachable at {JELLYFIN_URL}")
-
-
-def ensure_repository():
-    _, repos = call("GET", "/Repositories")
-    repos = repos or []
-    if any(r.get("Url") == REPO_URL for r in repos):
-        print("repository already registered")
-        return
-    print(f"adding repository {REPO_NAME}")
-    call("POST", "/Repositories", repos + [{"Name": REPO_NAME, "Url": REPO_URL, "Enabled": True}])
-
-
-def plugin_installed() -> bool:
-    _, plugins = call("GET", "/Plugins")
-    # /Plugins lists Ids without dashes (505ce9d1d916...), so compare the bare hex.
-    want = PLUGIN_GUID.replace("-", "")
-    return any(p.get("Id", "").replace("-", "").lower() == want for p in (plugins or []))
-
-
-def ensure_plugin_installed():
-    if plugin_installed():
-        print("plugin already installed")
-        return
-    print(f"installing {PLUGIN_NAME}")
-    qs = urllib.parse.urlencode({"AssemblyGuid": PLUGIN_GUID, "repositoryUrl": REPO_URL})
-    call("POST", f"/Packages/Installed/{urllib.parse.quote(PLUGIN_NAME)}?{qs}")
-    print("restarting the jellyfin Deployment to load the new plugin")
-    restart_deployment()
-    time.sleep(20)  # let the old pod stop before polling, or it answers without the plugin
-    for _ in range(60):
-        try:
-            if plugin_installed():
-                return
-        except (urllib.error.URLError, TimeoutError, ConnectionError):
-            pass
-        except ApiError as e:
-            if e.code != 503:
-                raise
-        time.sleep(5)
-    sys.exit("plugin did not appear in /Plugins after install + restart")
-
-
-def restart_deployment():
-    sa = "/var/run/secrets/kubernetes.io/serviceaccount"
-    token = open(f"{sa}/token").read()
-    patch = {"spec": {"template": {"metadata": {"annotations": {
-        "kubectl.kubernetes.io/restartedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}}}}}
-    req = urllib.request.Request(
-        "https://kubernetes.default.svc/apis/apps/v1/namespaces/media/deployments/jellyfin",
-        method="PATCH", data=json.dumps(patch).encode(),
-        headers={"Authorization": f"Bearer {token}",
-                 "Content-Type": "application/strategic-merge-patch+json"},
-    )
-    ctx = ssl.create_default_context(cafile=f"{sa}/ca.crt")
-    with urllib.request.urlopen(req, timeout=20, context=ctx):
-        pass
-
-
 def set_config():
     status, config = call("GET", f"/Plugins/{PLUGIN_GUID}/Configuration")
     if status != 200 or config is None:
@@ -218,8 +113,8 @@ def set_branding():
 
 def main():
     wait_for_server()
-    ensure_repository()
-    ensure_plugin_installed()
+    ensure_repositories([(REPO_NAME, REPO_URL)])
+    install_missing([(PLUGIN_NAME, PLUGIN_GUID, REPO_URL)])
     set_config()
     set_branding()
     print("ok")

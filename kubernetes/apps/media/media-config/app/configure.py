@@ -20,7 +20,7 @@ Prowlarr  Sonarr/Radarr/Lidarr as full-sync applications, so every indexer added
 
 Each step reads the current state and writes only what differs, so re-runs are safe. A step whose
 credential is empty (NEWSHOSTING_USERNAME/PASSWORD, NZBFINDER_API_KEY, JELLYFIN_API_KEY) is
-skipped with a note: scripts/media-config-secrets.py fills the first three from the vault,
+skipped with a note: scripts/media-secrets.py fills the first three from the vault,
 JELLYFIN_API_KEY comes from the jellyfin-sso Secret (scripts/jellyfin-sso-key.py).
 """
 

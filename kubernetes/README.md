@@ -171,6 +171,27 @@ Flux re-applies the (otherwise immutable) Job on every script or Secret change b
 job jellyfin-sso-install` if you change the provider config and want it reconciled sooner than the
 next Flux apply.
 
+## Jellyfin plugins and theme
+
+The `jellyfin-plugins` Job (`apps/media/jellyfin/app/plugins.py`; it shares `jellyfin_api.py`
+with the SSO Job) installs, from their repositories' Jellyfin 12 builds: Open Subtitles, Fanart,
+Intro Skipper, Editor's Choice, InPlayerEpisodePreview (episode list in the player), File
+Transformation + Media Bar, JavaScript Injector + Jellyfin Enhanced. TMDb ships with Jellyfin.
+It then restarts Jellyfin once to load what's new. Through the JavaScript Injector it adds
+KefinTweaks and jf-avatars, and at the top of the branding Custom CSS a marked block importing
+ElegantFin, its Media Bar add-on and the `elegantfin-jf12` companion sheet for Jellyfin 12's
+Modern layout. Every web script and stylesheet is pinned to a release tag in `plugins.py`; bump
+them there. Movies and Shows get English subtitles from Open Subtitles once its login is in:
+
+```sh
+scripts/vault-set.py vault_opensubtitles_username vault_opensubtitles_password   # opensubtitles.com
+scripts/media-secrets.py                                                         # commit what it lists
+```
+
+Not installed: Artisan Jelly (built against Jellyfin 10.10, doesn't load on 12). The plugins, scripts
+and theme only change the web client and the mobile apps that render it; the Android TV app on
+the Fire TV draws its own UI.
+
 ## Storage
 
 `apps/storage/`: [proxmox-csi-plugin](https://github.com/sergelogvinov/proxmox-csi-plugin)
@@ -261,14 +282,14 @@ HelmRelease here.
   `/media/downloads/torrents`, Automatic torrent management, the same four categories). In
   Sonarr/Radarr/Lidarr: both as download clients, `/media/library/<kind>` as root folder, and a
   Jellyfin connection that refreshes the library after imports. Prowlarr gets full-sync links to
-  those three plus the NFZBFinder and Anime Tosho (`feed.animetosho.net`) indexers. Downloads and
+  those three plus the NZBFinder and Anime Tosho (`feed.animetosho.net`) indexers. Downloads and
   library share one filesystem, so imports never copy: usenet ones are moves, torrent ones
   hardlinks (a seeding torrent and its library file are the same blocks). It runs once per
   change of the script or of the credentials, which live in the vault:
 
   ```sh
   scripts/vault-set.py vault_newshosting_username vault_newshosting_password vault_nzbfinder_api_key
-  scripts/media-config-secrets.py   # copies them into app/secret.sops.yaml, bumps the Job; commit both
+  scripts/media-secrets.py   # copies them into app/secret.sops.yaml, bumps the Job; commit both
   ```
 
 - **Quality:** Recyclarr syncs 2160p-first profiles: Sonarr `WEB-2160p (Combined)`, Radarr `UHD

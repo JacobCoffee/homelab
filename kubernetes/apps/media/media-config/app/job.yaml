@@ -1,5 +1,5 @@
 # One run per change of configure.py (hashed ConfigMap name) or of the credentials
-# (media-config/credentials-rev, bumped by scripts/media-config-secrets.py). Re-run by hand:
+# (media-config/credentials-rev, bumped by scripts/media-secrets.py). Re-run by hand:
 #   kubectl -n media delete job media-config && flux reconcile ks media-config
 apiVersion: batch/v1
 kind: Job
