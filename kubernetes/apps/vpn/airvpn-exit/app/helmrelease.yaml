@@ -30,28 +30,30 @@ spec:
         serviceAccount:
           identifier: airvpn-exit
         pod:
-          # containerboot reads and writes its state Secret with the pod's own token.
+          # containerboot reads and writes its state Secret with the pod's own token, and reaches
+          # the API by name; the pod's only resolver is gluetun's (public DNS), so pin the name.
           automountServiceAccountToken: true
-        initContainers:
-          # gluetun treats any IPv6 route as working IPv6 (netlink.IsIPv6Supported), and the pod's
-          # link-local fe80::/64 counts, so it may pick an AirVPN IPv6 endpoint the IPv4-only
-          # cluster can't reach (the tunnel never comes up). Dropping IPv6 routes from the main
-          # table first makes it always connect over IPv4.
-          no-ipv6-routes:
-            image:
-              repository: ghcr.io/qdm12/gluetun
-              tag: "v3.41.3"
-            command: ["sh", "-c", "ip -6 route flush table main && ip -6 route show table main"]
-            securityContext:
-              runAsUser: 0
-              capabilities:
-                add: ["NET_ADMIN"]
-                drop: ["ALL"]
+          hostAliases:
+            - ip: 10.96.0.1
+              hostnames: [kubernetes.default.svc]
         containers:
           gluetun:
             image:
               repository: ghcr.io/qdm12/gluetun
               tag: "v3.41.3"
+            # Before every start (container restarts keep the pod's network namespace):
+            # - gluetun treats any IPv6 route as working IPv6 (netlink.IsIPv6Supported); the pod's
+            #   link-local fe80::/64 counts, and so do the tun0 routes a previous run left, so it
+            #   picks AirVPN IPv6 endpoints the IPv4-only cluster can't reach. Flush them.
+            # - A previous run's table-51820 rules make it fail with "adding IPv6 rule ... file
+            #   exists" (gluetun wiki, Kubernetes: delete them on start).
+            command:
+              - sh
+              - -c
+              - >-
+                ip rule del table 51820 2>/dev/null; ip -6 rule del table 51820 2>/dev/null;
+                ip -6 route flush table main; ip -6 route flush table 51820 2>/dev/null;
+                exec /gluetun-entrypoint
             env:
               TZ: America/Chicago
               VPN_SERVICE_PROVIDER: airvpn
@@ -85,7 +87,7 @@ spec:
                 cpu: 25m
                 memory: 64Mi
               limits:
-                memory: 256Mi
+                memory: 512Mi
           tailscale:
             image:
               repository: ghcr.io/tailscale/tailscale
