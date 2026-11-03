@@ -14,3 +14,10 @@ spec:
     crds: CreateReplace
   upgrade:
     crds: CreateReplace
+  values:
+    config:
+      envoyGateway:
+        extensionApis:
+          # Lua EnvoyExtensionPolicies are off by default; while off, a Lua policy is rejected and
+          # the routes it targets answer 500. auth/pocket-id's theme injection needs it.
+          enableLua: true
