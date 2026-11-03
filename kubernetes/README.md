@@ -292,7 +292,8 @@ HelmRelease here.
   settings in place (completed jobs in `/media/downloads/usenet/<category>`, in-progress in
   `.../usenet/incomplete`, categories movies/tv/music/books, the unwanted-extension blacklist
   that fails fake `.exe`/`.scr` releases) and the Newshosting server; qBittorrent's (save path
-  `/media/downloads/torrents`, Automatic torrent management, the same four categories). In
+  `/media/downloads/torrents`, Automatic torrent management, the same four categories, and
+  minimal seeding: stop at ratio 0.1 or 10 minutes, after which the arrs remove the torrent). In
   Sonarr/Radarr/Lidarr: both as download clients, `/media/library/<kind>` as root folder, and a
   Jellyfin connection that refreshes the library after imports. Prowlarr gets full-sync links to
   those three plus the NZBFinder and Anime Tosho (`feed.animetosho.net`) indexers. Downloads and

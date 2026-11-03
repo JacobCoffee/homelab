@@ -228,6 +228,16 @@ def configure_qbittorrent() -> None:
         "torrent_changed_tmm_enabled": True,  # relocate when a torrent's category changes
         "save_path_changed_tmm_enabled": True,  # ... when the default save path changes
         "category_changed_tmm_enabled": True,  # ... when a category's save path changes
+        # Minimal seeding (public trackers, no ratio to keep): stop at ratio 0.1 or 10 minutes
+        # seeding, whichever comes first. Stop, not remove: Sonarr/Radarr/Lidarr then remove the
+        # stopped torrent once it's imported (their "Remove Completed"), so qBittorrent never
+        # deletes a download an arr still needs. The library copy is a hardlink and stays.
+        "share_limits_mode": "MatchAny",
+        "max_ratio_enabled": True,
+        "max_ratio": 0.1,
+        "max_seeding_time_enabled": True,
+        "max_seeding_time": 10,  # minutes
+        "max_ratio_act": 0,  # ShareLimitAction::Stop
     }
     prefs = call("GET", f"{api}/app/preferences")
     changed = {k: v for k, v in wanted.items() if prefs.get(k) != v}
