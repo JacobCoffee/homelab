@@ -1,9 +1,11 @@
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
 import java.io.FileInputStream
 import java.util.Properties
+import org.gradle.api.file.DirectoryProperty
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
@@ -17,7 +19,7 @@ if (hasReleaseSigning) {
 
 android {
     namespace = "dev.jacobcoffee.hearth"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "dev.jacobcoffee.hearth"
@@ -56,19 +58,13 @@ android {
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = "1.8"
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     packaging {
@@ -94,27 +90,27 @@ android {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.activity:activity-compose:1.9.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
+    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
 
-    val composeBom = platform("androidx.compose:compose-bom:2024.09.03")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime")
 
-    implementation("androidx.tv:tv-foundation:1.0.0-alpha12")
-    implementation("androidx.tv:tv-material:1.0.1")
+    implementation("androidx.tv:tv-foundation:1.0.0")
+    implementation("androidx.tv:tv-material:1.1.0")
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
 
     testImplementation("junit:junit:4.13.2")
 }
@@ -125,7 +121,12 @@ dependencies {
 val hearthThemesSrc = file("${project.rootDir}/themes")
 val hearthThemesAssetsDir = layout.buildDirectory.dir("generated/hearthThemes/assets")
 
-val copyHearthThemes = tasks.register<Copy>("copyHearthThemes") {
+abstract class CopyHearthThemesTask : Copy() {
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+}
+
+val copyHearthThemes = tasks.register<CopyHearthThemesTask>("copyHearthThemes") {
     val defaultThemeJson = File(hearthThemesSrc, "default/theme.json")
     doFirst {
         if (!defaultThemeJson.isFile) {
@@ -135,12 +136,19 @@ val copyHearthThemes = tasks.register<Copy>("copyHearthThemes") {
             )
         }
     }
+    outputDirectory.set(hearthThemesAssetsDir.map { it.dir("themes") })
     from(hearthThemesSrc)
-    into(hearthThemesAssetsDir.map { it.dir("themes") })
+    into(outputDirectory)
     include("*/theme.json", "*/*.webp", "*/*.jpg", "*/*.jpeg", "*/*.png", "*/*.ttf", "*/*.otf")
 }
 
-android.sourceSets.getByName("main").assets.srcDir(hearthThemesAssetsDir)
+val androidComponents = extensions.getByType<ApplicationAndroidComponentsExtension>()
+androidComponents.onVariants { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(
+        copyHearthThemes,
+        CopyHearthThemesTask::outputDirectory
+    )
+}
 
 tasks.named("preBuild") {
     dependsOn(copyHearthThemes)
