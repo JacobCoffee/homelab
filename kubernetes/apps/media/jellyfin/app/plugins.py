@@ -12,17 +12,20 @@
 3. Branding CSS: ElegantFin (+ its Media Bar add-on) and mihaif7's companion sheet for Jellyfin
    12's Modern layout, pinned, kept as one marked block at the very top of the Custom CSS (an
    @import after any other rule is ignored). The SSO login-button CSS after it is untouched.
-4. Library options: English subtitles downloaded for Movies and Shows (Open Subtitles), Fanart
-   added to the image fetchers of type options that list them explicitly.
+4. Libraries and their options: Movies, Shows and Music on the arrs' root folders under
+   /media/library (created if missing, the folder added if a library lost it), English subtitles
+   downloaded for Movies and Shows (Open Subtitles), Fanart added to the image fetchers of type
+   options that list them explicitly.
 5. Open Subtitles login, when OPENSUBTITLES_USERNAME/PASSWORD are set (opensubtitles.com
    account; scripts/media-secrets.py copies them from the vault).
 
-These only change the web client and the mobile apps that render it; the Android TV app (Fire
-TV) draws its own UI.
+These only change the web client and the mobile apps that render it; the Fire TV's Jellyfin
+client (Wholphin) draws its own UI.
 """
 
 import os
 import sys
+import urllib.parse
 
 from jellyfin_api import (ApiError, call, ensure_repositories, install_missing, uninstall,
                           wait_for_server)
@@ -59,6 +62,14 @@ PLUGINS = [
 ]
 JS_INJECTOR = "f5a34f7b-2e8a-4e6a-a722-3a216a81b374"
 OPEN_SUBTITLES = "4b9ed42f-5185-48b5-9803-6ff2989014c4"
+
+# (name, collection type, folder): the root folders media-config gives Radarr, Sonarr and Lidarr.
+# /media/library/books (Bindery) has no library: Jellyfin's book support is basic.
+LIBRARIES = [
+    ("Movies", "movies", "/media/library/movies"),
+    ("Shows", "tvshows", "/media/library/tv"),
+    ("Music", "music", "/media/library/music"),
+]
 
 KEFINTWEAKS_VERSION = "v0.5.3"
 JF_AVATARS_VERSION = "2.4.1"
@@ -140,6 +151,22 @@ def set_theme() -> None:
     print("branding: theme CSS set")
 
 
+def ensure_libraries() -> None:
+    _, folders = call("GET", "/Library/VirtualFolders")
+    by_name = {f["Name"]: f for f in folders or []}
+    for name, kind, path in LIBRARIES:
+        folder = by_name.get(name)
+        if folder is None:
+            qs = urllib.parse.urlencode({"name": name, "collectionType": kind, "paths": path,
+                                         "refreshLibrary": "true"})
+            call("POST", f"/Library/VirtualFolders?{qs}", {"LibraryOptions": {}})
+            print(f"library {name}: created on {path}")
+        elif path not in folder.get("Locations", []):
+            call("POST", "/Library/VirtualFolders/Paths?refreshLibrary=true",
+                 {"Name": name, "PathInfo": {"Path": path}})
+            print(f"library {name}: added {path}")
+
+
 def set_library_options() -> None:
     _, folders = call("GET", "/Library/VirtualFolders")
     for folder in folders or []:
@@ -180,6 +207,7 @@ def main():
     install_missing(PLUGINS)
     set_scripts()
     set_theme()
+    ensure_libraries()
     set_library_options()
     set_open_subtitles()
     print("ok")
