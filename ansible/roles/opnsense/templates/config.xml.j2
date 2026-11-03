@@ -64,7 +64,12 @@
     <timeservers>0.opnsense.pool.ntp.org 1.opnsense.pool.ntp.org 2.opnsense.pool.ntp.org 3.opnsense.pool.ntp.org</timeservers>
     <webgui>
       <protocol>https</protocol>
-      <noroot>1</noroot>
+      <!-- No <noroot>: os-sso only trusts a root-owned state directory (/var/db/os-sso;
+           without PHP's posix extension it can't see the WebGUI user's uid), so the
+           WebGUI must run as root, OPNsense's stock setting. See roles/opnsense/tasks/sso.yml
+           and ../README.md "Sign in with Pocket ID". noroot latches via
+           /var/run/www_non_root (core's webgui.inc) even after it's unset here; sso.yml
+           removes that lock on an existing box. -->
     </webgui>
     <disablenatreflection>yes</disablenatreflection>
     <usevirtualterminal>1</usevirtualterminal>

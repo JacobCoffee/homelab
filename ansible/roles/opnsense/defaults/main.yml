@@ -78,3 +78,37 @@ opnsense_api_secret: "{{ vault_opnsense_api_secret }}"
 # Install pending updates within the release series on every run (reboots OPNsense when
 # the update requires it). Plugins can't be installed on an out-of-date box.
 opnsense_update: true
+
+# os-sso (github.com/MaximeWewer/os-sso): a third-party OIDC server type for System > Access >
+# Servers, not in the official OPNsense plugin repo, so it's `pkg add`-ed from a GitHub release
+# over SSH instead of `/api/core/firmware/install/...` (tasks/sso.yml). The release has no
+# separate checksums file; GitHub computes and publishes a sha256 digest per asset
+# (`gh api repos/MaximeWewer/os-sso/releases/latest`) -- bump the version and both hashes
+# together, they're verified against the FreeBSD-14/15 packages of that exact release.
+# renovate: datasource=github-releases depName=MaximeWewer/os-sso extractVersion=^v(?<version>.+)$
+opnsense_sso_version: "2026.10.3"
+opnsense_sso_sha256:
+  "14": e0548e5988729ea9a0c2e2b5b59ad534eaa66cb48bdbbb413b6cace9273391b9
+  "15": 9b718ac55e4bd0a75b82fa7544cf35099884e73d28aee4d256c01d84148c32d5
+
+# Pocket ID (https://id.z7x.org, scripts/pocket-id.py) as an OIDC login for the WebGUI. os-sso's
+# own provider config lives in core's <system><authserver>, which (like LDAP/RADIUS before it)
+# has no REST API -- only the legacy System > Access > Servers form -- so it's set directly
+# through OPNsense's own Config class over SSH (templates/sso-authserver.php.j2), the same way
+# os-sso's own lab scripts (test/vagrant/add_authserver.php) do it.
+# Base URL is per-firewall (no config sync, and os-sso requires one): this firewall's own
+# INT-zone address, never the shared CARP VIP, so the redirect/callback URL it hands Pocket ID
+# is always one it can itself answer, whichever of the VIP/.2/.3/hostnames the browser used.
+opnsense_sso_provider_name: opnsense
+opnsense_sso_issuer: https://id.z7x.org
+opnsense_sso_client_id: opnsense
+opnsense_sso_client_secret: "{{ vault_pocket_id_opnsense_secret }}"
+opnsense_sso_scopes: "openid,email,profile,groups"
+opnsense_sso_username_claim: preferred_username
+# Access gate (IdP group name) and the explicit operator mapping os-sso requires for a
+# privilege-bearing OPNsense group (docs/configuration.md "Group mapping"; the 1:1 name
+# fallback refuses any group carrying firewall privileges, `admins` included).
+opnsense_sso_required_groups: lab-admins
+opnsense_sso_group_map: "lab-admins:admins"
+opnsense_sso_button_label: "Pocket ID"
+opnsense_sso_base_url: "https://{{ (opnsense_zones | selectattr('descr', 'equalto', 'INT') | first).ip }}"

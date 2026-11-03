@@ -62,6 +62,15 @@
       labels: ["major"],
     },
     {
+      // os-sso (opnsense role): not the official OPNsense plugin repo, and the sha256 pin next to
+      // the version (opnsense_sso_sha256, no checksums file upstream) needs a human to re-verify
+      // against the new release's GitHub-published digest -- a version bump alone would 404/fail
+      // the checksum on the next `pkg add`, never silently install something unverified.
+      matchDepNames: ["MaximeWewer/os-sso"],
+      automerge: false,
+      labels: ["opnsense-sso"],
+    },
+    {
       // terraform/cabotage pins a commit on cabotage/terraform#21, which is already ahead of
       // the newest tag (v1.9.3); only a later release is worth a PR.
       matchDepNames: ["github.com/cabotage/terraform"],

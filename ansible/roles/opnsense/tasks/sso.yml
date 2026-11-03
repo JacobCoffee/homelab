@@ -1,0 +1,119 @@
+# Sign in to the WebGUI with Pocket ID: the os-sso plugin (github.com/MaximeWewer/os-sso), not
+# in the official OPNsense plugin repo, so it's `pkg add`-ed from a GitHub release over SSH
+# instead of `/api/core/firmware/install/...` (that only reaches the configured mirror's own
+# repo). Its own provider config has no REST API either -- System > Access > Servers is core's
+# legacy system_authservers.php page, never ported to the MVC API -- so it's set directly
+# through OPNsense's own Config class over SSH (sso-authserver.php.j2), exactly how os-sso's own
+# lab scripts (test/vagrant/add_authserver.php) do it. Both confirmed against opnsense/core@master
+# and os-sso@main source, and against a live 26.7.8_2 instance (no Auth/Api controller for
+# authservers in core; SsoOidc.php declares the sso_* field names the template writes).
+# Versions/checksums/issuer/client/group-mapping: defaults/main.yml. Docs:
+# github.com/MaximeWewer/os-sso/tree/main/docs (install.md, oidc.md, configuration.md, security.md).
+
+- name: SSO | an SSH connection to this firewall (root, the automation key -- no REST API below)
+  ansible.builtin.add_host:
+    name: "opnsense_ssh_{{ opnsense_hostname }}"
+    ansible_host: "{{ opnsense_wan_ip }}"
+  changed_when: false
+
+- name: SSO | installed os-sso version
+  ansible.builtin.command: pkg query %v os-sso-devel
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  register: opnsense_sso_installed
+  changed_when: false
+  failed_when: false  # exits 1 with empty stdout when the package is absent
+
+- name: SSO | install os-sso {{ opnsense_sso_version }}
+  when: opnsense_sso_installed.stdout | trim != opnsense_sso_version
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  block:
+    - name: SSO | this firewall's FreeBSD ABI
+      ansible.builtin.command: pkg config ABI
+      register: opnsense_sso_abi
+      changed_when: false
+
+    - name: SSO | FreeBSD major version from the ABI
+      ansible.builtin.set_fact:
+        opnsense_sso_freebsd: "{{ opnsense_sso_abi.stdout | trim | regex_search('^FreeBSD:([0-9]+):', '\\1') | first }}"
+
+    - name: SSO | download the release package (checksum-verified against the GitHub-published digest)
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/MaximeWewer/os-sso/releases/download/v{{ opnsense_sso_version }}/os-sso-devel-{{ opnsense_sso_version }}-FreeBSD-{{ opnsense_sso_freebsd }}.pkg
+        dest: "/tmp/os-sso-devel-{{ opnsense_sso_version }}-FreeBSD-{{ opnsense_sso_freebsd }}.pkg"
+        checksum: "sha256:{{ opnsense_sso_sha256[opnsense_sso_freebsd] }}"
+        mode: "0600"
+
+    - name: SSO | pkg add
+      ansible.builtin.command: "pkg add /tmp/os-sso-devel-{{ opnsense_sso_version }}-FreeBSD-{{ opnsense_sso_freebsd }}.pkg"
+      changed_when: true
+
+    - name: SSO | remove the downloaded package
+      ansible.builtin.file:
+        path: "/tmp/os-sso-devel-{{ opnsense_sso_version }}-FreeBSD-{{ opnsense_sso_freebsd }}.pkg"
+        state: absent
+
+    - name: SSO | reload the WebGUI (new server type, menu entry, API controllers)
+      ansible.builtin.command: configctl webgui restart
+      changed_when: true
+
+# os-sso keeps its state (discovery/JWKS caches, in-flight logins, the session registry) in
+# /var/db/os-sso and refuses it unless it's owned by a uid it trusts (StateDir::assertSafe()).
+# OPNsense's php has no posix extension, so the only uid it can see is 0: a directory owned by the
+# hardened `wwwonly` WebGUI user is rejected ("owned by another user", tested on hnfw02), which
+# makes config.xml.j2's old `noroot` and os-sso mutually exclusive. The WebGUI therefore runs as
+# root (OPNsense's stock setting). core latches noroot via /var/run/www_non_root
+# (plugins.inc.d/webgui.inc) even after config.xml's own <noroot> is cleared, so both have to go.
+# New firewalls no longer set <noroot> (config.xml.j2); this is what clears it off an existing one.
+- name: SSO | the "run WebGUI as non-root" lock (os-sso needs the WebGUI to run as root)
+  ansible.builtin.stat:
+    path: /var/run/www_non_root
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  register: opnsense_sso_noroot_lock
+
+- name: SSO | drop the non-root lock
+  ansible.builtin.file:
+    path: /var/run/www_non_root
+    state: absent
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  when: opnsense_sso_noroot_lock.stat.exists
+  register: opnsense_sso_noroot_lock_removed
+
+- name: SSO | render the Pocket ID authentication server script
+  ansible.builtin.template:
+    src: sso-authserver.php.j2
+    dest: /tmp/sso-authserver.php
+    mode: "0600"
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  no_log: true  # embeds opnsense_sso_client_secret
+  changed_when: false  # a temp script, not config; the php run below is the real changed signal
+
+- name: SSO | register/update the Pocket ID authentication server (also clears config.xml's <noroot>)
+  ansible.builtin.command: php /tmp/sso-authserver.php
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  register: opnsense_sso_authserver
+  changed_when: (opnsense_sso_authserver.stdout | from_json).changed
+
+- name: SSO | remove the authentication server script
+  ansible.builtin.file:
+    path: /tmp/sso-authserver.php
+    state: absent
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  changed_when: false
+
+- name: SSO | restart the WebGUI (picks up running as root)
+  ansible.builtin.command: configctl webgui restart
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  when: opnsense_sso_noroot_lock_removed is changed
+  changed_when: true
+
+# Stale state from before the WebGUI ran as root (this role's own config script above, run over
+# SSH as root, or `pkg add`'s post-install) is safe to drop: install.md says everything under
+# /var/db/os-sso* is runtime session/cache state, recreated on first use.
+- name: SSO | drop stale plugin state from before the WebGUI ran as root
+  ansible.builtin.file:
+    path: /var/db/os-sso
+    state: absent
+  delegate_to: "opnsense_ssh_{{ opnsense_hostname }}"
+  when: opnsense_sso_noroot_lock_removed is changed
+  changed_when: false

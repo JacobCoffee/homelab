@@ -96,6 +96,23 @@ CLIENTS: dict[str, dict] = {
         "launchURL": "https://flux.z7x.org",
         "pkceEnabled": True,
     },
+    "opnsense": {
+        "name": "OPNsense",
+        # No config sync between the two firewalls (ansible/roles/opnsense): each one configures
+        # its own os-sso OIDC provider with its own Base URL (its INT-zone address, never the
+        # shared CARP VIP -- see opnsense role defaults), so the callback this client needs to
+        # accept is the cross product of "which firewall" and "VIP or that firewall's own address
+        # or hostname" the browser used to reach it.
+        "callbackURLs": [
+            "https://10.10.10.1/api/sso/oidc/callback",
+            "https://10.10.10.2/api/sso/oidc/callback",
+            "https://10.10.10.3/api/sso/oidc/callback",
+            "https://hnfw01.int.z7x.org/api/sso/oidc/callback",
+            "https://hnfw02.int.z7x.org/api/sso/oidc/callback",
+        ],
+        "launchURL": "https://10.10.10.1",
+        "pkceEnabled": True,
+    },
 }
 COMPARED = ("name", "callbackURLs", "launchURL", "pkceEnabled", "isPublic", "isGroupRestricted")
 

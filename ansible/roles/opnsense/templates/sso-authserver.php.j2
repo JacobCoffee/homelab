@@ -1,0 +1,80 @@
+<?php
+
+declare(strict_types=1);
+
+/*
+ * ansible-managed (roles/opnsense/tasks/sso.yml): idempotently register the Pocket ID OIDC
+ * authentication server os-sso's own type adds to <system><authserver> (no REST API for it --
+ * see tasks/sso.yml -- this is the same Config access test/vagrant/add_authserver.php in
+ * github.com/MaximeWewer/os-sso uses). Only the fields below are ever touched; an operator
+ * change to any other field on this server survives a re-run.
+ *
+ * Prints {"changed": true|false} on success so Ansible can set changed_when from it.
+ */
+
+require_once('util.inc');
+require_once('script/load_phalcon.php');
+
+use OPNsense\Core\Config;
+
+$want = [
+    'type' => 'oidc',
+    'name' => '{{ opnsense_sso_provider_name }}',
+    'sso_issuer' => '{{ opnsense_sso_issuer }}',
+    'sso_client_id' => '{{ opnsense_sso_client_id }}',
+    'sso_client_secret' => '{{ opnsense_sso_client_secret }}',
+    'sso_scopes' => '{{ opnsense_sso_scopes }}',
+    'sso_use_pkce' => '1',
+    'sso_username_claim' => '{{ opnsense_sso_username_claim }}',
+    'sso_groups_claim' => 'groups',
+    'sso_required_groups' => '{{ opnsense_sso_required_groups }}',
+    'sso_group_map' => '{{ opnsense_sso_group_map }}',
+    'sso_create_users' => '1',
+    'sso_strict_binding' => '1',
+    'sso_button_label' => '{{ opnsense_sso_button_label }}',
+    'sso_base_url' => '{{ opnsense_sso_base_url }}',
+];
+
+$cfg = Config::getInstance()->object();
+$node = null;
+foreach ($cfg->system->authserver as $server) {
+    if ((string)$server->name === $want['name']) {
+        $node = $server;
+        break;
+    }
+}
+
+$changed = false;
+if ($node === null) {
+    $node = $cfg->system->addChild('authserver');
+    $node->addChild('refid', uniqid());
+    $changed = true;
+}
+
+// os-sso needs the WebGUI running as root to create its state directory (no ext-posix here
+// for its own "hand it to the WebGUI user" fallback to work) -- see tasks/sso.yml and
+// ../README.md "Sign in with Pocket ID". The lock this also has to clear
+// (/var/run/www_non_root) is handled by the task that runs this script.
+if (isset($cfg->system->webgui->noroot)) {
+    unset($cfg->system->webgui->noroot);
+    $changed = true;
+}
+
+foreach ($want as $key => $value) {
+    $current = isset($node->$key) ? (string)$node->$key : null;
+    if ($current === $value) {
+        continue;
+    }
+    if (isset($node->$key)) {
+        $node->$key = $value;
+    } else {
+        $node->addChild($key, $value);
+    }
+    $changed = true;
+}
+
+if ($changed) {
+    Config::getInstance()->save();
+}
+
+echo json_encode(['changed' => $changed]) . "\n";

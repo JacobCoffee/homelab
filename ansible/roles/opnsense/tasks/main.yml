@@ -78,6 +78,9 @@
 - name: Tailscale subnet router for the lab zones
   ansible.builtin.include_tasks: tailscale.yml
 
+- name: Sign in with Pocket ID (os-sso plugin)
+  ansible.builtin.include_tasks: sso.yml
+
 - name: Prometheus node_exporter plugin + firewall rule for the K8S zone
   ansible.builtin.include_tasks:
     file: node_exporter.yml
