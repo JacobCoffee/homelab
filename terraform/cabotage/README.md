@@ -47,21 +47,36 @@ This is the homelab's first Terraform/OpenTofu usage — see [`tf.sh`](tf.sh) fo
 
 ## Upstream changes
 
-Four small, backward-compatible toggles (all default `true`, preserving current upstream
-behavior) were added to `modules/cabotage` on a branch, in a **draft PR**:
+Five small commits were added to `modules/cabotage` on a branch, in a **draft PR** (still open as
+of 2026-11-02):
 
 - PR: https://github.com/cabotage/terraform/pull/21
 - Branch: `homelab-cert-manager-traefik-toggles`, HEAD commit
-  `9d9e4869b50d803c5ee187ca6f4107187a4e3364` — this is what `main.tf`'s module `source` is pinned
+  `0af4603f636ad0583ac9ec64699a546f8b77ed87` — this is what `main.tf`'s module `source` is pinned
   to (`?ref=<sha>`). **Once the PR merges, re-pin `ref` to the merge commit on `main`.**
-- `enable_cert_manager` (bool, default `true`) — skip `helm_release.cert_manager` to reuse an
-  external cert-manager install (CSI driver still installs either way).
-- `enable_coredns_hardening` (bool, default `true`) — skip the module's CoreDNS PTR-disabling
-  patch.
-- `enable_letsencrypt_issuer` (bool, default `true`) — skip the module's own `letsencrypt`
-  ClusterIssuer entirely.
-- `traefik_service_annotations` (map(string), default `{}`) — extra annotations merged onto the
-  Traefik `LoadBalancer` Service (used here for `lbipam.cilium.io/ips`).
+- Four backward-compatible toggles (all default `true`, preserving current upstream behavior):
+  - `enable_cert_manager` (bool, default `true`) — skip `helm_release.cert_manager` to reuse an
+    external cert-manager install (CSI driver still installs either way).
+  - `enable_coredns_hardening` (bool, default `true`) — skip the module's CoreDNS PTR-disabling
+    patch.
+  - `enable_letsencrypt_issuer` (bool, default `true`) — skip the module's own `letsencrypt`
+    ClusterIssuer entirely.
+  - `traefik_service_annotations` (map(string), default `{}`) — extra annotations merged onto the
+    Traefik `LoadBalancer` Service (used here for `lbipam.cilium.io/ips`).
+- A real upstream bug fix (3 commits): the intermediate-CA signing scripts omitted
+  `subjectKeyIdentifier`/`authorityKeyIdentifier` extensions, which modern OpenSSL (Python 3.14's
+  `ssl` module) rejects with `CERTIFICATE_VERIFY_FAILED: Missing Authority Key Identifier`, and
+  which breaks Vault PKI CRL building. Discovered live when cabotage-app couldn't TLS-connect to
+  Vault.
+
+**Renovate "major update" note**: Renovate flags this `ref=<sha>` pin as a pending major-version
+bump since it isn't a semver tag. Checked 2026-11-02: the latest upstream tag is `v1.9.3`
+(commit `a1bca12`), which is an *ancestor* of our pinned commit, not a descendant — our branch is
+built on top of `v1.9.3` plus one upstream docs commit, then adds the toggles and CA fix above.
+Re-pinning to `v1.9.3` would regress this deployment (drop all four toggles, reintroduce the Vault
+PKI CRL bug) for no upstream functional gain, since no release has shipped since. Left pinned to
+the PR branch HEAD; re-check when cabotage/terraform cuts a release at or after PR #21 merges.
+
 
 ## Running it
 
@@ -139,10 +154,14 @@ account.
 
 | Feature | State | Where |
 |---|---|---|
-| Cost estimates | on, built-in on-demand rates (`CABOTAGE_COST_RATES` overrides); AWS price list / Cost Explorer off | `cabotage_app_extra_config` in `main.tf` |
+| Signup | off (`CABOTAGE_SECURITY_REGISTERABLE=False`): no signup form, and GitHub sign-in only logs in users who already exist | `cabotage_app_extra_config` in `main.tf` |
+| Organization requests | off (`CABOTAGE_ORGANIZATION_REQUESTS_ENABLED=False`) | `cabotage_app_extra_config` in `main.tf` |
+| Cluster switcher | on for admins: homelab plus the PSF installs and `prime` (`CABOTAGE_CLUSTERS`, colors matching the PSF switcher) | `cabotage_app_extra_config` in `main.tf` |
+| Cost estimates | off: the rates are AWS on-demand prices, meaningless off AWS | `cabotage_app_extra_config` in `main.tf` |
+| Backing Postgres/Redis, tenant Postgres backups (RustFS), web shell, network policies, alerting | on (module defaults) | module |
 | Tailscale operator | on, device `cabotage-operator` (`tag:cabotage-operator`) on the homelab tailnet; no Funnel ingress | `enable_tailscale` in `main.tf` |
 | Discord notifications | on once the vault has the Discord app (below) | `cabotage_app_extra_config` in `main.tf` |
-| Slack notifications, Sentry, Docker Hub pulls, mail | off | need an app/token each |
+| Slack notifications, Sentry, Docker Hub pulls, mail, legal pages | off | need an app/token/URL each |
 | Karpenter, KMS unseal, S3 instead of RustFS, IRSA | off | AWS only |
 
 Discord: create an application at <https://discord.com/developers/applications>. Under **OAuth2**,

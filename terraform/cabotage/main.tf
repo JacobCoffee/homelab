@@ -15,6 +15,12 @@
 # TLS-connect to Vault.
 #
 # Once PR #21 merges to cabotage/terraform main, re-pin this `ref` to the merge commit on main.
+#
+# Renovate flags this ref as a pending major-version bump (it isn't a semver tag). Checked
+# 2026-11-02: the latest tag, v1.9.3 (commit a1bca12), is an ancestor of this pin, not a
+# descendant -- it predates the toggles/CA-fix commits above and has no newer release since.
+# Re-pinning to v1.9.3 would regress this deployment. No bump available until PR #21 merges or a
+# release ships past it; re-check then.
 
 resource "kubernetes_namespace_v1" "traefik" {
   metadata {
@@ -24,25 +30,25 @@ resource "kubernetes_namespace_v1" "traefik" {
 module "cabotage" {
   source = "git::https://github.com/cabotage/terraform.git//modules/cabotage?ref=0af4603f636ad0583ac9ec64699a546f8b77ed87"
 
-  cluster_identifier       = "homelab"
-  kube_context             = local.kube_context
-  cabotage_app_image       = "ghcr.io/cabotage/cabotage-app:latest"
-  secrets_dir              = abspath("${path.module}/.secrets")
-  forwarded_headers_cidrs  = ["10.10.30.0/24", "10.244.0.0/16"]
+  cluster_identifier      = "homelab"
+  kube_context            = local.kube_context
+  cabotage_app_image      = "ghcr.io/cabotage/cabotage-app:latest"
+  secrets_dir             = abspath("${path.module}/.secrets")
+  forwarded_headers_cidrs = ["10.10.30.0/24", "10.244.0.0/16"]
 
-  consul_datacenter = "homelab"
-  proxy_protocol_cidrs     = []
+  consul_datacenter    = "homelab"
+  proxy_protocol_cidrs = []
 
   # --- Single-replica, minikube-style topology (hnk8s03 has only 8GB) ---
-  consul_replicas      = 1
-  consul_storage_size  = "2Gi"
-  vault_replicas       = 1
-  rustfs_replicas      = 1
+  consul_replicas          = 1
+  consul_storage_size      = "2Gi"
+  vault_replicas           = 1
+  rustfs_replicas          = 1
   rustfs_disks_per_replica = 1 # FS mode, no erasure coding
   # Registry images + 30-day Postgres WAL/base backups (platform and tenants) + resident Loki/Mimir.
-  rustfs_storage_size  = "50Gi"
-  loki_standalone      = true
-  mimir_standalone     = true
+  rustfs_storage_size         = "50Gi"
+  loki_standalone             = true
+  mimir_standalone            = true
   cabotage_postgres_instances = 1
 
   # kopf (Python) OOMKilled at the upstream default 128Mi limit on this cluster; give it room.
@@ -55,25 +61,25 @@ module "cabotage" {
     requests = { cpu = "25m", memory = "128Mi" }
     limits   = { cpu = "250m", memory = "320Mi" }
   }
-  registry_replicas    = 1
-  loki_backend_replicas  = 1
-  loki_read_replicas    = 1
-  loki_write_replicas   = 1
-  mimir_backend_replicas = 1
-  mimir_read_replicas   = 1
-  mimir_write_replicas  = 1
-  cabotage_app_web_replicas         = 1
-  cabotage_app_worker_replicas      = 1
-  ca_admission_replicas             = 1
+  registry_replicas            = 1
+  loki_backend_replicas        = 1
+  loki_read_replicas           = 1
+  loki_write_replicas          = 1
+  mimir_backend_replicas       = 1
+  mimir_read_replicas          = 1
+  mimir_write_replicas         = 1
+  cabotage_app_web_replicas    = 1
+  cabotage_app_worker_replicas = 1
+  ca_admission_replicas        = 1
 
   # --- Vault unseal: dev auto-unseal sidecar (accepted risk, per decision) ---
   vault_dev_auto_unseal = true
 
   # --- Ingress / TLS: homelab's own Traefik LoadBalancer + cert-manager + DNS-01 issuer ---
-  traefik_replicas        = 1
-  traefik_aws_lb          = false
-  traefik_load_balancer   = true
-  traefik_host_network    = false
+  traefik_replicas      = 1
+  traefik_aws_lb        = false
+  traefik_load_balancer = true
+  traefik_host_network  = false
   traefik_service_annotations = {
     "lbipam.cilium.io/ips" = "10.10.30.202"
   }
@@ -97,12 +103,25 @@ module "cabotage" {
 
   security_confirmable = false
 
-  # Hourly cost estimates in the UI, priced at cabotage-app's built-in on-demand rates (override
-  # with CABOTAGE_COST_RATES). AWS price-list / Cost Explorer refresh stays off: no AWS here.
-  # Discord notifications switch on once the vault holds the Discord app (README "Discord"); the
-  # module has no Secret for these, so they ride in the cabotage-config ConfigMap.
+  # Closed instance: no signup form, and GitHub sign-in only logs in existing users (a new GitHub
+  # account gets "registration is closed"; with GITHUB_OAUTH_ONLY=False that check applies). No
+  # org requests. Cost estimates off: their rates are AWS on-demand prices, meaningless here.
+  # Cluster switcher (admins only, the app default): this install plus the PSF ones; each finds
+  # itself by request host. Discord notifications switch on once the vault holds the Discord app
+  # (README "Discord"); the module has no Secret for these, so they ride in cabotage-config.
   cabotage_app_extra_config = merge(
-    { CABOTAGE_SHOW_COST_ESTIMATES = "True" },
+    {
+      CABOTAGE_SECURITY_REGISTERABLE         = "False"
+      CABOTAGE_ORGANIZATION_REQUESTS_ENABLED = "False"
+      CABOTAGE_CLUSTERS = jsonencode([
+        { name = "homelab", url = "https://cabotage.apps.z7x.org", color = "emerald" },
+        { name = "psfhosted", url = "https://cabotage.us-east-2.psfhosted.computer", region = "us-east-2", color = "blue" },
+        { name = "pypi", url = "https://cabotage.us-east-2.pypi.io", region = "us-east-2", color = "rose" },
+        { name = "psf.dev", url = "https://platform.psf.dev", region = "us-east-2", color = "teal" },
+        { name = "pypi.dev", url = "https://platform.pypi.dev", region = "us-east-2", color = "amber" },
+        { name = "prime", url = "https://preview.cabotage.io", color = "purple" },
+      ])
+    },
     var.discord_bot_token == "" ? {} : {
       CABOTAGE_DISCORD_CLIENT_ID     = var.discord_client_id
       CABOTAGE_DISCORD_CLIENT_SECRET = var.discord_client_secret

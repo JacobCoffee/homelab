@@ -8,6 +8,9 @@
   ],
   // Nightly: anything due lands overnight, and automerged updates go straight to main.
   schedule: ["before 6am"],
+  // config:recommended caps PRs at 2 an hour; that left updates queued for weeks.
+  prHourlyLimit: 0,
+  prConcurrentLimit: 20,
   // Flux HelmReleases/OCIRepositories, chart values images and plain manifests.
   flux: { managerFilePatterns: ["/^kubernetes/.+\\.ya?ml$/"] },
   "helm-values": { managerFilePatterns: ["/^kubernetes/.+\\.ya?ml$/"] },
@@ -40,11 +43,11 @@
     {
       // Talos image, talosctl and the cluster's Kubernetes move together; Talos decides
       // which Kubernetes versions are supported, and upgrading is a talosctl rollout, so these
-      // wait for approval and never merge on their own.
+      // open a PR and never merge on their own.
       groupName: "talos and kubernetes",
       matchDepNames: ["siderolabs/talos", "talosctl", "/siderolabs\\/talosctl/", "kubernetes/kubernetes", "kubectl", "/kubectl/"],
-      dependencyDashboardApproval: true,
       automerge: false,
+      labels: ["talos"],
     },
     {
       // Bootstrap pin in the talos role and the Flux HelmRelease must stay equal.
@@ -52,11 +55,17 @@
       matchDepNames: ["cilium"],
     },
     {
-      // Majors (Kuma 2, Radarr 7, Prowlarr 3, ...) change APIs or migrate databases: approve on the
-      // dashboard, then read the PR before merging.
+      // Majors (Kuma 2, Radarr 7, Prowlarr 3, ...) change APIs or migrate databases: they open a
+      // labelled PR (GitHub notifies you) and wait for you to read and merge it.
       matchUpdateTypes: ["major"],
-      dependencyDashboardApproval: true,
       automerge: false,
+      labels: ["major"],
+    },
+    {
+      // terraform/cabotage pins a commit on cabotage/terraform#21, which is already ahead of
+      // the newest tag (v1.9.3); only a later release is worth a PR.
+      matchDepNames: ["github.com/cabotage/terraform"],
+      allowedVersions: ">1.9.3",
     },
   ],
 }
