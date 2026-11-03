@@ -11,7 +11,7 @@ spec:
   template:
     metadata:
       annotations:
-        media-config/credentials-rev: "unset"
+        media-config/credentials-rev: "2026-11-03T04:26:22Z"
     spec:
       restartPolicy: OnFailure
       securityContext:
