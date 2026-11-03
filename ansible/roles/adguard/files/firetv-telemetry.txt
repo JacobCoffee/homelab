@@ -52,9 +52,12 @@
 ||pitangui.amazon.com^$client=firetv
 ||layla.amazon.com^$client=firetv
 
-# Not telemetry: Jellyfin over the house LAN. The stick can't route to the lab, so the global
-# media.z7x.org -> internal gateway rewrite (external-dns-adguard) is swapped, for this client
+# Not telemetry: Jellyfin and Seerr over the house LAN. The stick can't route to the lab, so the
+# global <name> -> internal gateway rewrites (external-dns-adguard) are swapped, for this client
 # only, for the WAN CARP address, where OPNsense forwards 8920 to the internal gateway
-# (opnsense role, firetv_dot.yml). The app's server address is https://media.z7x.org:8920.
+# (opnsense role, firetv_dot.yml). Wholphin uses https://media.z7x.org:8920 and, for its Seerr
+# integration, https://requests.z7x.org:8920.
 @@|media.z7x.org^$dnsrewrite=NOERROR;A;10.10.30.200,client=firetv,important
 |media.z7x.org^$dnsrewrite=NOERROR;A;192.168.1.189,client=firetv,important
+@@|requests.z7x.org^$dnsrewrite=NOERROR;A;10.10.30.200,client=firetv,important
+|requests.z7x.org^$dnsrewrite=NOERROR;A;192.168.1.189,client=firetv,important
