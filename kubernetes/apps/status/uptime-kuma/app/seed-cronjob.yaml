@@ -21,7 +21,6 @@ data:
 
     BASE_URL = "http://uptime-kuma.status.svc.cluster.local:3001"
     ADGUARD_DNS_RESOLVER = "10.10.10.53"
-    EDIT_FIELD = {"ignore_tls": "ignoreTls"}
     MEDIA = "media.svc.cluster.local"
 
     # Status page groups, in the start page's order. Apps behind the Pocket ID gateway are checked
@@ -56,18 +55,19 @@ data:
             dict(type=MonitorType.HTTP, name="Flux", url="https://flux.z7x.org"),
             dict(type=MonitorType.HTTP, name="Cabotage", url="https://cabotage.apps.z7x.org"),
             dict(type=MonitorType.HTTP, name="Kubernetes API",
-                 url="https://10.10.30.10:6443/livez", ignore_tls=True),
+                 url="https://10.10.30.10:6443/livez", ignoreTls=True),
         ],
         "Infrastructure": [
             # By IP from the cluster (their *.internal.z7x.org names are tailnet IPs pods can't
-            # reach), so their certs don't match: these check "is the UI up", not TLS.
+            # reach), so their certs don't match: these check "is the UI up", not TLS. Kuma
+            # (and uptime-kuma-api2, for add and edit alike) spells it ignoreTls.
             dict(type=MonitorType.HTTP, name="Proxmox hnhv01",
-                 url="https://192.168.1.220:8006", ignore_tls=True),
+                 url="https://192.168.1.220:8006", ignoreTls=True),
             dict(type=MonitorType.HTTP, name="Proxmox hnhv02",
-                 url="https://192.168.1.192:8006", ignore_tls=True),
-            dict(type=MonitorType.HTTP, name="OPNsense (VIP)", url="https://10.10.10.1", ignore_tls=True),
-            dict(type=MonitorType.HTTP, name="OPNsense hnfw01", url="https://10.10.30.2", ignore_tls=True),
-            dict(type=MonitorType.HTTP, name="OPNsense hnfw02", url="https://10.10.30.3", ignore_tls=True),
+                 url="https://192.168.1.192:8006", ignoreTls=True),
+            dict(type=MonitorType.HTTP, name="OPNsense (VIP)", url="https://10.10.10.1", ignoreTls=True),
+            dict(type=MonitorType.HTTP, name="OPNsense hnfw01", url="https://10.10.30.2", ignoreTls=True),
+            dict(type=MonitorType.HTTP, name="OPNsense hnfw02", url="https://10.10.30.3", ignoreTls=True),
             dict(type=MonitorType.DNS, name="AdGuard DNS (VIP)", hostname="cloudflare.com",
                  dns_resolve_server=ADGUARD_DNS_RESOLVER, port=53),
             dict(type=MonitorType.DNS, name="AdGuard hndns01", hostname="cloudflare.com",
@@ -110,11 +110,8 @@ data:
                     mon = {"interval": 60, **mon}
                     if mon["name"] in existing:
                         # Re-apply the definition so edits here reach monitors created earlier.
-                        # edit_monitor merges kwargs straight into Kuma's own field names (unlike
-                        # add_monitor, which translates), and Kuma spells this one ignoreTls.
                         mid = existing[mon["name"]]["id"]
-                        fields = {EDIT_FIELD.get(k, k): v for k, v in mon.items() if k != "type"}
-                        api.edit_monitor(mid, **fields)
+                        api.edit_monitor(mid, **{k: v for k, v in mon.items() if k != "type"})
                     else:
                         mid = api.add_monitor(**mon)["monitorID"]
                     ids.append(mid)
