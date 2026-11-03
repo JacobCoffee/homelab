@@ -20,14 +20,17 @@ offers:
   Bindery                            auth mode local-only (pod IPs are private)
   Cleanuparr                         "disable auth for local addresses", pod network trusted
   Uptime Kuma                        disableAuth
+  Dispatcharr                        Reverse Proxy Auth: its route asserts the user (X-Lab-User)
 
 The shared login (vault_lab_admin_username / vault_lab_admin_password) stays on the accounts that
 still have a job: qBittorrent's, for anything outside the pod network; Grafana's local admin, the
-break-glass login next to "Sign in with Pocket ID" (and the Git Sync job's); and the Kuma, Bindery
-and Cleanuparr accounts this script uses to change their settings. The files that hand it to an
+break-glass login next to "Sign in with Pocket ID" (and the Git Sync job's); and the Kuma, Bindery,
+Cleanuparr and Dispatcharr accounts this script uses to change their settings (Dispatcharr's is
+the user the gateway signs in, and its setup Job's login). The files that hand it to an
 app on restart are kept in step:
   gluetun-secret QBT_WEBUI_PASSWORD_PBKDF2   qBittorrent's login is rewritten on every start
   uptime-kuma secret KUMA_PASSWORD           the seed job logs in with it
+  dispatcharr secret DISPATCHARR_PASSWORD    the setup Job logs in with it
   grafana-admin-credentials admin-password   the Git Sync job logs in with it
 
 Apps are reached with kubectl port-forward (the gateway would send this script to the passkey
@@ -64,6 +67,7 @@ K8S = ROOT / "kubernetes/apps"
 ARR_KEYS = K8S / "media/arr-api-keys/app/secret.sops.yaml"
 GLUETUN = K8S / "media/gluetun-qbittorrent/app/secret.sops.yaml"
 KUMA = K8S / "status/uptime-kuma/app/secret.sops.yaml"
+DISPATCHARR = K8S / "media/dispatcharr/app/secret.sops.yaml"
 GRAFANA = K8S / "observability/kube-prometheus-stack/app/secret.sops.yaml"
 POD_NETWORK = "10.244.0.0/16"
 
@@ -318,6 +322,43 @@ def uptime_kuma(run: Run) -> str:
     return status
 
 
+def dispatcharr(run: Run) -> str:
+    # Reverse Proxy Auth and the admin account itself come from the setup Job (app/setup.py).
+    base = f"{run.url('media', 'dispatcharr', 9191)}/api"
+
+    def login(pw: str) -> str | None:
+        r = requests.post(f"{base}/accounts/token/", timeout=TIMEOUT,
+                          json={"username": run.user, "password": pw})
+        if r.status_code == 429:  # a few sign-ins a minute; a wrong password counts too
+            r.raise_for_status()
+        return r.json()["access"] if r.ok else None
+
+    if not requests.get(f"{base}/accounts/initialize-superuser/", timeout=TIMEOUT).json()["superuser_exists"]:
+        return "FAILED: no account yet (the dispatcharr-setup Job creates it)"
+    token = login(run.password)
+    if token is None:
+        for old in run.candidates(sops_get(DISPATCHARR, "DISPATCHARR_PASSWORD")):
+            if (token := login(old)) is not None:
+                if run.check:
+                    return "needs a password update"
+                requests.patch(f"{base}/accounts/users/me/", timeout=TIMEOUT,
+                               headers={"Authorization": f"Bearer {token}"},
+                               json={"password": run.password}).raise_for_status()
+                if (token := login(run.password)) is None:
+                    return NOT_SET
+                break
+        else:
+            return "FAILED: neither the shared, the previous nor the stored password works"
+    settings = requests.get(f"{base}/core/settings/", timeout=TIMEOUT,
+                            headers={"Authorization": f"Bearer {token}"}).json()
+    proxy = next(s["value"] for s in settings if s["key"] == "reverse_proxy_auth")
+    status = ("ok (off: gateway signs in)" if proxy.get("enabled") and proxy.get("header") == "X-Lab-User"
+              else "FAILED: Reverse Proxy Auth is off (re-run the dispatcharr-setup Job)")
+    sops_put(run, DISPATCHARR, "DISPATCHARR_USERNAME", run.user)
+    sops_put(run, DISPATCHARR, "DISPATCHARR_PASSWORD", run.password)
+    return status
+
+
 # --- Shared login kept ---------------------------------------------------------------------------
 
 def qbt_hash(password: str, salt: bytes | None = None) -> str:
@@ -388,6 +429,7 @@ def main(argv: list[str]) -> int:
             "Bindery": lambda: bindery(run),
             "Cleanuparr": lambda: cleanuparr(run),
             "Uptime Kuma": lambda: uptime_kuma(run),
+            "Dispatcharr": lambda: dispatcharr(run),
             "qBittorrent": lambda: qbittorrent(run),
             "Grafana": lambda: grafana(run),
         }

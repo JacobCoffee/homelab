@@ -40,6 +40,9 @@ spec:
       name: wizarr-internal
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
+      name: dispatcharr
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
       name: jellyball
   oidc:
     provider:

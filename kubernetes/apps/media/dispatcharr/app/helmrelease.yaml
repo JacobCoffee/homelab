@@ -1,0 +1,111 @@
+# ghcr.io/dispatcharr/dispatcharr:0.33.0, latest as of 2026-11-02: the all-in-one image (Postgres,
+# Redis, Celery, uWSGI and nginx in one container, state on /data). It's the live TV middle layer:
+# it pulls the playlists and guides, keeps the chosen groups as numbered channels, proxies the
+# streams, and hands Jellyfin one M3U tuner plus one XMLTV guide (setup.py, the setup Job).
+#
+# The entrypoint has to start as root: it creates the PUID user, chowns /data and starts Postgres
+# as that user (Postgres itself refuses root). No fsGroup either: its recursive chmod would leave
+# /data/db group-writable, which Postgres refuses to start on.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: dispatcharr
+  namespace: media
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      dispatcharr:
+        # Postgres on an RWO volume: never two pods on the same data directory.
+        strategy: Recreate
+        containers:
+          app:
+            image:
+              repository: ghcr.io/dispatcharr/dispatcharr
+              tag: "0.33.0"
+            env:
+              TZ: America/Chicago
+              DISPATCHARR_ENV: aio
+              REDIS_HOST: localhost
+              CELERY_BROKER_URL: redis://localhost:6379/0
+              DISPATCHARR_LOG_LEVEL: info
+              PUID: "1000"
+              PGID: "1000"
+              # Sign-in is the gateway's passkey check (network/lab-sso). The dispatcharr route sets
+              # X-Lab-User on every request it forwards, and Dispatcharr's Reverse Proxy Auth
+              # (turned on by setup.py) signs that user in. Trusting the pod network is what makes
+              # the header count: Envoy's pod IPs, and the media/status/observability pods the
+              # lab-sso-ingress policy lets in, the same trust qBittorrent's subnet bypass gives.
+              DISPATCHARR_TRUSTED_PROXIES: 10.244.0.0/16
+            probes:
+              startup:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/core/version/
+                    port: &port 9191
+                  periodSeconds: 10
+                  # First start runs the database migrations.
+                  failureThreshold: 60
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/core/version/
+                    port: *port
+                  periodSeconds: 15
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /api/core/version/
+                    port: *port
+                  periodSeconds: 15
+            resources:
+              requests:
+                cpu: 100m
+                memory: 768Mi
+              limits:
+                memory: 3Gi
+    defaultPodOptions:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+    service:
+      app:
+        controller: dispatcharr
+        ports:
+          http:
+            port: *port
+    persistence:
+      data:
+        type: persistentVolumeClaim
+        storageClass: proxmox-vmdata
+        accessMode: ReadWriteOnce
+        size: 5Gi
+        globalMounts:
+          - path: /data
+    route:
+      app:
+        hostnames: ["dispatcharr.z7x.org"]
+        parentRefs:
+          - name: internal
+            namespace: network
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: app
+                port: *port
+            filters:
+              # Set, not add: whatever a client sends in this header is replaced.
+              - type: RequestHeaderModifier
+                requestHeaderModifier:
+                  set:
+                    - name: X-Lab-User
+                      value: admin

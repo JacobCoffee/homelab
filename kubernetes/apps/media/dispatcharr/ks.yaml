@@ -1,0 +1,33 @@
+# Dispatcharr plus its setup Job (app/setup.py: sources, guides, sign-in, Jellyfin's tuner).
+# force: true re-creates the (immutable) Job when its script or the credentials revision
+# annotation changes, so each change runs it once. jellyfin first: the Job registers the tuner there.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: dispatcharr
+  namespace: flux-system
+spec:
+  targetNamespace: media
+  path: ./kubernetes/apps/media/dispatcharr/app
+  prune: true
+  wait: true
+  interval: 1h
+  retryInterval: 1m
+  timeout: 15m
+  force: true
+  dependsOn:
+    - name: media-app-template
+    - name: envoy-gateway-config
+    - name: jellyfin
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: dispatcharr
+      namespace: media

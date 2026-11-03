@@ -29,6 +29,7 @@ data:
         "Media": [
             dict(type=MonitorType.HTTP, name="Jellyfin", url="https://media.z7x.org"),
             dict(type=MonitorType.HTTP, name="Seerr", url="https://requests.z7x.org"),
+            dict(type=MonitorType.HTTP, name="Dispatcharr", url=f"http://dispatcharr.{MEDIA}:9191/api/core/version/"),
             dict(type=MonitorType.HTTP, name="Sonarr", url=f"http://sonarr.{MEDIA}:8989/ping"),
             dict(type=MonitorType.HTTP, name="Radarr", url=f"http://radarr.{MEDIA}:7878/ping"),
             dict(type=MonitorType.HTTP, name="Lidarr", url=f"http://lidarr.{MEDIA}:8686/ping"),

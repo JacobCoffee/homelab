@@ -18,6 +18,7 @@ resources:
   - ./sabnzbd/ks.yaml
   - ./media-config/ks.yaml
   - ./jellyfin/ks.yaml
+  - ./dispatcharr/ks.yaml
   - ./seerr/ks.yaml
   - ./wizarr/ks.yaml
   - ./jellyball/ks.yaml

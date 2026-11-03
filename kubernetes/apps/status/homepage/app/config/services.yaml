@@ -36,6 +36,13 @@
           url: http://seerr.media.svc.cluster.local:5055
           key: "{{HOMEPAGE_VAR_SEERR_KEY}}"
           fields: [pending, approved, available]
+    - Dispatcharr:
+        href: https://dispatcharr.z7x.org
+        siteMonitor: http://dispatcharr.media.svc.cluster.local:9191/api/core/version/
+        icon: mdi-television-classic
+        description: Live TV
+        namespace: media
+        app: dispatcharr
     - Sonarr:
         href: https://sonarr.z7x.org
         siteMonitor: http://sonarr.media.svc.cluster.local:8989/ping

@@ -51,7 +51,7 @@ flux get kustomizations
 | Spegel | nodes share pulled images with each other |
 | echo | smoke test at `echo.z7x.org` on the internal gateway |
 | home-assistant | `home.z7x.org` on both gateways, backed by the HA VM (selector-less Service + EndpointSlice to 10.10.10.20:80) |
-| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), Wizarr invites (`invite.z7x.org`), Jellyball live sports (`jellyball.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
+| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), Wizarr invites (`invite.z7x.org`), Jellyball live sports (`jellyball.z7x.org`), Dispatcharr live TV (`dispatcharr.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
 | Proxmox CSI plugin | `csi-proxmox`: provisions the `proxmox-vmdata` (default) and `proxmox-fast` StorageClasses -- see "Storage" below |
 | VolSync, etcd-backup, opnsense-backup | `apps/backup/`: restic-to-R2 offsite backups -- see "Backups and restore" below |
 
@@ -97,7 +97,7 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
   web UI have their own "Sign in with Pocket ID".
 - The rest of the internal apps have no SSO of their own, so Envoy's OIDC filter sits in front of
   them (`apps/network/lab-sso`) and their own logins are off: the *arrs, Bazarr, SABnzbd, Bindery,
-  Cleanuparr, qBittorrent, Unpackerr, Uptime Kuma's admin UI (`status.z7x.org`), Wizarr's admin UI (`invite.z7x.org`), Jellyball (the route sends its login, see "Media stack") and the start page. Their pods
+  Cleanuparr, qBittorrent, Unpackerr, Dispatcharr (the route asserts the user, see "Media stack"), Uptime Kuma's admin UI (`status.z7x.org`), Wizarr's admin UI (`invite.z7x.org`), Jellyball (the route sends its login, see "Media stack") and the start page. Their pods
   only take traffic from the gateway, their own namespace, `status` and `observability`
   (CiliumNetworkPolicy `lab-sso-ingress`), so going to a pod directly can't skip the passkey.
   In-cluster callers keep using API keys; through the gateway every request needs the passkey
@@ -249,6 +249,7 @@ zone), standing in for a NAS until one exports the same layout. `nfs-kernel-serv
 `apps/media/`: Jellyfin, Seerr (the project formerly called Jellyseerr), Sonarr, Radarr,
 Lidarr, Prowlarr, Bazarr, [Bindery](https://github.com/vavallee/bindery) (Readarr replacement),
 qBittorrent+gluetun, SABnzbd, Recyclarr, Unpackerr, FlareSolverr, Cleanuparr and
+[Dispatcharr](https://github.com/Dispatcharr/Dispatcharr) (live TV) and
 [Jellyball](https://github.com/DarthBitBeard/Jellyball) (live sports). One shared
 `app-template` OCIRepository (`apps/media/app-template`) is the chart source for every
 HelmRelease here.
@@ -310,6 +311,23 @@ HelmRelease here.
   so behind the passkey check the route sends `admin:behind-lab-sso` (`DASHBOARD_PASSWORD`); the
   playback paths have no auth at all, and `lab-sso-ingress` keeps all but the gateway and the
   media/status/observability pods off the pod.
+- **Live TV (`apps/media/dispatcharr`):** Dispatcharr (all-in-one image: its own Postgres and
+  Redis on the `data` PVC) sits between the free playlists and Jellyfin. Its `dispatcharr-setup`
+  Job (`app/setup.py`) loads the Pluto TV guide (`i.mjh.nz`), then two playlists: Pluto TV US
+  (a daily-generated playlist, since i.mjh.nz only publishes Pluto's guide now; groups News +
+  Opinion, Local News, Sports as channels 100/200/300 up) and iptv-org's English list (groups with
+  a News or Sports category as 1000/2000 up, geo-blocked entries and Pluto relays filtered out;
+  no guide, and plenty of its streams are dead -- hide those in Dispatcharr's UI). Dispatcharr
+  refreshes them on its own (12 h / 24 h) and keeps the channels in step. Streams go through
+  Streamlink, which pulls one HLS rendition (the stock FFmpeg profile copies all of them). The
+  Job then gives Jellyfin one M3U tuner (`/output/m3u`) and one XMLTV guide (`/output/epg`) at
+  `dispatcharr.media.svc.cluster.local:9191`, with stream sharing on, and points recordings at
+  `/media/recordings` (the default is the 10Gi config volume). Add or drop sources in `GUIDES` /
+  `PLAYLISTS` in `setup.py`. Sign-in: the route sets `X-Lab-User: admin` behind the passkey check,
+  and Dispatcharr's Reverse Proxy Auth trusts that header from the pod network
+  (`DISPATCHARR_TRUSTED_PROXIES`). The `admin` account is the shared lab login
+  (`app/secret.sops.yaml`, kept in step by `scripts/lab-logins.py`); its sign-in is rate limited
+  to a few attempts a minute.
 - **Download wiring (`apps/media/media-config`):** a Job (`app/configure.py`) puts TRaSH's SABnzbd
   settings in place (completed jobs in `/media/downloads/usenet/<category>`, in-progress in
   `.../usenet/incomplete`, categories movies/tv/music/books, the unwanted-extension blacklist

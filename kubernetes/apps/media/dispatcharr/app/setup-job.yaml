@@ -1,0 +1,53 @@
+# Sets up Dispatcharr's sources, guides and sign-in, and registers its lineup in Jellyfin
+# (setup.py). One run per change of the script (hashed ConfigMap name). A password rotation
+# doesn't need a re-run: scripts/lab-logins.py changes it in Dispatcharr and in the Secret together.
+# Re-run by hand:
+#   kubectl -n media delete job dispatcharr-setup && flux reconcile ks dispatcharr
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dispatcharr-setup
+  namespace: media
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: python:3.15-slim
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/setup.py"]
+          envFrom:
+            - secretRef:
+                name: dispatcharr
+          env:
+            - name: JELLYFIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jellyfin-sso
+                  key: JELLYFIN_API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: dispatcharr-setup-script
