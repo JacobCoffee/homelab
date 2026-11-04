@@ -37,6 +37,10 @@ TARGETS = [
     (MEDIA / "jellyfin/app/plugins-secret.sops.yaml", MEDIA / "jellyfin/app/plugins-job.yaml", {
         "vault_opensubtitles_username": "OPENSUBTITLES_USERNAME",
         "vault_opensubtitles_password": "OPENSUBTITLES_PASSWORD",
+        # Not Ansible-sourced: copy it from Seerr's settings.json (main.apiKey) into the vault by
+        # hand if you want it refreshed through this script; otherwise set it directly with
+        # `sops set --value-stdin` (see the comment in plugins-secret.sops.yaml).
+        "vault_seerr_api_key": "SEERR_API_KEY",
     }),
     # A regex for this market's local-news stations (Dispatcharr's setup.py), e.g. "Chicago|WGN".
     (MEDIA / "dispatcharr/app/secret.sops.yaml", MEDIA / "dispatcharr/app/setup-job.yaml", {

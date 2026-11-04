@@ -16,7 +16,9 @@ Prowlarr  Sonarr/Radarr/Lidarr as full-sync applications, so every indexer added
           /media/library/<kind> root folder, and a Jellyfin connection that refreshes the library
           on every import, upgrade, rename or delete (Jellyfin can't watch the NFS tree itself).
           Downloads and library are one NFS filesystem, so usenet imports are moves and torrent
-          imports hardlinks: a seeding torrent and its library copy share the same blocks.
+          imports hardlinks: a seeding torrent and its library copy share the same blocks. Sonarr
+          and Radarr also get a second, anime-only root folder (/media/library/anime,
+          /media/library/anime-movies), created on the NFS share first if missing.
 
 Each step reads the current state and writes only what differs, so re-runs are safe. A step whose
 credential is empty (NEWSHOSTING_USERNAME/PASSWORD, NZBFINDER_API_KEY, JELLYFIN_API_KEY) is
@@ -46,6 +48,12 @@ ARRS = [
     ("Sonarr", f"http://sonarr.{SVC}:8989", "v3", os.environ["SONARR_API_KEY"], "tvCategory", "tv", "/media/library/tv"),
     ("Radarr", f"http://radarr.{SVC}:7878", "v3", os.environ["RADARR_API_KEY"], "movieCategory", "movies", "/media/library/movies"),
     ("Lidarr", f"http://lidarr.{SVC}:8686", "v1", os.environ["LIDARR_API_KEY"], "musicCategory", "music", "/media/library/music"),
+]
+# Sonarr and Radarr only (Lidarr has no concept of anime): a second root folder for anime,
+# alongside the regular one above, created by ensure_library_dirs() below.
+ANIME_ROOTS = [
+    ("Sonarr", f"http://sonarr.{SVC}:8989", "v3", os.environ["SONARR_API_KEY"], "/media/library/anime"),
+    ("Radarr", f"http://radarr.{SVC}:7878", "v3", os.environ["RADARR_API_KEY"], "/media/library/anime-movies"),
 ]
 JELLYFIN_KEY = os.environ.get("JELLYFIN_API_KEY", "")
 # Events after which each app asks Jellyfin to rescan what changed.
@@ -256,6 +264,14 @@ def configure_qbittorrent() -> None:
         print(f"qBittorrent: category {cat} -> {path}")
 
 
+def add_root_folder(name: str, api: str, key: str, root: str, extra: dict | None = None) -> None:
+    if any(r["path"].rstrip("/") == root for r in call("GET", f"{api}/rootfolder", key)):
+        return
+    folder = {"path": root, **(extra or {})}
+    call("POST", f"{api}/rootfolder", key, folder)
+    print(f"{name}: root folder {root} added")
+
+
 def configure_arr(name: str, url: str, version: str, key: str, cat_field: str, category: str, root: str) -> None:
     api = f"{url}/api/{version}"
     schema = call("GET", f"{api}/downloadclient/schema", key)
@@ -269,18 +285,22 @@ def configure_arr(name: str, url: str, version: str, key: str, cat_field: str, c
            next(s for s in schema if s["implementation"] == "QBittorrent"), "qBittorrent", removes,
            {"host": f"gluetun-qbittorrent.{SVC}", "port": 8080, "useSsl": False, cat_field: category})
 
-    if any(r["path"].rstrip("/") == root for r in call("GET", f"{api}/rootfolder", key)):
-        return
-    folder = {"path": root}
+    extra = {}
     if name == "Lidarr":
         # Lidarr's root folder carries the defaults for artists added under it; "Any" takes
         # whatever quality exists (Usenet music is thin), Standard metadata = albums/EPs/singles.
         quality = next(p["id"] for p in call("GET", f"{api}/qualityprofile", key) if p["name"] == "Any")
         metadata = next(p["id"] for p in call("GET", f"{api}/metadataprofile", key) if p["name"] == "Standard")
-        folder.update(name="Music", defaultQualityProfileId=quality, defaultMetadataProfileId=metadata,
-                      defaultMonitorOption="all", defaultNewItemMonitorOption="all", defaultTags=[])
-    call("POST", f"{api}/rootfolder", key, folder)
-    print(f"{name}: root folder {root} added")
+        extra = {"name": "Music", "defaultQualityProfileId": quality, "defaultMetadataProfileId": metadata,
+                 "defaultMonitorOption": "all", "defaultNewItemMonitorOption": "all", "defaultTags": []}
+    add_root_folder(name, api, key, root, extra)
+
+
+def configure_anime_root(name: str, url: str, version: str, key: str, root: str) -> None:
+    """Sonarr and Radarr only: a second root folder for anime, alongside the regular one
+    configure_arr already added. No download-client wiring needed -- that's per-app, not
+    per-root-folder."""
+    add_root_folder(name, f"{url}/api/{version}", key, root)
 
 
 def configure_jellyfin_connection(name: str, url: str, version: str, key: str, *_) -> None:
@@ -295,12 +315,26 @@ def configure_jellyfin_connection(name: str, url: str, version: str, key: str, *
             "notify": False, "updateLibrary": True})
 
 
+def ensure_library_dirs() -> None:
+    """The regular /media/library/{movies,tv,music,books} roots already exist on the NFS share;
+    the anime roots are new, so create them here (uid/gid 1000, matching the *arrs and the rest
+    of the NFS tree) before the *arrs' root-folder APIs are asked to use them -- they refuse a
+    path that doesn't exist yet."""
+    for _, _, _, _, root in ANIME_ROOTS:
+        if not os.path.isdir(root):
+            os.makedirs(root)
+            print(f"created directory {root}")
+
+
 def main() -> int:
+    ensure_library_dirs()
     configure_sabnzbd()
     configure_qbittorrent()
     for arr in ARRS:
         configure_arr(*arr)
         configure_jellyfin_connection(*arr)
+    for anime in ANIME_ROOTS:
+        configure_anime_root(*anime)
     configure_prowlarr()
     print("done")
     return 0

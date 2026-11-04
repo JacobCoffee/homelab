@@ -43,7 +43,7 @@ spec:
   template:
     metadata:
       annotations:
-        media-config/credentials-rev: "2026-11-03T04:55:09Z"
+        media-config/credentials-rev: "2026-11-04T21:33:41Z"
     spec:
       restartPolicy: OnFailure
       serviceAccountName: jellyfin-plugins

@@ -14,9 +14,13 @@ spec:
         media-config/credentials-rev: "2026-11-03T04:55:09Z"
     spec:
       restartPolicy: OnFailure
+      # uid/gid 1000, matching the *arrs and the rest of the /media NFS tree: configure.py
+      # creates the new anime library directories there (ensure_library_dirs()).
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65534
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -52,7 +56,16 @@ spec:
             - name: script
               mountPath: /script
               readOnly: true
+            - name: media
+              mountPath: /media
       volumes:
         - name: script
           configMap:
             name: media-config-script
+        # This plain Job manifest has no Flux postBuild substitution (unlike the *arrs'
+        # HelmReleases), so server/path are literal here -- keep in sync with
+        # MEDIA_NFS_SERVER/MEDIA_NFS_PATH in flux/cluster/cluster-settings.yaml.
+        - name: media
+          nfs:
+            server: "10.10.30.20"
+            path: "/srv/media"

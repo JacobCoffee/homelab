@@ -15,12 +15,15 @@
    Custom CSS (an @import after any other rule is ignored). The SSO login-button CSS after it is
    untouched. The splash screen (branding/splash.webp, the backdrop behind the login and server
    pages) is uploaded and switched on; its hash in the block says which one is up.
-4. Libraries and their options: Movies, Shows and Music on the arrs' root folders under
-   /media/library (created if missing, the folder added if a library lost it), English subtitles
-   downloaded for Movies and Shows (Open Subtitles), Fanart added to the image fetchers of type
-   options that list them explicitly.
+4. Libraries and their options: Movies, Shows, Music, Anime and Anime Movies on the arrs' root
+   folders under /media/library (created if missing, the folder added if a library lost it),
+   English subtitles downloaded for Movies, Shows and Anime (Open Subtitles), Fanart added to the
+   image fetchers of type options that list them explicitly.
 5. Open Subtitles login, when OPENSUBTITLES_USERNAME/PASSWORD are set (opensubtitles.com
    account; scripts/media-secrets.py copies them from the vault).
+6. Jellyfin Enhanced's Seerr integration (search results, request button, quota info), when
+   SEERR_API_KEY is set: an internal URL for the server-side API calls it makes, a public URL
+   for the links it shows users, and auto-import of Jellyfin-linked Seerr users.
 
 These only change the web client and the mobile apps that render it; the Fire TV's Jellyfin
 client (Wholphin) draws its own UI.
@@ -70,12 +73,27 @@ JS_INJECTOR = "f5a34f7b-2e8a-4e6a-a722-3a216a81b374"
 OPEN_SUBTITLES = "4b9ed42f-5185-48b5-9803-6ff2989014c4"
 
 # (name, collection type, folder): the root folders media-config gives Radarr, Sonarr and Lidarr.
-# /media/library/books (Bindery) has no library: Jellyfin's book support is basic.
+# /media/library/books (Bindery) has no library: Jellyfin's book support is basic. Anime and Anime
+# Movies are the anime-only root folders media-config adds to Sonarr/Radarr alongside the regular
+# ones.
 LIBRARIES = [
     ("Movies", "movies", "/media/library/movies"),
     ("Shows", "tvshows", "/media/library/tv"),
     ("Music", "music", "/media/library/music"),
+    ("Anime", "tvshows", "/media/library/anime"),
+    ("Anime Movies", "movies", "/media/library/anime-movies"),
 ]
+
+# Jellyfin Enhanced's Seerr integration (PLUGINS above): internal URL for the server-side API
+# calls JE makes, public URL for the links it shows users, and the Jellyfin public URL so JE
+# knows to rewrite the former into the latter (JellyseerrUrlMappings). SEERR_API_KEY comes from
+# the jellyfin-plugins Secret -- not vault-managed like the other credentials here, because
+# Seerr has no config-as-code of its own; it's copied by hand from Seerr's settings.json
+# (main.apiKey) with scripts/vault-set.py / sops directly.
+JELLYFIN_ENHANCED = "f69e946a-4b3c-4e9a-8f0a-8d7c1b2c4d9b"
+SEERR_INTERNAL_URL = "http://seerr.media.svc.cluster.local:5055"
+SEERR_PUBLIC_URL = "https://requests.z7x.org"
+JELLYFIN_PUBLIC_URL = "https://media.z7x.org"
 
 KEFINTWEAKS_VERSION = "v0.5.3"
 JF_AVATARS_VERSION = "2.4.1"
@@ -120,7 +138,7 @@ IMPORTS = [
 # backdrop are near-opaque and would hide the splash; there they're thinned. Item pages keep theirs.
 BRAND_CSS = """\
 header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]) {
-  width: 124px; min-width: 124px; height: 40px; padding: 0; border-radius: 8px;
+  width: 124px; min-width: 124px; height: 44px; padding: 0; border-radius: 8px;
   background: url("LOGO") left center / contain no-repeat; color: transparent; font-size: 0;
 }
 header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]) > * { visibility: hidden; }
@@ -129,7 +147,10 @@ header.MuiAppBar-root a.MuiButton-root:has(img[src*="icon-transparent"]):focus-v
 }
 .pageTitleWithDefaultLogo { background-image: url("LOGO") !important; background-size: contain !important; }
 body:has(.standalonePage.backdropPage:not(.hide)) .backgroundContainer.withBackdrop { opacity: 0.5 !important; }
-.standalonePage.backdropPage { background: linear-gradient(rgba(8, 11, 20, 0.20), rgba(8, 11, 20, 0.58)) !important; }"""
+.standalonePage.backdropPage { background: linear-gradient(rgba(8, 11, 20, 0.20), rgba(8, 11, 20, 0.58)) !important; }
+/* ElegantFin sets focus outline color/width but not style, so Sign In / Quick Connect / Forgot
+   Password / Sign in with Pocket ID show no visible keyboard focus ring (WCAG 2.4.7). */
+.emby-button:focus-visible { outline: 3px solid #FFC27A !important; outline-offset: 2px !important; }"""
 
 
 def theme_block(splash_sha: str) -> str:
@@ -236,6 +257,30 @@ def set_open_subtitles() -> None:
     print("Open Subtitles: login set")
 
 
+def set_jellyseerr() -> None:
+    key = os.environ.get("SEERR_API_KEY", "")
+    if not key:
+        print("Jellyfin Enhanced Seerr integration: SEERR_API_KEY not set yet, skipped")
+        return
+    _, config = call("GET", f"/Plugins/{JELLYFIN_ENHANCED}/Configuration")
+    wanted = {
+        "JellyseerrEnabled": True,
+        "JellyseerrUrls": SEERR_INTERNAL_URL,
+        "JellyseerrApiKey": key,
+        "JellyseerrUrlMappings": f"{JELLYFIN_PUBLIC_URL}|{SEERR_PUBLIC_URL}",
+        "JellyseerrShowSearchResults": True,
+        "JellyseerrShowReportButton": True,
+        "JellyseerrShowQuotaInfo": True,
+        # Keeps Seerr aware of every linked Jellyfin user (Leah included) without a manual import.
+        "JellyseerrAutoImportUsers": True,
+    }
+    if all(config.get(k) == v for k, v in wanted.items()):
+        return
+    config.update(wanted)
+    call("POST", f"/Plugins/{JELLYFIN_ENHANCED}/Configuration", config)
+    print("Jellyfin Enhanced: Seerr integration set")
+
+
 def main():
     wait_for_server()
     ensure_repositories(REPOSITORIES, remove=REMOVED_REPOSITORIES)
@@ -246,6 +291,7 @@ def main():
     ensure_libraries()
     set_library_options()
     set_open_subtitles()
+    set_jellyseerr()
     print("ok")
 
 
