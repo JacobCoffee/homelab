@@ -1,7 +1,8 @@
 # Bindery: the user's choice to replace retired Readarr (see kubernetes/README.md for the full
 # comparison against Chaptarr/Bookshelf/LazyLibrarian). Single Go binary, ghcr.io/vavallee/bindery,
-# v1.46.1 is the latest release as of 2026-11-01. Root folder (/media/library/books) and download
-# client paths are set in its UI/API after first boot -- it has no env-based config for those yet.
+# v1.46.2 is the latest release as of 2026-11-04. Root folders (/media/library/books,
+# /media/library/audiobooks), download clients and the Prowlarr indexer sync are set via its API
+# by the setup Job (app/setup.py) -- it has no env-based config for those.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

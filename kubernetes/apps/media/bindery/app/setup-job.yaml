@@ -1,0 +1,64 @@
+# Gives Bindery ebook + audiobook root folders, download clients and a synced Prowlarr indexer
+# (setup.py). Runs as uid 1000 (matching the Bindery HelmRelease's own securityContext) with the
+# NFS media share mounted, since it creates /media/library/books and /media/library/audiobooks
+# itself when missing. One run per change of the script (hashed ConfigMap name). Re-run by hand:
+#   kubectl -n media delete job bindery-setup && flux reconcile ks bindery
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bindery-setup
+  namespace: media
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: python:3.15-slim
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/setup.py"]
+          env:
+            - name: SABNZBD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: arr-api-keys
+                  key: SABNZBD_API_KEY
+            - name: PROWLARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: arr-api-keys
+                  key: PROWLARR_API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+            - name: media
+              mountPath: /media
+      volumes:
+        - name: script
+          configMap:
+            name: bindery-setup-script
+        - name: media
+          nfs:
+            server: "${MEDIA_NFS_SERVER}"
+            path: "${MEDIA_NFS_PATH}"
