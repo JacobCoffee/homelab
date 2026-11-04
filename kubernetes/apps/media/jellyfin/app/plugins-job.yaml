@@ -49,7 +49,9 @@ spec:
       serviceAccountName: jellyfin-plugins
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65534
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -78,6 +80,8 @@ spec:
             - name: branding
               mountPath: /branding
               readOnly: true
+            - name: media
+              mountPath: /media
       volumes:
         - name: script
           configMap:
@@ -85,3 +89,11 @@ spec:
         - name: branding
           configMap:
             name: jellyfin-branding
+        # This plain Job manifest has no Flux postBuild substitution, so server/path are literal
+        # here -- keep in sync with MEDIA_NFS_SERVER/MEDIA_NFS_PATH in
+        # flux/cluster/cluster-settings.yaml. ensure_library_dirs() in plugins.py uses this to
+        # create the anime/anime-movies root directories.
+        - name: media
+          nfs:
+            server: "10.10.30.20"
+            path: "/srv/media"

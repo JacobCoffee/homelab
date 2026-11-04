@@ -74,8 +74,9 @@ OPEN_SUBTITLES = "4b9ed42f-5185-48b5-9803-6ff2989014c4"
 
 # (name, collection type, folder): the root folders media-config gives Radarr, Sonarr and Lidarr.
 # /media/library/books (Bindery) has no library: Jellyfin's book support is basic. Anime and Anime
-# Movies are the anime-only root folders media-config adds to Sonarr/Radarr alongside the regular
-# ones.
+# Movies are new roots that media-config also adds to Sonarr/Radarr; this Job creates their
+# directories itself too (ensure_library_dirs(), below) rather than depending on media-config's
+# Job, which depends on this one's Kustomization being ready first.
 LIBRARIES = [
     ("Movies", "movies", "/media/library/movies"),
     ("Shows", "tvshows", "/media/library/tv"),
@@ -208,6 +209,16 @@ def set_branding() -> None:
     print("branding: theme, logo and splash set")
 
 
+def ensure_library_dirs() -> None:
+    """Jellyfin's own anime/anime-movies root folders (/media mounted alongside the branding
+    ConfigMap), so ensure_libraries() below never has to wait on media-config's Job -- which
+    itself depends on this Kustomization being ready first."""
+    for _, _, path in LIBRARIES:
+        if not os.path.isdir(path):
+            os.makedirs(path)
+            print(f"created directory {path}")
+
+
 def ensure_libraries() -> None:
     _, folders = call("GET", "/Library/VirtualFolders")
     by_name = {f["Name"]: f for f in folders or []}
@@ -288,6 +299,7 @@ def main():
     install_missing(PLUGINS)
     set_scripts()
     set_branding()
+    ensure_library_dirs()
     ensure_libraries()
     set_library_options()
     set_open_subtitles()
