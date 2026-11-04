@@ -112,7 +112,7 @@ spec:
         storageSpec:
           volumeClaimTemplate:
             spec:
-              storageClassName: proxmox-fast
+              storageClassName: proxmox-vmdata   # fast is etcd's (README Storage)
               accessModes: ["ReadWriteOnce"]
               # Sized for 3d, not 10d: shrinking this spec doesn't shrink the already-bound 20Gi
               # PVC (PVCs only grow), it only matters for a fresh install.
@@ -144,7 +144,7 @@ spec:
         storage:
           volumeClaimTemplate:
             spec:
-              storageClassName: proxmox-fast
+              storageClassName: proxmox-vmdata
               accessModes: ["ReadWriteOnce"]
               resources:
                 requests: { storage: 2Gi }

@@ -29,7 +29,7 @@
         --machine q35 --bios seabios --cpu host
         --cores {{ item.item.cores }} --memory {{ item.item.memory }} --balloon 0
         --scsihw virtio-scsi-single
-        --scsi0 {{ talos_storage }}:{{ item.item.disk_gb }},discard=on,ssd=1,iothread=1
+        --scsi0 {{ talos_worker_storage if item.item.role | default('controlplane') == 'worker' else talos_storage }}:{{ item.item.disk_gb }},discard=on,ssd=1,iothread=1
         --net0 virtio={{ item.item.mac }},bridge={{ talos_zone.vnet }},mtu=1
         --ide2 local:iso/{{ talos_iso }},media=cdrom --boot 'order=scsi0;ide2'
         --agent enabled=1 --serial0 socket --onboot 1 --startup order=3

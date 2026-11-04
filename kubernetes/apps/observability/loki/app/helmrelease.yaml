@@ -63,7 +63,12 @@ spec:
       replicas: 1
       persistence:
         enabled: true
-        storageClass: proxmox-fast
+        # The chart deletes the PVC (14 days of logs) whenever the StatefulSet is scaled to 0 or
+        # deleted; keep it.
+        whenScaled: Retain
+        whenDeleted: Retain
+        # vmdata, not fast: the NVMe pool is kept for the control planes' etcd (see README Storage).
+        storageClass: proxmox-vmdata
         # 14 days at lab scale (pod logs + k8s events + Talos/Proxmox/OPNsense syslog): a few
         # GiB/day compressed at most for ~50 pods and three syslog sources, so 14d comfortably
         # fits in 30Gi with room for the index and compactor scratch space.

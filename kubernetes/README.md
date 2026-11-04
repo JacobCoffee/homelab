@@ -207,13 +207,19 @@ draws its own UI.
 provisions Proxmox VM disks as PersistentVolumes -- no storage daemon runs in-cluster, the data
 sits on whichever Proxmox node the volume lands on.
 
-- **StorageClasses:** `proxmox-vmdata` (default; Proxmox storage `vmdata`, the cluster-wide ZFS
-  mirror) and `proxmox-fast` (Proxmox storage `fast`, each node's local NVMe ZFS pool). Both are
-  RWO, `WaitForFirstConsumer`, `ext4`: the first pod to use a PVC picks a node, the plugin
-  allocates the disk there, and the resulting PV's `topology.kubernetes.io/zone` node affinity
-  pins every future pod for that PVC to Proxmox nodes with that zone label -- no cross-node
-  migration. `proxmox-fast` additionally requires the zone label since its storage is node-local;
-  `proxmox-vmdata` is cluster-wide, so volumes can reattach on any node.
+- **StorageClasses:** `proxmox-vmdata` (default; Proxmox storage `vmdata`, each host's SATA ZFS
+  mirror) and `proxmox-fast` (Proxmox storage `fast`, each host's single NVMe ZFS pool). Both are
+  RWO, `WaitForFirstConsumer`, `ext4`, and both pools are local to their host: the first pod to
+  use a PVC picks a node, the plugin allocates the disk on that node's host, and the PV's
+  `topology.kubernetes.io/zone` node affinity pins every future pod for that PVC to nodes on the
+  same Proxmox host. Moving a volume to another host means copying the data (as was done for
+  Jellyfin's config).
+- **`fast` is etcd's.** The control-plane VMs' system disks (etcd's WAL) are the only heavy users
+  of the NVMe pools. Put app volumes on `proxmox-vmdata`, and Ansible puts worker VM disks
+  there too (`talos_worker_storage`). On 2026-11-04, Prometheus/Mimir/Loki compactions and a new
+  worker's image pulls on `fast` pushed etcd's fdatasync on hnk8s01 to 8s and forced leader
+  elections, so those volumes were moved to `vmdata` with `zfs send | zfs recv` and rebound to
+  static PVs. `proxmox-fast` still exists, but nothing uses it.
 - **Credentials:** `ansible/roles/pve_csi` creates a `kubernetes-csi@pve` Proxmox user, a `CSI`
   role (`VM.Audit VM.Config.Disk Datastore.Allocate Datastore.AllocateSpace Datastore.Audit`) and
   an API token, then writes the token straight into `app/secret.sops.yaml` (never printed, never

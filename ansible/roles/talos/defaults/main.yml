@@ -10,7 +10,10 @@ k8s_version: 1.37.2
 
 talos_iso: talos-{{ talos_version }}-{{ talos_schematic_id[:8] }}-metal-amd64.iso
 talos_iso_url: https://factory.talos.dev/image/{{ talos_schematic_id }}/{{ talos_version }}/metal-amd64.iso
-talos_storage: fast         # VM disks on each node's NVMe pool
+# Control-plane disks (etcd) sit alone on each host's NVMe pool; workers' disks (image pulls,
+# emptyDirs, logs) go on the SATA mirror so their write bursts can't stall etcd's fsyncs.
+talos_storage: fast
+talos_worker_storage: vmdata
 talos_zone: "{{ lab_zones | selectattr('name', 'equalto', 'k8s') | first }}"
 # Nodes with role controlplane (the default): etcd members, VIP holders, talosctl endpoints.
 talos_controlplanes: "{{ k8s_nodes | rejectattr('role', 'defined') | list + k8s_nodes | selectattr('role', 'defined') | selectattr('role', 'equalto', 'controlplane') | list }}"

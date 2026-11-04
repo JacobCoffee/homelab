@@ -3,7 +3,7 @@
 # 2GiB/day of raw samples at today's ~300 scraped series x a few hundred targets. Mimir's TSDB
 # blocks are the same compressed chunk format without that WAL duplication, so day-over-day usage
 # should run under Prometheus's per-day figure, not over it -- budgeting ~1GiB/day compacted,
-# 90 days is ~90Gi. 100Gi on proxmox-fast leaves ~10% headroom for compactor scratch space
+# 90 days is ~90Gi. 100Gi on proxmox-vmdata leaves ~10% headroom for compactor scratch space
 # (it rewrites blocks before deleting the originals) without the cluster being far oversized for
 # three Talos VMs. Revisit (du -sh on /data/blocks) once 90 days of real data exist.
 apiVersion: apps/v1
@@ -74,7 +74,7 @@ spec:
     - metadata:
         name: data
       spec:
-        storageClassName: proxmox-fast
+        storageClassName: proxmox-vmdata   # fast is etcd's (README Storage)
         accessModes: ["ReadWriteOnce"]
         resources:
           requests: { storage: 100Gi }
