@@ -1,0 +1,58 @@
+# Re-runs setup.py on a schedule shorter than any playlist's refresh interval (12-24h, see
+# PLAYLISTS), so a duplicate channel that auto-sync recreates for an orphaned stream (Dispatcharr
+# has no native channel merge: Dispatcharr/Dispatcharr#632) gets re-merged by dedupe_channels
+# before it lingers for long. Every other step in setup.py is a no-op when nothing has drifted.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dispatcharr-dedupe
+  namespace: media
+spec:
+  schedule: "17 */4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: setup
+              image: python:3.15-slim
+              # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+              command: ["python3", "-u", "/script/setup.py"]
+              envFrom:
+                - secretRef:
+                    name: dispatcharr
+              env:
+                - name: JELLYFIN_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: jellyfin-sso
+                      key: JELLYFIN_API_KEY
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: script
+                  mountPath: /script
+                  readOnly: true
+          volumes:
+            - name: script
+              configMap:
+                name: dispatcharr-setup-script

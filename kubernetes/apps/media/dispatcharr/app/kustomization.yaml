@@ -5,6 +5,7 @@ resources:
   - ./secret.sops.yaml
   - ./helmrelease.yaml
   - ./setup-job.yaml
+  - ./cronjob.yaml
 configMapGenerator:
   - name: dispatcharr-setup-script
     files:

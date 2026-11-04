@@ -11,14 +11,19 @@
    keeps those channels in step with every scheduled refresh. Local-news groups (a playlist's
    "local") take only the channels whose names match LOCAL_NEWS_MATCH, a regex kept in the SOPS
    secret so the public repo doesn't say which market this is; unset, they take every market.
-5. Jellyfin: one M3U tuner and one XMLTV guide, both Dispatcharr's own outputs, recordings on the
-   media share instead of the config volume, then a guide refresh.
+5. Dedupe (dedupe_channels): several playlists carry the same network (e.g. ABC News Live on
+   Pluto, Samsung and Tubi); merge those channels into one, with the extras kept as backup
+   streams, and delete the rest. Re-run periodically (dispatcharr-dedupe CronJob) since a
+   playlist refresh can recreate a channel for an orphaned stream.
+6. Jellyfin: one M3U tuner and one XMLTV guide, both Dispatcharr's own outputs, recordings on the
+   media share instead of the config volume, then a guide refresh after any dedupe change.
 
 Safe to re-run: every step compares with what's there first.
 """
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -36,6 +41,12 @@ PROXY_AUTH = {"enabled": True, "header": "X-Lab-User"}
 # Most sources are HLS. The stock FFmpeg profile copies every rendition of the master playlist
 # (-map 0: five video streams pulled for one channel); Streamlink takes only the best one.
 STREAM_PROFILE = "Streamlink"
+
+# Picking which copy of a duplicate channel (same network, several playlists) survives, and
+# which order its streams fail over in. Samsung/Pluto/Tubi are first-party ad-supported TV CDNs
+# with maintained, matching XMLTV guides; iptv-org aggregates arbitrary community links of
+# unknown/varying reliability (it already needs a geo-block filter, see PLAYLISTS below).
+SOURCE_PRIORITY = {"Samsung TV Plus": 0, "Pluto TV": 1, "Tubi": 2, "iptv-org (English)": 3}
 
 # name -> (XMLTV url, refresh hours)
 GUIDES = {
@@ -242,14 +253,75 @@ def ensure_playlist(d: Dispatcharr, name: str, spec: dict) -> None:
         print(f"Dispatcharr: playlist {name}: groups {', '.join(enabled)}: {account['last_message']}")
 
 
+def normalize_channel_name(name: str) -> str:
+    """"ABC News Live", "ABC News Live (720p)" and "ABC News Live HD" all collapse to the same
+    key, so duplicates created by different playlists for the same network are found."""
+    n = name.lower()
+    n = re.sub(r"\(\s*(?:\d{3,4}p|hd|sd|east|west)\s*\)", " ", n)
+    n = re.sub(r"\b(?:hd|sd)\b", " ", n)
+    return re.sub(r"[^a-z0-9]+", "", n)
+
+
+def stream_quality(name: str) -> int:
+    m = re.search(r"(\d{3,4})p", name, re.IGNORECASE)
+    if m:
+        return int(m.group(1))
+    if re.search(r"\bhd\b", name, re.IGNORECASE):
+        return 720
+    if re.search(r"\bsd\b", name, re.IGNORECASE):
+        return 480
+    return 600  # unlabeled: assume mid-quality
+
+
+def dedupe_channels(d: Dispatcharr) -> int:
+    """Auto-sync (ensure_playlist) makes one channel per playlist per stream, so a network
+    carried by several playlists (e.g. ABC News Live on Pluto, Samsung and Tubi) ends up as
+    several channels. Merge each group of same-network channels into the most reliable one
+    (SOURCE_PRIORITY, then quality), with the others' streams kept as ordered backup streams on
+    it, and delete the rest.
+
+    Dispatcharr has no native merge yet (Dispatcharr/Dispatcharr#632): a duplicate just deleted
+    here can come back the next time its playlist refreshes an unmapped stream. That's fine -
+    this function is idempotent and also runs from the dispatcharr-dedupe CronJob (cronjob.yaml)
+    on a schedule shorter than any playlist's refresh interval, so drift gets re-merged quickly.
+    """
+    groups: dict[str, list[dict]] = {}
+    for c in d.call("GET", "/channels/channels/"):
+        groups.setdefault(normalize_channel_name(c["name"]), []).append(c)
+
+    def rank(c: dict) -> tuple[int, int]:
+        source = c.get("auto_created_by_name") or ""
+        return (SOURCE_PRIORITY.get(source, len(SOURCE_PRIORITY)), -stream_quality(c["name"]))
+
+    merged = 0
+    for dupes in groups.values():
+        if len(dupes) < 2:
+            continue
+        dupes.sort(key=rank)
+        primary, losers = dupes[0], dupes[1:]
+        streams = list(primary["streams"])
+        for loser in losers:
+            streams += [sid for sid in loser["streams"] if sid not in streams]
+        if streams != primary["streams"]:
+            d.call("PATCH", f"/channels/channels/{primary['id']}/", {"streams": streams})
+        for loser in losers:
+            d.call("DELETE", f"/channels/channels/{loser['id']}/")
+        merged += len(losers)
+        print(f"Dispatcharr: merged {len(dupes)} copies of {primary['name']!r} into one "
+              f"channel with {len(streams)} stream(s)")
+    if merged:
+        print(f"Dispatcharr: dedupe removed {merged} duplicate channel(s)")
+    return merged
+
+
 def jellyfin(method: str, path: str, body=None):
     return request(method, f"{JELLYFIN}{path}",
                    {"Authorization": f'MediaBrowser Token="{JELLYFIN_KEY}"'}, body)
 
 
-def ensure_jellyfin() -> None:
+def ensure_jellyfin(force_refresh: bool = False) -> None:
     options = jellyfin("GET", "/System/Configuration/livetv")
-    changed = False
+    changed = force_refresh
     if not any(t.get("Url") == M3U_URL for t in options.get("TunerHosts", [])):
         jellyfin("POST", "/LiveTv/TunerHosts", {
             "Type": "m3u", "Url": M3U_URL, "FriendlyName": TUNER_NAME, "TunerCount": 0,
@@ -285,7 +357,8 @@ def main() -> int:
         ensure_guide(d, name, url, hours)
     for name, spec in PLAYLISTS.items():
         ensure_playlist(d, name, spec)
-    ensure_jellyfin()
+    merged = dedupe_channels(d)
+    ensure_jellyfin(force_refresh=merged > 0)
     print("done")
     return 0
 
