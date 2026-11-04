@@ -182,7 +182,11 @@ once to load what's new. Editor's Choice is uninstalled (its banner stacked on M
 KefinTweaks and jf-avatars, and at the top of the branding Custom CSS a marked block importing
 ElegantFin, its Media Bar add-on and the `elegantfin-jf12` companion sheet for Jellyfin 12's
 Modern layout. Every web script and stylesheet is pinned to a release tag in `plugins.py`; bump
-them there. Movies and Shows get English subtitles from Open Subtitles once its login is in:
+them there. Jellyfin Enhanced shows Seerr results in Jellyfin's search and can request from
+there: server-side it calls `seerr.media.svc.cluster.local:5055` with Seerr's API key
+(`SEERR_API_KEY` in `app/plugins-secret.sops.yaml`, copied from Seerr's `settings.json`), and
+links point at `https://requests.z7x.org`. The libraries are Movies, Shows, Music, Anime and Anime
+Movies; all of them get English subtitles from Open Subtitles once its login is in:
 
 ```sh
 scripts/vault-set.py vault_opensubtitles_username vault_opensubtitles_password   # opensubtitles.com
@@ -194,7 +198,9 @@ to paths, `logo.svg`) replaces Jellyfin's mark and server name through the same 
 and the splash screen (`splash.webp`, the view from a projection booth, rendered from the WebGL
 shader in `splash.html`) is the backdrop behind the login and server pages, in the browser and
 the official TV app (Wholphin doesn't show it). Change either, run `branding/build.py`, commit;
-the Job uploads a new splash when its hash differs from the one recorded in the CSS block.
+the Job uploads a new splash when its hash differs from the one recorded in the CSS block. The
+same block gives buttons an amber keyboard-focus ring (ElegantFin leaves `outline-style` unset,
+so focused buttons showed nothing).
 
 Not installed: Artisan Jelly (built against Jellyfin 10.10, doesn't load on 12). The plugins, scripts
 and theme only change the web client and the mobile apps that render it; Wholphin on the Fire TV
@@ -284,8 +290,12 @@ HelmRelease here.
   override) and its "Settings" links to Sonarr/Radarr stay manual UI steps, along with the
   Jellyfin admin account.
 - **Seerr:** Jellyfin at `jellyfin.media.svc.cluster.local:8096` (external `https://media.z7x.org`),
-  Movies and Shows libraries enabled, Radarr/Sonarr as default servers with the 2160p-first
-  profiles and `/media/library/{movies,tv}`. Settings live in `settings.json` on its PVC. Its
+  Movies, Shows and the anime libraries enabled, Radarr/Sonarr as default servers with the
+  2160p-first profiles and `/media/library/{movies,tv}`. Sign-in is Jellyfin only
+  (`main.localLogin` off; first sign-in creates the Seerr user). Anime series go to Sonarr's
+  `[Anime] Remux-1080p` profile in `/media/library/anime`; anime movies follow an Override Rule
+  (genre Animation plus TMDb's "anime" keyword) to the same profile in Radarr and
+  `/media/library/anime-movies`. Settings live in `settings.json` on its PVC. Its
   setup wizard can strand you: once a media server is saved, `/setup` jumps straight to the
   libraries step, and without a session cookie every call there is a 401 ("Unable to load
   libraries"). Finish it with Seerr's own API key instead (`main.apiKey` in `settings.json`,
@@ -300,9 +310,21 @@ HelmRelease here.
   forms: `/setup` created an `admin` account (unused while the built-in login is off; its
   `recovery_tool.py` resets it), Settings > Media Servers holds Jellyfin
   (`jellyfin.media.svc.cluster.local:8096`, external `https://media.z7x.org`, the
-  `jellyfin-sso` Secret's API key), Settings > Wizard has the "Automatic requests" preset.
-  Wizarr has no Discord bot; its Discord option is a server-widget step in the wizard, which
-  needs the Discord server's ID (Server Settings > Engagement > Server Widget).
+  `jellyfin-sso` Secret's API key), Settings > Wizard has the "Automatic requests" and "Discord
+  community" presets. Wizarr has no Discord bot; the Discord step is the server's widget, which
+  stays blank until Server Settings > Engagement > Server Widget is enabled in Discord.
+- **Books (`apps/media/bindery`):** one Bindery for ebooks and audiobooks (new authors default to
+  both): roots `/media/library/books` and `/media/library/audiobooks`, SABnzbd and qBittorrent
+  with category `books`, E-Book profile epub first, Audiobook profile m4b first. Bindery isn't a
+  Prowlarr sync target; instead it registers Prowlarr and pulls its indexers itself. The
+  `bindery-setup` Job (`app/setup.py`) sets all of it without an API key: Bindery's local-only
+  auth trusts in-cluster requests to its `.svc.cluster.local` name, and `lab-sso-ingress` keeps
+  other pods out.
+- **Anime:** separate Jellyfin libraries (Anime, Anime Movies) on their own Sonarr/Radarr root
+  folders. Recyclarr syncs TRaSH's `[Anime] Remux-1080p` profile to both apps (TRaSH has no
+  2160p anime profile), and Sonarr's copy scores Anime Dual Audio +2000, more than the whole tier
+  spread, so an English dub always wins but a subbed-only release still downloads when no dub
+  exists. `media-config` adds the root folders; `jellyfin-plugins` adds the libraries.
 - **Live sports (`apps/media/jellyball`, `jellyball.z7x.org`):**
   [Jellyball](https://github.com/DarthBitBeard/Jellyball) finds the games of the teams ticked in
   its dashboard (Channels & Streams > Sports Catalog > Apply Selected Teams; also always-live
@@ -331,7 +353,11 @@ HelmRelease here.
   signs) in the vault and push it: `scripts/vault-set.py vault_local_news_match`,
   `scripts/media-secrets.py`, commit. It lands in the SOPS secret (`LOCAL_NEWS_MATCH`), so the
   public repo never names the market. Dispatcharr refreshes the playlists on its own (12 h / 24 h)
-  and keeps the channels in step. Streams go through
+  and keeps the channels in step. Networks carried by several sources (ABC News Live is on three)
+  become one channel: `setup.py` keeps the best source first (Samsung TV Plus, then Pluto, Tubi,
+  iptv-org) and attaches the others as fallback streams. The `dispatcharr-dedupe` CronJob re-runs
+  it every 4 h, because a playlist refresh can recreate channels for streams it no longer
+  sees. Streams go through
   Streamlink, which pulls one HLS rendition (the stock FFmpeg profile copies all of them). The
   Job then gives Jellyfin one M3U tuner (`/output/m3u`) and one XMLTV guide (`/output/epg`) at
   `dispatcharr.media.svc.cluster.local:9191`, with stream sharing on, and points recordings at
