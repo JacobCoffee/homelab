@@ -16,6 +16,9 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          # talosctl snapshots the etcd of the node the pod runs on; workers have none.
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: ""
           initContainers:
             - name: snapshot
               image: ghcr.io/siderolabs/talosctl:v1.14.5
