@@ -30,11 +30,17 @@ data:
             dict(type=MonitorType.HTTP, name="Jellyfin", url="https://media.z7x.org"),
             dict(type=MonitorType.HTTP, name="Seerr", url="https://requests.z7x.org"),
             dict(type=MonitorType.HTTP, name="Dispatcharr", url=f"http://dispatcharr.{MEDIA}:9191/api/core/version/"),
+            # HDHomeRun tuner status (what Jellyfin polls), not /output/m3u: that endpoint is
+            # ~140KB and not worth re-downloading every interval.
+            dict(type=MonitorType.HTTP, name="Dispatcharr Tuner",
+                 url=f"http://dispatcharr.{MEDIA}:9191/hdhr/lineup_status.json"),
             dict(type=MonitorType.HTTP, name="Sonarr", url=f"http://sonarr.{MEDIA}:8989/ping"),
             dict(type=MonitorType.HTTP, name="Radarr", url=f"http://radarr.{MEDIA}:7878/ping"),
             dict(type=MonitorType.HTTP, name="Lidarr", url=f"http://lidarr.{MEDIA}:8686/ping"),
             dict(type=MonitorType.HTTP, name="Bindery", url=f"http://bindery.{MEDIA}:8787"),
             dict(type=MonitorType.HTTP, name="Bazarr", url=f"http://bazarr.{MEDIA}:6767"),
+            dict(type=MonitorType.HTTP, name="Wizarr", url=f"http://wizarr.{MEDIA}:5690/health"),
+            dict(type=MonitorType.HTTP, name="Jellyball", url=f"http://jellyball.{MEDIA}:8000/healthz"),
         ],
         "Downloads": [
             dict(type=MonitorType.HTTP, name="Prowlarr", url=f"http://prowlarr.{MEDIA}:9696/ping"),
