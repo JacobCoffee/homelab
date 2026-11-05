@@ -225,7 +225,7 @@ SLOW_RULE = {
     "minCompletionPercentage": 0,
     "maxCompletionPercentage": 100,
     "resetStrikesOnProgress": True,
-    "minSpeed": "100KB/s",
+    "minSpeed": "100 KB",
     "maxTimeHours": 0,
     "ignoreAboveSize": "25 GB",
     "ignoreWhileAltSpeedActive": True,
