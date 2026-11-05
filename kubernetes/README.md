@@ -286,9 +286,9 @@ HelmRelease here.
 - **API keys:** `apps/media/arr-api-keys` holds one `arr-api-keys` Secret with pre-generated keys for
   Sonarr/Radarr/Lidarr/Prowlarr, injected via `<APP>__AUTH__APIKEY` env vars (the Servarr config
   override convention) so Recyclarr and Unpackerr already know them, plus SABnzbd's (its image
-  writes `SABNZBD__API_KEY` into `sabnzbd.ini` on start). Bazarr (Python, no such env
-  override) and its "Settings" links to Sonarr/Radarr stay manual UI steps, along with the
-  Jellyfin admin account.
+  writes `SABNZBD__API_KEY` into `sabnzbd.ini` on start). Bazarr has no such env override; its
+  setup Job reads the key Bazarr generated from its PVC instead. Only the Jellyfin admin account
+  is still a manual step.
 - **Seerr:** Jellyfin at `jellyfin.media.svc.cluster.local:8096` (external `https://media.z7x.org`),
   Movies, Shows and the anime libraries enabled, Radarr/Sonarr as default servers with the
   2160p-first profiles and `/media/library/{movies,tv}`. Sign-in is Jellyfin only
@@ -325,6 +325,32 @@ HelmRelease here.
   2160p anime profile), and Sonarr's copy scores Anime Dual Audio +2000, more than the whole tier
   spread, so an English dub always wins but a subbed-only release still downloads when no dub
   exists. `media-config` adds the root folders; `jellyfin-plugins` adds the libraries.
+- **Music quality (Lidarr):** TRaSH has no Lidarr guide (it points to the Servarr wiki) and
+  Recyclarr doesn't do Lidarr, so `media-config` sets the wiki's FLAC-first setup itself. The
+  profile "Lossless + High-Bitrate Fallback" allows only lossless and V0/320 lossy, with the cutoff
+  at lossless, so an MP3-320 grab keeps upgrading until a FLAC release appears. It's the music root
+  folder's default. Custom formats score CD +10, Lossless +10, WEB +5 and Vinyl -10000 (vinyl rips
+  are effectively never taken). FLAC size limits filter out single-file CUE rips, and track
+  renaming is on (Artist/Album (Year)/Track).
+- **Subtitles (`apps/media/bazarr`):** the `bazarr-setup` Job (`app/setup.py`) connects Sonarr and
+  Radarr and creates one "English" language profile. It is the default and is applied to
+  everything already in the library. Scoring follows TRaSH's suggestions (minimum 90 for episodes,
+  80 for movies), with ffsubsync timing correction on. Providers: OpenSubtitles.com (the
+  `jellyfin-plugins` secret's `OPENSUBTITLES_*` login), Gestdown (Addic7ed without the CAPTCHA),
+  Embedded Subtitles (English tracks already inside the file) and Anime Tosho (anime). Bazarr
+  owns automatic downloads; Jellyfin's Open Subtitles plugin is only used when someone searches
+  from the player. The Job mounts Bazarr's PVC read-only to read its API key, so it runs on
+  Bazarr's node.
+- **Cleanup (`apps/media/cleanuparr`):** the `cleanuparr-setup` Job (`app/setup.py`) connects
+  Sonarr/Radarr/Lidarr, qBittorrent and SABnzbd. **Queue Cleaner:** 3 strikes for failed imports,
+  errors, stalls, slow downloads or stuck metadata; then the download is removed, blocklisted and
+  searched again. **Malware Blocker:** Cleanuparr's own Sonarr/Radarr blocklists (none exists for
+  Lidarr). **Download Cleaner** (qBittorrent only): a completed torrent left with no hardlink in
+  the library gets tagged `cleanuparr-unlinked` and is removed after an hour. Anything still in an
+  arr's queue is skipped, and if an arr can't be reached the whole run does nothing. Torrents still
+  sitting past their share limit after 24 h are removed too, as a backstop to the arrs' own
+  Remove Completed. It tags rather than recategorizes, because a category change would make
+  qBittorrent move the files.
 - **Live sports (`apps/media/jellyball`, `jellyball.z7x.org`):**
   [Jellyball](https://github.com/DarthBitBeard/Jellyball) finds the games of the teams ticked in
   its dashboard (Channels & Streams > Sports Catalog > Apply Selected Teams; also always-live

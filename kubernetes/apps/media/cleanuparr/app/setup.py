@@ -13,10 +13,20 @@ discover the API while building this. See scripts/lab-logins.py for Cleanuparr's
 4. Malware Blocker: Cleanuparr's official Sonarr/Radarr blocklists (no curated Lidarr list exists).
 5. Download Cleaner, qBittorrent only (SABnzbd doesn't seed):
    - Unlinked handling tags (not categories, so qBittorrent never relocates files) a download
-     whose files carry no hardlink into the library -- nothing else references that data, so
-     deleting it is always safe.
-   - Two seeding rules on the four media categories: the unlinked tag removes immediately
-     (priority 1), a 24h-past-share-limit backstop catches anything the arrs' own "Remove
+     whose files carry no hardlink into the library. Cleanuparr itself guards this against a
+     pending/failed import: it only evaluates torrents qBittorrent reports Completed (still
+     downloading/stalled torrents are excluded by GetSeedingDownloads()'s own `Completed`
+     filter), and every Download Cleaner run re-reads every enabled arr's live queue first and
+     skips any download hash still present there ("skip | download is used by an arr", see
+     DownloadCleaner.cs's `_downloadsProcessedByArrs`); if an arr can't be reached to check, the
+     whole run throws and does nothing (`ProcessArrConfigAsync(..., throwOnFailure: true)`). So a
+     completed-but-not-yet-imported or import-pending-retry download is still "in an arr's
+     queue" and is left alone -- only a download the arr is done with (imported, now with a
+     hardlink; or struck out of the queue and blocklisted by our own Queue Cleaner) can ever be
+     both unlinked and untracked at the same time.
+   - Two seeding rules on the four media categories: the unlinked tag removes after at least an
+     hour of seeding time once tagged -- on top of the guards above, a plain, auditable buffer
+     (priority 1); a 24h-past-share-limit backstop catches anything the arrs' own "Remove
      Completed" missed (priority 2, same 0.1 ratio qBittorrent itself stops at -- see
      media-config's configure_qbittorrent()). A hardlinked file surviving in the library is
      unaffected either way: deleting one hardlink never touches the inode's other links.
@@ -312,7 +322,7 @@ SEEDING_RULES = [
         "privacyType": "Both",
         "maxRatio": -1,
         "minSeedTime": 0,
-        "maxSeedTime": 0,
+        "maxSeedTime": 1,
         "minSeeders": 0,
         "maxInactiveDays": -1,
         "deleteSourceFiles": True,

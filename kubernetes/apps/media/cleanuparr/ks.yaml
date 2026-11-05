@@ -27,6 +27,8 @@ spec:
     - name: gluetun-qbittorrent
     - name: sabnzbd
     - name: media-config
+    # components/volsync: the ReplicationSource needs its CRD and controller first.
+    - name: volsync
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -35,3 +37,13 @@ spec:
       kind: HelmRelease
       name: cleanuparr
       namespace: media
+  postBuild:
+    # APP/VOLSYNC_CAPACITY: components/volsync (nightly restic backup of the cleanuparr PVC to R2).
+    substitute:
+      APP: cleanuparr
+      VOLSYNC_CAPACITY: 1Gi
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+      - kind: Secret
+        name: cluster-secrets
