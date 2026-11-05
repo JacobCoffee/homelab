@@ -33,7 +33,7 @@ spec:
             - name: reapply
               # adb baked in (Debian stable-slim + adb), pinned by digest: installing it with apt on
               # every 5-minute run turned any DNS/network blip into a failed Job (and a page).
-              image: backplane/adb:20261102@sha256:801368f9fc1725306c57c98620c1e2c77930655b915435c46893dd8a3ab8d408
+              image: backplane/adb:20261104@sha256:92a80a2ffa24e85a24d3a3b09741636112ab88cc97898bd4d9cda5742f47ff79
               env:
                 - name: FIRETV_HOST
                   value: "192.168.1.28"
