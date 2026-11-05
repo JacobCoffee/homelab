@@ -1,7 +1,8 @@
 #!/usr/bin/env -S uv run --script
+# uptime-kuma-api2: maintained fork of the abandoned uptime-kuma-api (same import name), speaks Kuma 2.
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["uptime-kuma-api"]
+# dependencies = ["uptime-kuma-api2"]
 # ///
 """Seed Uptime Kuma with an admin user, a handful of monitors, and a public
 status page slug 'home'. Idempotent: skips setup if already configured and
@@ -10,6 +11,7 @@ skips monitors that already exist by name.
 Usage: seed-kuma.py <base_url> <username> <password> <adguard_url>
 """
 import sys
+import time
 
 from uptime_kuma_api import MonitorType, UptimeKumaApi, UptimeKumaException
 
@@ -74,4 +76,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Kuma 2 answers HTTP a little before its socket API settles on a fresh volume; the first
+    # attempt can fail with an empty error. Every step is idempotent, so just try again.
+    for attempt in range(6):
+        if main() == 0:
+            raise SystemExit(0)
+        time.sleep(5)
+    raise SystemExit(1)
