@@ -20,6 +20,16 @@ Prowlarr  Sonarr/Radarr/Lidarr as full-sync applications, so every indexer added
           and Radarr also get a second, anime-only root folder (/media/library/anime,
           /media/library/anime-movies), created on the NFS share first if missing.
 
+Lidarr    A lossless-first quality profile ("Lossless + High-Bitrate Fallback"): FLAC/ALAC/APE/
+          WavPack preferred, falling back to MP3-320/MP3-VBR-V0/AAC-VBR/AAC-320 only when nothing
+          lossless exists, cutoff set to Lossless so Lidarr keeps upgrading a lossy grab. Custom
+          formats score CD and tagged-lossless releases above WEB and score Vinyl out entirely.
+          TRaSH Guides has no Lidarr guide of its own and defers to the Servarr Wiki (see
+          configure_lidarr_quality), which this profile is sourced from. Set as the
+          /media/library/music root folder's default and applied to any artist still on one of
+          Lidarr's built-in profiles. Track renaming is also turned on, using the instance's
+          existing Jellyfin-friendly Artist/Album (Year)/Track naming.
+
 Each step reads the current state and writes only what differs, so re-runs are safe. A step whose
 credential is empty (NEWSHOSTING_USERNAME/PASSWORD, NZBFINDER_API_KEY, JELLYFIN_API_KEY) is
 skipped with a note: scripts/media-secrets.py fills the first three from the vault,
@@ -101,6 +111,28 @@ NEWSHOSTING = {
     "priority": 0,
     "enable": 1,
 }
+
+# Source: Servarr Wiki Lidarr Tips and Tricks -> Custom Formats and -> Quality definitions for
+# FLAC (TRaSH Guides has no Lidarr guide of its own and defers to this wiki, see Third-Party Apps
+# & Guides). https://wiki.servarr.com/lidarr/tips-and-tricks#custom-formats
+LIDARR_PROFILE_NAME = "Lossless + High-Bitrate Fallback"
+# Lidarr's own built-in default profiles, migrated away from once the profile above exists.
+LIDARR_LEGACY_PROFILES = ("Any", "Standard", "Lossless")
+# name, specification implementation, release-title regex
+LIDARR_CUSTOM_FORMATS = [
+    ("CD", "ReleaseTitleSpecification", r"\bCD\b"),
+    ("WEB", "ReleaseTitleSpecification", r"\bWEB\b"),
+    ("Lossless", "ReleaseTitleSpecification", r"\blossless\b"),
+    ("Vinyl", "ReleaseTitleSpecification", r"\bVinyl\b"),
+]
+# CD and tagged-lossless outrank WEB; Vinyl is scored out rather than merely deprioritised.
+LIDARR_CF_SCORES = {"CD": 10, "Lossless": 10, "WEB": 5, "Vinyl": -10000}
+# Catches single-file CUE+FLAC rips, which present as one oversized file instead of split tracks.
+LIDARR_QUALITY_DEFINITION_MAX = {"FLAC": 1400, "FLAC 24bit": 1495}  # kbps
+# MP3-320/MP3-VBR-V0/AAC-VBR/AAC-320 fallback when nothing lossless exists; cutoff is Lossless, so
+# Lidarr keeps upgrading from a lossy grab until a FLAC/ALAC/APE/WavPack release appears.
+LIDARR_ALLOWED_QUALITY_GROUPS = ("High Quality Lossy", "Lossless")
+LIDARR_CUTOFF_GROUP = "Lossless"
 
 
 def call(method: str, url: str, key: str | None = None, body=None, form: dict | None = None):
@@ -265,11 +297,131 @@ def configure_qbittorrent() -> None:
 
 
 def add_root_folder(name: str, api: str, key: str, root: str, extra: dict | None = None) -> None:
-    if any(r["path"].rstrip("/") == root for r in call("GET", f"{api}/rootfolder", key)):
+    extra = extra or {}
+    existing = next((r for r in call("GET", f"{api}/rootfolder", key) if r["path"].rstrip("/") == root), None)
+    if existing is None:
+        call("POST", f"{api}/rootfolder", key, {"path": root, **extra})
+        print(f"{name}: root folder {root} added")
         return
-    folder = {"path": root, **(extra or {})}
-    call("POST", f"{api}/rootfolder", key, folder)
-    print(f"{name}: root folder {root} added")
+    if any(existing.get(k) != v for k, v in extra.items()):
+        existing.update(extra)
+        call("PUT", f"{api}/rootfolder/{existing['id']}", key, existing)
+        print(f"{name}: root folder {root} updated")
+
+
+def spec_from_schema(schema: dict, name: str, value: str) -> dict:
+    """Build one Custom Format specification by cloning its implementation schema (from GET
+    .../customformat/schema) and filling in the "value" field (a title regex)."""
+    spec = {k: v for k, v in schema.items() if k != "presets"}
+    spec["name"] = name
+    spec["fields"] = [dict(f, value=value) if f["name"] == "value" else dict(f) for f in schema["fields"]]
+    return spec
+
+
+def configure_lidarr_custom_formats(api: str, key: str) -> dict[str, int]:
+    schemas = {s["implementation"]: s for s in call("GET", f"{api}/customformat/schema", key)}
+    existing = {c["name"]: c for c in call("GET", f"{api}/customformat", key)}
+    ids: dict[str, int] = {}
+    for cf_name, implementation, regex in LIDARR_CUSTOM_FORMATS:
+        spec = spec_from_schema(schemas[implementation], cf_name, regex)
+        current = existing.get(cf_name)
+        if current is None:
+            created = call("POST", f"{api}/customformat", key,
+                            {"name": cf_name, "includeCustomFormatWhenRenaming": False, "specifications": [spec]})
+            ids[cf_name] = created["id"]
+            print(f"Lidarr: custom format {cf_name} added")
+            continue
+        ids[cf_name] = current["id"]
+        have = [fields(s).get("value") for s in current.get("specifications", [])]
+        if have != [regex]:
+            current["specifications"] = [spec]
+            call("PUT", f"{api}/customformat/{current['id']}", key, current)
+            print(f"Lidarr: custom format {cf_name} updated")
+    return ids
+
+
+def quality_profile_items(schema_items: list) -> tuple[list, int]:
+    """Clone the profile schema's quality groups, allow only the lossless and high-bitrate-lossy
+    groups (MP3-320/MP3-VBR-V0/AAC-VBR/AAC-320, up to FLAC/FLAC 24bit/ALAC/APE/WavPack), and
+    return the cutoff group's id."""
+    items = json.loads(json.dumps(schema_items))
+    cutoff_id = None
+    for item in items:
+        group_name = item.get("name") or item["quality"]["name"]
+        allowed = group_name in LIDARR_ALLOWED_QUALITY_GROUPS
+        item["allowed"] = allowed
+        for sub in item.get("items", []):
+            sub["allowed"] = allowed
+        if group_name == LIDARR_CUTOFF_GROUP:
+            cutoff_id = item["id"]
+    return items, cutoff_id
+
+
+def configure_lidarr_quality(api: str, key: str) -> int:
+    """Quality definitions, custom formats and the quality profile for a lossless-first music
+    library: FLAC (and other lossless formats) preferred, upgrading from MP3-320/MP3-VBR-V0/
+    AAC-VBR/AAC-320 only when nothing lossless is available -- the cutoff is the Lossless group,
+    so Lidarr keeps searching until it lands a lossless release. CD and tagged-lossless releases
+    outscore WEB; Vinyl rips are scored out entirely. TRaSH Guides has no Lidarr guide of its own
+    (github.com/TRaSH-Guides/Guides/blob/master/docs/Lidarr/index.md) and points to the Servarr
+    Wiki Lidarr Community Guide instead; this profile is sourced from there. Returns the
+    profile's id."""
+    for d in call("GET", f"{api}/qualitydefinition", key):
+        wanted_max = LIDARR_QUALITY_DEFINITION_MAX.get(d["quality"]["name"])
+        if wanted_max is not None and d.get("maxSize") != wanted_max:
+            d["maxSize"] = wanted_max
+            call("PUT", f"{api}/qualitydefinition/{d['id']}", key, d)
+            print(f"Lidarr: quality definition {d['quality']['name']} max size -> {wanted_max}kbps")
+
+    cf_ids = configure_lidarr_custom_formats(api, key)
+    format_items = [{"format": cf_ids[n], "name": n, "score": s} for n, s in LIDARR_CF_SCORES.items()]
+    schema = call("GET", f"{api}/qualityprofile/schema", key)
+    items, cutoff_id = quality_profile_items(schema["items"])
+    wanted = {"name": LIDARR_PROFILE_NAME, "upgradeAllowed": True, "cutoff": cutoff_id, "items": items,
+              "minFormatScore": 0, "cutoffFormatScore": 0, "formatItems": format_items}
+
+    profiles = call("GET", f"{api}/qualityprofile", key)
+    current = next((p for p in profiles if p["name"] == LIDARR_PROFILE_NAME), None)
+    if current is None:
+        created = call("POST", f"{api}/qualityprofile", key, wanted)
+        print(f"Lidarr: quality profile {LIDARR_PROFILE_NAME} added")
+        return created["id"]
+
+    def signature(items: list) -> list:
+        return [(i.get("name") or i["quality"]["name"], i["allowed"]) for i in items]
+
+    cur_fmt = sorted((f["format"], f["score"]) for f in current.get("formatItems", []))
+    want_fmt = sorted((f["format"], f["score"]) for f in format_items)
+    if (signature(current["items"]) != signature(items) or current["cutoff"] != cutoff_id
+            or not current["upgradeAllowed"] or cur_fmt != want_fmt
+            or current["minFormatScore"] != 0 or current["cutoffFormatScore"] != 0):
+        wanted["id"] = current["id"]
+        call("PUT", f"{api}/qualityprofile/{current['id']}", key, wanted)
+        print(f"Lidarr: quality profile {LIDARR_PROFILE_NAME} updated")
+    return current["id"]
+
+
+def migrate_lidarr_artists(api: str, key: str, profile_id: int) -> None:
+    """Move any artist still left on one of Lidarr's built-in default profiles onto the new one;
+    an artist an operator has deliberately put on something else is left alone."""
+    profiles = {p["name"]: p["id"] for p in call("GET", f"{api}/qualityprofile", key)}
+    legacy_ids = {profiles[n] for n in LIDARR_LEGACY_PROFILES if n in profiles}
+    stale = [a["id"] for a in call("GET", f"{api}/artist", key) if a.get("qualityProfileId") in legacy_ids]
+    if stale:
+        call("PUT", f"{api}/artist/editor", key, {"artistIds": stale, "qualityProfileId": profile_id})
+        print(f"Lidarr: moved {len(stale)} artist(s) to {LIDARR_PROFILE_NAME}")
+
+
+def configure_lidarr_naming(api: str, key: str) -> None:
+    """Jellyfin follows MusicBrainz conventions and wants Artist/Album (Year)/Track nesting with
+    accurate tags (Servarr Wiki, Lidarr File Naming Guide -> Media server compatibility); the
+    standard/multi-disc/artist-folder formats already configured on this instance match that, but
+    renaming was left off, so Lidarr was importing files under their original names."""
+    cfg = call("GET", f"{api}/config/naming", key)
+    if not cfg["renameTracks"]:
+        cfg["renameTracks"] = True
+        call("PUT", f"{api}/config/naming/{cfg['id']}", key, cfg)
+        print("Lidarr: track renaming enabled (Artist/Album (Year)/Track, Jellyfin-friendly)")
 
 
 def configure_arr(name: str, url: str, version: str, key: str, cat_field: str, category: str, root: str) -> None:
@@ -287,9 +439,12 @@ def configure_arr(name: str, url: str, version: str, key: str, cat_field: str, c
 
     extra = {}
     if name == "Lidarr":
-        # Lidarr's root folder carries the defaults for artists added under it; "Any" takes
-        # whatever quality exists (Usenet music is thin), Standard metadata = albums/EPs/singles.
-        quality = next(p["id"] for p in call("GET", f"{api}/qualityprofile", key) if p["name"] == "Any")
+        # Lidarr's root folder carries the defaults for artists added under it: the TRaSH-sourced
+        # lossless-first profile (see configure_lidarr_quality), Standard metadata = albums/EPs/
+        # singles.
+        quality = configure_lidarr_quality(api, key)
+        migrate_lidarr_artists(api, key, quality)
+        configure_lidarr_naming(api, key)
         metadata = next(p["id"] for p in call("GET", f"{api}/metadataprofile", key) if p["name"] == "Standard")
         extra = {"name": "Music", "defaultQualityProfileId": quality, "defaultMetadataProfileId": metadata,
                  "defaultMonitorOption": "all", "defaultNewItemMonitorOption": "all", "defaultTags": []}
