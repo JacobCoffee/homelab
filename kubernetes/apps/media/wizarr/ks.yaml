@@ -14,13 +14,21 @@ spec:
   dependsOn:
     - name: media-app-template
     - name: envoy-gateway-config
+    # components/volsync: the ReplicationSource needs its CRD and controller first.
+    - name: volsync
   sourceRef:
     kind: GitRepository
     name: flux-system
   postBuild:
+    # APP/VOLSYNC_CAPACITY: components/volsync (nightly restic backup of the wizarr PVC to R2).
+    substitute:
+      APP: wizarr
+      VOLSYNC_CAPACITY: 1Gi
     substituteFrom:
       - kind: ConfigMap
         name: cluster-settings
+      - kind: Secret
+        name: cluster-secrets
   healthChecks:
     - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease

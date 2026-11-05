@@ -480,7 +480,26 @@ doesn't support clone/snapshot, so the mover reads the PVC directly; safe becaus
 node-pinned and the mover lands on the same node). The including app's `ks.yaml` must list
 `cluster-settings` and `cluster-secrets` in `postBuild.substituteFrom` alongside its own vars, and
 VolSync (the controller, `apps/backup/volsync`) must be installed first. Media files (NFS) are
-never in scope -- only PVCs opted into this component are backed up.
+never in scope -- only PVCs opted into this component are backed up. The `media`, `auth` and
+`status` namespaces carry `volsync.backube/privileged-movers: "true"`, so the mover can read files
+owned by any uid and restores keep their owners.
+
+**Backed up:** every app's own state -- Pocket ID (users, passkeys, OIDC clients), Uptime Kuma,
+Jellyfin, Seerr, Wizarr, Sonarr, Radarr, Lidarr, Prowlarr, SABnzbd, qBittorrent, Bazarr,
+Cleanuparr, Bindery, Dispatcharr and Jellyball. **Not backed up on purpose:** Prometheus, Mimir and
+Loki (metrics and logs; history, not configuration, and about 14 GB that churns constantly);
+Grafana (dashboards come from git, sign-in from Pocket ID); and Cabotage (its own platform with
+its own Postgres). The mover copies live files, so a SQLite database can be caught mid-write.
+The *arrs keep their own scheduled backup zips in `/config/Backups`, and Dispatcharr writes
+`/data/backups/*.zip` at 03:00; both get uploaded with everything else, so when a restored
+database won't open, restore from those zips.
+
+**Cost (measured 2026-11-05):** the app volumes hold about 0.75 GB in total. Restic compresses
+and deduplicates it, and the bucket already holds 0.35 GB (etcd, OPNsense, Jellyfin). With 11
+retained snapshots per app and the daily churn of SQLite files, the bucket should sit at 1-3 GB,
+inside R2's free 10 GB-month. Each nightly run costs a few dozen Class A operations (PUTs and
+LISTs), about 25k a month across all apps, against 1M free. Expected bill: $0. If every PVC
+were included, metrics too, the bill would still be under $1 a month.
 
 ```sh
 # Restore <app>'s PVC into a scratch PVC to inspect/diff before touching the real one:

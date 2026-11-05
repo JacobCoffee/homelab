@@ -2,6 +2,10 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: media
+  annotations:
+    # VolSync's restic mover runs as root with file-owner capabilities, so it can read app files
+    # whatever uid owns them (e.g. 0600) and restores keep their owners (components/volsync).
+    volsync.backube/privileged-movers: "true"
   labels:
     # gluetun (qBittorrent's VPN sidecar) needs NET_ADMIN, which the cluster default
     # "baseline" PodSecurity level forbids.

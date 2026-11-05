@@ -19,6 +19,8 @@ spec:
     - name: media-app-template
     - name: envoy-gateway-config
     - name: jellyfin
+    # components/volsync: the ReplicationSource needs its CRD and controller first.
+    - name: volsync
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -27,3 +29,13 @@ spec:
       kind: HelmRelease
       name: jellyball
       namespace: media
+  postBuild:
+    # APP/VOLSYNC_CAPACITY: components/volsync (nightly restic backup of the jellyball PVC to R2).
+    substitute:
+      APP: jellyball
+      VOLSYNC_CAPACITY: 1Gi
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-settings
+      - kind: Secret
+        name: cluster-secrets

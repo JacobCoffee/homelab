@@ -5,3 +5,5 @@ resources:
   - ./secret.sops.yaml
   - ./httproute.yaml
   - ./seed-cronjob.yaml
+components:
+  - ../../../../components/volsync

@@ -8,3 +8,5 @@ configMapGenerator:
   - name: jellyball-setup-script
     files:
       - ./setup.py
+components:
+  - ../../../../components/volsync

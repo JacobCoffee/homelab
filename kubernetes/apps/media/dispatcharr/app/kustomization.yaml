@@ -10,3 +10,5 @@ configMapGenerator:
   - name: dispatcharr-setup-script
     files:
       - ./setup.py
+components:
+  - ../../../../components/volsync

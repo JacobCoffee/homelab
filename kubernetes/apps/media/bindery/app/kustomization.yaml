@@ -8,3 +8,5 @@ configMapGenerator:
   - name: bindery-setup-script
     files:
       - ./setup.py
+components:
+  - ../../../../components/volsync

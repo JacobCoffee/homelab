@@ -17,3 +17,5 @@ configMapGenerator:
   - name: pocket-id-theme-caddy
     files:
       - ./Caddyfile
+components:
+  - ../../../../components/volsync
