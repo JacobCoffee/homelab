@@ -46,6 +46,9 @@
       // open a PR and never merge on their own.
       groupName: "talos and kubernetes",
       matchDepNames: ["siderolabs/talos", "talosctl", "/siderolabs\\/talosctl/", "kubernetes/kubernetes", "kubectl", "/kubectl/"],
+      // terraform/cabotage's `kubectl` is the alekc/kubectl provider, not the CLI; it got grouped
+      // here (PR #6) by name alone.
+      matchManagers: ["!terraform"],
       automerge: false,
       labels: ["talos"],
     },
