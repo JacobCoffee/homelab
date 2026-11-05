@@ -1,6 +1,7 @@
-# Latest ghcr.io/home-operations/bazarr tag as of 2026-11-01. Bazarr (Python/configparser) has
-# no documented env var for presetting its API key or its Sonarr/Radarr connections, unlike the
-# .NET Servarr apps -- those two links, and subtitle provider accounts, are manual UI steps.
+# Latest ghcr.io/home-operations/bazarr tag as of 2026-11-01. Bazarr (Python/configparser) has no
+# documented env var for presetting its API key (self-generated into config.yaml on first boot,
+# unlike the .NET Servarr apps) or its Sonarr/Radarr connections and subtitle provider accounts --
+# app/setup-job.yaml configures all of that through Bazarr's own API after the fact.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

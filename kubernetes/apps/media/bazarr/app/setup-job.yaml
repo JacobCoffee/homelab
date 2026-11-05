@@ -1,0 +1,86 @@
+# Connects Bazarr to Sonarr/Radarr, gives it an "English" language profile applied to every
+# series and movie, and turns on OpenSubtitles.com plus three account-free providers (setup.py).
+# Mounts the same "bazarr" PVC the HelmRelease uses, read-only, solely to read the API key Bazarr
+# generates for itself on first boot (config.yaml has no env-var override for it). proxmox-vmdata
+# is a ReadWriteOnce block volume attached to one node at a time -- the podAffinity below pins
+# this Job's pod onto whichever node the "bazarr" Deployment pod is already running on (confirmed
+# live: without it the scheduler happily puts the Job on a different node and the attach-detach
+# controller blocks forever waiting to migrate the disk out from under the running Bazarr pod).
+# One run per change of the script (hashed ConfigMap name) or of the credentials
+# (media-config/credentials-rev, bumped by scripts/media-secrets.py). Re-run by hand:
+#   kubectl -n media delete job bazarr-setup && flux reconcile ks bazarr
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bazarr-setup
+  namespace: media
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      annotations:
+        media-config/credentials-rev: "2026-11-04T21:33:41Z"
+    spec:
+      restartPolicy: OnFailure
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: bazarr
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: python:3.15-slim
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/setup.py"]
+          envFrom:
+            - secretRef:
+                name: arr-api-keys
+          env:
+            - name: OPENSUBTITLES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: jellyfin-plugins
+                  key: OPENSUBTITLES_USERNAME
+                  optional: true
+            - name: OPENSUBTITLES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: jellyfin-plugins
+                  key: OPENSUBTITLES_PASSWORD
+                  optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+            - name: bazarr-config
+              mountPath: /bazarr-config
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: bazarr-setup-script
+        - name: bazarr-config
+          persistentVolumeClaim:
+            claimName: bazarr
+            readOnly: true
