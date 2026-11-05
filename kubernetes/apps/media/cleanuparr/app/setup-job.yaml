@@ -1,0 +1,68 @@
+# Gives Cleanuparr its arrs, download clients, and queue/malware/download-cleaner rules
+# (setup.py). Cleanuparr itself trusts the pod CIDR (no auth needed), so this just needs network
+# access, not a volume -- uid 65534 (nobody) is enough. One run per change of the script (hashed
+# ConfigMap name). Re-run by hand:
+#   kubectl -n media delete job cleanuparr-setup && flux reconcile ks cleanuparr
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cleanuparr-setup
+  namespace: media
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: python:3.15-slim
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/setup.py"]
+          env:
+            - name: SONARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: arr-api-keys
+                  key: SONARR_API_KEY
+            - name: RADARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: arr-api-keys
+                  key: RADARR_API_KEY
+            - name: LIDARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: arr-api-keys
+                  key: LIDARR_API_KEY
+            - name: SABNZBD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: arr-api-keys
+                  key: SABNZBD_API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: cleanuparr-setup-script

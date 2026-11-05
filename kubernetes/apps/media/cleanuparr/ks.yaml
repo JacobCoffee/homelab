@@ -1,6 +1,8 @@
-# Removes stalled/blocked/malicious downloads from qBittorrent and nudges Sonarr/Radarr/Lidarr
-# to re-search, replacing the unmaintained Decluttarr. Connections to the arrs and qBittorrent
-# are configured in its own UI (no declarative env-based config in the actively maintained fork).
+# Removes stalled/blocked/malicious downloads from qBittorrent and SABnzbd and nudges
+# Sonarr/Radarr/Lidarr to re-search, replacing the unmaintained Decluttarr. Connections to the
+# arrs and the download clients, and the Queue Cleaner/Malware Blocker/Download Cleaner rules,
+# are set by its own setup Job (app/setup.py). force: true re-creates the (immutable) Job when
+# its script changes, so each change runs it once.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -13,10 +15,18 @@ spec:
   wait: true
   interval: 1h
   retryInterval: 1m
-  timeout: 5m
+  timeout: 10m
+  force: true
   dependsOn:
     - name: media-app-template
     - name: envoy-gateway-config
+    - name: arr-api-keys
+    - name: sonarr
+    - name: radarr
+    - name: lidarr
+    - name: gluetun-qbittorrent
+    - name: sabnzbd
+    - name: media-config
   sourceRef:
     kind: GitRepository
     name: flux-system
