@@ -1,12 +1,16 @@
 # Temporary media NFS server (contract: owner Storage, until a NAS exports the same layout).
 # Debian 13 cloud image + cloud-init, on the K8S zone so pods reach it directly; a small root
-# disk (backed up by pve_backup) plus a 100 GB data disk excluded from vzdump (backup=0, since
+# disk (backed up by pve_backup) plus a 140 GB data disk excluded from vzdump (backup=0, since
 # its contents are media, not config — nothing worth restoring from a Proxmox snapshot).
 media_nfs: { name: hnnfs01, host: hnhv01, vmid: 401, ip: 10.10.30.20, mac: "02:10:10:30:00:20" }
 media_nfs_cores: 1
 media_nfs_memory: 1024
 media_nfs_root_disk: 8G
-media_nfs_data_disk_gb: 100
+# Grown live from 100 (2026-11-06, the disk filled mid-download): `qm disk resize 401 scsi1 <N>G`,
+# then `resize2fs /dev/sdb` in the guest. The role only sets the size when it creates the VM.
+# The zvol is thin: hnhv01's vmdata pool is 64% full now and reaches ~84% once the share fills,
+# past the ~80% where ZFS slows down -- more 4K needs real storage, not another grow.
+media_nfs_data_disk_gb: 140
 media_nfs_storage: vmdata
 media_nfs_zone: "{{ lab_zones | selectattr('name', 'equalto', 'k8s') | first }}"
 

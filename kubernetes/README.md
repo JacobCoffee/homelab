@@ -253,8 +253,12 @@ zone), standing in for a NAS until one exports the same layout. `nfs-kernel-serv
   copied: `/srv/media/{downloads/{torrents,usenet}/{movies,tv,music,books},library/{movies,tv,music,books}}`,
   owned `1000:1000` mode `2775` (setgid, so new entries inherit the group).
 - **Backups:** the root disk is covered by the nightly Proxmox vzdump job
-  (`ansible/roles/pve_backup`); the 100 GB data disk is `backup=0` (media, not config -- nothing
+  (`ansible/roles/pve_backup`); the 140 GB data disk is `backup=0` (media, not config -- nothing
   worth restoring from a Proxmox snapshot).
+- **Growing it:** online, no downtime: `qm disk resize 401 scsi1 <N>G` on hnhv01, then
+  `resize2fs /dev/sdb` inside hnnfs01, and set `media_nfs_data_disk_gb` to match. It lives on
+  hnhv01's 238 GB `vmdata` mirror, which is also shared with the VM and app volumes, so 140 GB is
+  about the ceiling; a 4K library needs a NAS or a dedicated disk.
 
 ## Media stack
 
