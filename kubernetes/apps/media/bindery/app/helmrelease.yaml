@@ -20,7 +20,7 @@ spec:
           app:
             image:
               repository: ghcr.io/vavallee/bindery
-              tag: "v1.46.3"
+              tag: "v1.46.4"
             env:
               TZ: America/Chicago
             probes:
