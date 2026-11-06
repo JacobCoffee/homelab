@@ -199,3 +199,61 @@ resource "kubernetes_manifest" "tailscale_allow_apiserver" {
   }
   depends_on = [module.cabotage]
 }
+
+# --- Redis startup probe tuning ---
+#
+# Root cause of redis/cabotage-0's ~1830-restart CrashLoopBackOff: the redis-operator's default
+# liveness/readiness probes (exec redis-cli ping, delay=0s timeout=1s period=10s
+# failureThreshold=3) give Redis roughly a 30s budget from the moment the container starts to
+# answer PONG. On hnk8s04 (the memory-poor worker whose system disk -- and this PVC's
+# proxmox-vmdata storage class -- was live-moved from the NVMe pool to the slower SATA pool on
+# 2026-11-04) a cold start spends ~28s blocked loading the AOF (RDB base loads instantly with 0
+# keys; the time goes into replaying/reading the incremental AOF file on that slower disk, per
+# `kubectl logs --previous`: "DB loaded from base file ... 0.000 seconds" followed by a ~28s gap
+# before the next log line). That reliably blows the ~30s probe budget every single restart,
+# kubelet SIGTERMs the still-loading process ("Received shutdown signal during loading,
+# scheduling shutdown"), and the cycle repeats forever. cabotage-app-worker and
+# cabotage-app-worker-beat crashloop too, but only as a consequence: both fail immediately with
+# `No route to host` connecting to cabotage.redis.svc.cluster.local:6379 because the redis
+# Service has no Ready endpoints -- no separate fix needed there once redis stabilizes.
+#
+# The module doesn't expose probe tuning as a variable (manifests/redis/redis.yaml.tftpl has no
+# readinessProbe/livenessProbe keys), so patch the Redis CR in place via server-side apply: a
+# dedicated field manager owns only spec.readinessProbe/spec.livenessProbe, leaving every other
+# field (including resources) under the module's own apply untouched and unconflicted regardless
+# of apply order. The redis-operator auto-fills the exec command (redis-cli ... ping) for any
+# Probe that has no Exec/HTTPGet/TCPSocket/GRPC set, so only the timing fields are needed.
+resource "kubectl_manifest" "redis_probe_tuning" {
+  yaml_body = yamlencode({
+    apiVersion = "redis.redis.opstreelabs.in/v1beta2"
+    kind       = "Redis"
+    metadata = {
+      name      = "cabotage"
+      namespace = "redis"
+    }
+    spec = {
+      # 30s initial delay covers a cold-start AOF load on the slow disk; timeout bumped from 1s
+      # to 5s so a CPU-throttled redis-cli + TLS handshake under the 25m CPU limit doesn't itself
+      # trip the probe; failureThreshold 6 over a 10s period adds another minute of tolerance
+      # before kubelet gives up and restarts the container.
+      readinessProbe = {
+        initialDelaySeconds = 30
+        timeoutSeconds      = 5
+        periodSeconds       = 10
+        failureThreshold    = 6
+      }
+      livenessProbe = {
+        initialDelaySeconds = 30
+        timeoutSeconds      = 5
+        periodSeconds       = 10
+        failureThreshold    = 6
+      }
+    }
+  })
+
+  server_side_apply = true
+  field_manager      = "homelab-redis-probe-tuning"
+  force_conflicts    = true
+
+  depends_on = [module.cabotage]
+}
