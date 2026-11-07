@@ -343,7 +343,12 @@ HelmRelease here.
   Ebooks, downloads allowed so friends can listen offline; its API key is minted by the Job when
   Wizarr has none that works) and the "Automatic requests" and "Discord community" wizard steps.
   Tick both servers when creating an invite to give someone Jellyfin and Audiobookshelf with one
-  username and password. Wizarr has no Discord bot; the Discord step is the server's widget, which
+  username and password. "Allow downloads" is one setting per invite, not per server (the
+  dialog's toggles share a field): on (the dialog's default once Audiobookshelf is ticked) makes a
+  full Audiobookshelf user who can download and also lets them download from Jellyfin; off makes
+  an Audiobookshelf guest, who can't change their password or see their listening history.
+  Deleting someone in Wizarr's Users page removes one server's account per row (each server is
+  its own row). Wizarr has no Discord bot; the Discord step is the server's widget, which
   stays blank until Server Settings > Engagement > Server Widget is enabled in Discord.
 - **Books (`apps/media/bindery`):** one Bindery for ebooks and audiobooks (new authors default to
   both): roots `/media/library/books` and `/media/library/audiobooks`, SABnzbd and qBittorrent
