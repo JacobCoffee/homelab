@@ -26,5 +26,8 @@ spec:
     sharedDevNum: 4
     enableMonitoring: false
     nodeFeatureRule: false
+    # Helm value-merges with the chart's default nodeSelector (NFD's gpu=true label), so that
+    # key must be nulled out explicitly or the DaemonSet never schedules without NFD running.
     nodeSelector:
+      intel.feature.node.kubernetes.io/gpu: null
       kubernetes.io/hostname: hnk8s05
