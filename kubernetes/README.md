@@ -532,24 +532,87 @@ LISTs), about 25k a month across all apps, against 1M free. Expected bill: $0. I
 were included, metrics too, the bill would still be under $1 a month.
 
 ```sh
-# Restore <app>'s PVC into a scratch PVC to inspect/diff before touching the real one:
+# Restore <app>'s PVC into a scratch PVC to inspect before touching the real one. <size> should
+# match the live PVC's capacity (kubectl get pvc <app> -n <namespace>); storageClassName must be
+# set explicitly here since this PVC isn't going through components/volsync. No
+# moverSecurityContext is needed -- the namespace's volsync.backube/privileged-movers annotation
+# (plus, for media, its "privileged" PodSecurity label) already covers it, same as the nightly
+# ReplicationSource.
 cat <<EOF | mise exec -- kubectl apply -n <namespace> -f -
 apiVersion: v1
 kind: PersistentVolumeClaim
-metadata: {name: <app>-restore-scratch}
-spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: <size>}}}
+metadata: {name: <app>-restore-test}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: proxmox-vmdata
+  resources: {requests: {storage: <size>}}
 ---
 apiVersion: volsync.backube/v1alpha1
 kind: ReplicationDestination
-metadata: {name: <app>-restore}
+metadata: {name: <app>-restore-test}
 spec:
   trigger: {manual: restore-once}
   restic:
     repository: <app>-volsync-restic
-    destinationPVC: <app>-restore-scratch
+    destinationPVC: <app>-restore-test
     copyMethod: Direct
 EOF
-mise exec -- kubectl diff -n <namespace> ... # compare the scratch PVC's contents to the live one
+# WaitForFirstConsumer: the PVC only binds once the restic mover Job's pod schedules, which
+# happens automatically as soon as the ReplicationDestination is created -- no manual node pin
+# needed, any proxmox-vmdata-capable node works since the data comes from R2, not the live PVC's
+# node.
+mise exec -- kubectl wait -n <namespace> job/volsync-dst-<app>-restore-test \
+  --for=condition=complete --timeout=5m
+# Mount the restored copy read-only and inspect it (adjust image/uid/path per app):
+cat <<EOF | mise exec -- kubectl apply -n <namespace> -f -
+apiVersion: v1
+kind: Pod
+metadata: {name: inspect-<app>-restore}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: inspect
+      image: python:3.12-alpine
+      command: ["sleep", "600"]
+      volumeMounts: [{name: data, mountPath: /data, readOnly: true}]
+  volumes:
+    - name: data
+      persistentVolumeClaim: {claimName: <app>-restore-test, readOnly: true}
+EOF
+mise exec -- kubectl wait -n <namespace> pod/inspect-<app>-restore --for=condition=Ready --timeout=90s
+mise exec -- kubectl exec -n <namespace> pod/inspect-<app>-restore -- ls -la /data   # owners should match the live PVC
+mise exec -- kubectl exec -n <namespace> pod/inspect-<app>-restore -- python3 -c \
+  "import sqlite3; c=sqlite3.connect('file:/data/<path-to>.sqlite3?mode=ro', uri=True); print(c.execute('PRAGMA integrity_check').fetchone())"
+# Clean up once satisfied:
+mise exec -- kubectl delete pod -n <namespace> inspect-<app>-restore
+mise exec -- kubectl delete replicationdestination -n <namespace> <app>-restore-test
+mise exec -- kubectl delete pvc -n <namespace> <app>-restore-test
+```
+
+**Restoring in place** (replaces the live PVC's contents -- only after the scratch restore above
+looks right):
+
+```sh
+# 1. Stop the app so nothing writes to the PVC while it's overwritten.
+mise exec -- kubectl scale -n <namespace> deploy/<app> --replicas=0
+mise exec -- kubectl wait -n <namespace> pod -l app.kubernetes.io/name=<app> --for=delete --timeout=2m
+# 2. Point a ReplicationDestination straight at the live PVC (no scratch PVC this time).
+cat <<EOF | mise exec -- kubectl apply -n <namespace> -f -
+apiVersion: volsync.backube/v1alpha1
+kind: ReplicationDestination
+metadata: {name: <app>-restore-inplace}
+spec:
+  trigger: {manual: restore-once}
+  restic:
+    repository: <app>-volsync-restic
+    destinationPVC: <app>
+    copyMethod: Direct
+EOF
+mise exec -- kubectl wait -n <namespace> job/volsync-dst-<app>-restore-inplace \
+  --for=condition=complete --timeout=5m
+# 3. Clean up the ReplicationDestination and scale the app back up.
+mise exec -- kubectl delete replicationdestination -n <namespace> <app>-restore-inplace
+mise exec -- kubectl scale -n <namespace> deploy/<app> --replicas=1
 ```
 
 ### Home Assistant
