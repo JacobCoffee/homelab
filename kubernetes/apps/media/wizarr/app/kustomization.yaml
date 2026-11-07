@@ -3,5 +3,10 @@ kind: Kustomization
 resources:
   - ./helmrelease.yaml
   - ./httproute.yaml
+  - ./setup-job.yaml
+configMapGenerator:
+  - name: wizarr-setup-script
+    files:
+      - ./setup.py
 components:
   - ../../../../components/volsync

@@ -1,0 +1,69 @@
+# Connects Seerr to Jellyfin/Radarr/Sonarr, enables the Movies/Shows/Anime/Anime Movies Jellyfin
+# libraries and adds the anime-movie override rule (setup.py), purely over Seerr's HTTP API -- no
+# PVC mount needed, since the SEERR_API_KEY env var on the seerr HelmRelease pins Seerr's own
+# main.apiKey to the same value this Job authenticates with (server/lib/settings/index.ts,
+# generateApiKey() reads process.env.API_KEY). If nobody has signed in to Seerr with a Jellyfin
+# account yet (no admin User row -- first run needs a human to click through that once), the script
+# exits 0 after printing a message instead of looping on backoffLimit.
+# One run per change of the script (hashed ConfigMap name) or of the credentials
+# (media-config/credentials-rev, bumped by scripts/media-secrets.py). Re-run by hand:
+#   kubectl -n media delete job seerr-setup && flux reconcile ks seerr
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seerr-setup
+  namespace: media
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      annotations:
+        media-config/credentials-rev: "2026-11-04T21:33:41Z"
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: python:3.15-slim
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/setup.py"]
+          envFrom:
+            - secretRef:
+                name: arr-api-keys
+          env:
+            - name: SEERR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jellyfin-plugins
+                  key: SEERR_API_KEY
+            - name: JELLYFIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jellyfin-sso
+                  key: JELLYFIN_API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: seerr-setup-script

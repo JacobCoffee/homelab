@@ -1,6 +1,11 @@
 # ghcr.io/seerr-team/seerr:v3.5.1, latest as of 2026-11-01 (the project formerly known as
-# Jellyseerr). Its Jellyfin/Sonarr/Radarr connections are set up through its first-run wizard --
-# the Jellyfin side needs an admin account that doesn't exist until Jellyfin's own first run.
+# Jellyseerr). Its Jellyfin/Sonarr/Radarr connections and library/override-rule config are set up
+# by its setup Job (../setup.py) over the HTTP API -- the Jellyfin side still needs a human to sign
+# in once through Seerr's own login page, since Jellyfin's own first run has no API either.
+# API_KEY pins Seerr's own API key (server/lib/settings/index.ts, generateApiKey()) to the same
+# value Jellyfin Enhanced's Seerr integration and the setup Job above already use (jellyfin-plugins
+# Secret's SEERR_API_KEY -- see the comment in jellyfin/app/plugins-secret.sops.yaml), instead of
+# letting Seerr generate and keep its own random one.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -22,6 +27,11 @@ spec:
             env:
               TZ: America/Chicago
               LOG_LEVEL: info
+              API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: jellyfin-plugins
+                    key: SEERR_API_KEY
             probes:
               liveness:
                 enabled: true

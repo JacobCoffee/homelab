@@ -1,5 +1,7 @@
 # Jellyseerr was renamed/relaunched upstream as "Seerr" (seerr-team/seerr); same request-manager
-# UI for Jellyfin/Sonarr/Radarr.
+# UI for Jellyfin/Sonarr/Radarr. Its setup Job (app/setup.py) wires up the Jellyfin/Radarr/Sonarr
+# connections, library sync and anime override rule over Seerr's own HTTP API. force: true
+# re-creates the (immutable) Job when its script changes, so each change runs it once.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -13,9 +15,14 @@ spec:
   interval: 1h
   retryInterval: 1m
   timeout: 5m
+  force: true
   dependsOn:
     - name: media-app-template
     - name: envoy-gateway-config
+    - name: arr-api-keys
+    - name: jellyfin
+    - name: radarr
+    - name: sonarr
     # components/volsync: the ReplicationSource needs its CRD and controller first.
     - name: volsync
   sourceRef:

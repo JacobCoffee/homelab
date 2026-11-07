@@ -1,3 +1,7 @@
+# Wizarr plus its setup Job (app/setup.py): Jellyfin media server + libraries, and the
+# "Automatic requests"/"Discord community" post-invite wizard steps. force: true re-creates the
+# (immutable) Job when its script changes, so each change runs it once. jellyfin first: the Job
+# needs it reachable to scan libraries and test the connection.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -11,9 +15,11 @@ spec:
   interval: 1h
   retryInterval: 1m
   timeout: 5m
+  force: true
   dependsOn:
     - name: media-app-template
     - name: envoy-gateway-config
+    - name: jellyfin
     # components/volsync: the ReplicationSource needs its CRD and controller first.
     - name: volsync
   sourceRef:

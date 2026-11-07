@@ -1,0 +1,58 @@
+# Gives Wizarr its Jellyfin media server (name HomeNet, Movies/Shows/Music/Anime/Anime Movies
+# libraries enabled, Playlists off) and the "Automatic requests"/"Discord community" post-invite
+# wizard steps (setup.py). DISABLE_BUILTIN_AUTH on the wizarr HelmRelease means this Job's own
+# GET /login (no credentials) is enough to act as admin -- no API key or password to source or
+# store here. One run per change of the script (hashed ConfigMap name) or of the credentials
+# (media-config/credentials-rev, bumped by scripts/media-secrets.py). Re-run by hand:
+#   kubectl -n media delete job wizarr-setup && flux reconcile ks wizarr
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wizarr-setup
+  namespace: media
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      annotations:
+        media-config/credentials-rev: "2026-11-04T21:33:41Z"
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: python:3.15-slim
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/setup.py"]
+          env:
+            - name: JELLYFIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jellyfin-sso
+                  key: JELLYFIN_API_KEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: wizarr-setup-script
