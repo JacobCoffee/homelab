@@ -345,9 +345,11 @@ HelmRelease here.
   both): roots `/media/library/books` and `/media/library/audiobooks`, SABnzbd and qBittorrent
   with category `books`, E-Book profile epub first, Audiobook profile m4b first. Bindery isn't a
   Prowlarr sync target; instead it registers Prowlarr and pulls its indexers itself. The
-  `bindery-setup` Job (`app/setup.py`) sets all of it without an API key: Bindery's local-only
-  auth trusts in-cluster requests to its `.svc.cluster.local` name, and `lab-sso-ingress` keeps
-  other pods out.
+  `bindery-setup` Job (`app/setup.py`) sets all of it without an API key, through Bindery's
+  local-only auth, and `lab-sso-ingress` keeps other pods out. Since v1.46.4 local-only skips the
+  login only for host names a public site can't have, so `BINDERY_ALLOWED_HOSTS` in
+  `app/helmrelease.yaml` lists the two dotted names used: `bindery.z7x.org` (behind lab-sso) and
+  `bindery.media.svc.cluster.local` (the Job). Any other dotted name gets Bindery's login page.
 - **Anime:** separate Jellyfin libraries (Anime, Anime Movies) on their own Sonarr/Radarr root
   folders. Recyclarr syncs TRaSH's `[Anime] Remux-1080p` profile to both apps (TRaSH has no
   2160p anime profile), and Sonarr's copy scores Anime Dual Audio +2000, more than the whole tier

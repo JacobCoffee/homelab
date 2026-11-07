@@ -23,6 +23,9 @@ spec:
               tag: "v1.48.0"
             env:
               TZ: America/Chicago
+              # Local-only auth skips the login only for these dotted names (v1.46.4 DNS
+              # rebinding guard): the lab-sso route and the setup Job's service name.
+              BINDERY_ALLOWED_HOSTS: bindery.z7x.org,bindery.media.svc.cluster.local
             probes:
               liveness:
                 enabled: true
