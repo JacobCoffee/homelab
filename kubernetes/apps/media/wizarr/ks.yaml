@@ -20,6 +20,8 @@ spec:
     - name: media-app-template
     - name: envoy-gateway-config
     - name: jellyfin
+    # setup.py adds Audiobookshelf as Wizarr's second server (its libraries must exist).
+    - name: audiobookshelf
     # components/volsync: the ReplicationSource needs its CRD and controller first.
     - name: volsync
   sourceRef:

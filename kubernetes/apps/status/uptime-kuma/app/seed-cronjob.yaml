@@ -29,6 +29,7 @@ data:
         "Media": [
             dict(type=MonitorType.HTTP, name="Jellyfin", url="https://media.z7x.org"),
             dict(type=MonitorType.HTTP, name="Seerr", url="https://requests.z7x.org"),
+            dict(type=MonitorType.HTTP, name="Audiobookshelf", url="https://books.z7x.org/healthcheck"),
             dict(type=MonitorType.HTTP, name="Dispatcharr", url=f"http://dispatcharr.{MEDIA}:9191/api/core/version/"),
             # HDHomeRun tuner status (what Jellyfin polls), not /output/m3u: that endpoint is
             # ~140KB and not worth re-downloading every interval.

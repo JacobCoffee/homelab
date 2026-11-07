@@ -46,6 +46,10 @@ TARGETS = [
     (MEDIA / "dispatcharr/app/secret.sops.yaml", MEDIA / "dispatcharr/app/setup-job.yaml", {
         "vault_local_news_match": "LOCAL_NEWS_MATCH",
     }),
+    # Audiobookshelf's admin "jacob" (generated; Bitwarden "Homelab: Audiobookshelf").
+    (MEDIA / "audiobookshelf/app/secret.sops.yaml", MEDIA / "audiobookshelf/app/setup-job.yaml", {
+        "vault_audiobookshelf_password": "ABS_ROOT_PASSWORD",
+    }),
 ]
 
 

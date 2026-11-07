@@ -1,0 +1,127 @@
+# Audiobookshelf (ghcr.io/advplyr/audiobookshelf, v2.37.2 as of 2026-11-07): the reading/listening
+# app for friends. Bindery owns the files (/media/library/audiobooks and /media/library/books); this
+# only reads them (NFS mounted read-only), so nothing a friend does here can touch the library.
+# Libraries, scans, backups and the Bindery link are set by the setup Job (app/setup.py).
+#
+# Public on both gateways at books.z7x.org: friends sign in with an account Wizarr creates (invite
+# to the Audiobookshelf server). Its admin pages share the app's paths, so they can't be split off
+# to the internal gateway the way Wizarr's are; the admin login (jacob) has its own generated
+# password instead of the shared lab login.
+#
+# One PVC (backed up nightly by components/volsync) holds /config (SQLite) and /metadata (covers,
+# author images, its own 03:00 backups). The throwaway parts of /metadata -- streams (transcoded
+# audio segments), cache and tmp -- are emptyDirs mounted over it, so no audio ever lands in R2.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: audiobookshelf
+  namespace: media
+spec:
+  interval: 1h
+  chartRef:
+    kind: OCIRepository
+    name: app-template
+  values:
+    controllers:
+      audiobookshelf:
+        containers:
+          app:
+            image:
+              repository: ghcr.io/advplyr/audiobookshelf
+              tag: "2.37.2"
+            env:
+              TZ: America/Chicago
+              # The image listens on 80, which a non-root user can't bind.
+              PORT: "13378"
+            probes:
+              liveness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthcheck
+                    port: &port 13378
+                  initialDelaySeconds: 15
+                  periodSeconds: 15
+              readiness:
+                enabled: true
+                custom: true
+                spec:
+                  httpGet:
+                    path: /healthcheck
+                    port: *port
+                  initialDelaySeconds: 10
+                  periodSeconds: 10
+            resources:
+              requests:
+                cpu: 50m
+                memory: 256Mi
+              limits:
+                memory: 1Gi
+    defaultPodOptions:
+      securityContext:
+        runAsNonRoot: true
+        # 1000:1000 owns the library (Bindery writes it as 1000; audiobooks/ is 2750).
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+    service:
+      app:
+        controller: audiobookshelf
+        ports:
+          http:
+            port: *port
+    persistence:
+      config:
+        type: persistentVolumeClaim
+        storageClass: proxmox-vmdata
+        accessMode: ReadWriteOnce
+        size: 2Gi
+        advancedMounts:
+          audiobookshelf:
+            app:
+              - path: /config
+                subPath: config
+              - path: /metadata
+                subPath: metadata
+      streams:
+        type: emptyDir
+        globalMounts:
+          - path: /metadata/streams
+      cache:
+        type: emptyDir
+        globalMounts:
+          - path: /metadata/cache
+      tmp:
+        type: emptyDir
+        globalMounts:
+          - path: /metadata/tmp
+      media:
+        type: nfs
+        server: "${MEDIA_NFS_SERVER}"
+        path: "${MEDIA_NFS_PATH}"
+        globalMounts:
+          - path: /media
+            readOnly: true
+    route:
+      external:
+        hostnames: ["books.z7x.org"]
+        parentRefs:
+          - name: external
+            namespace: network
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: app
+                port: *port
+      internal:
+        hostnames: ["books.z7x.org"]
+        parentRefs:
+          - name: internal
+            namespace: network
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: app
+                port: *port

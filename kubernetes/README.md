@@ -51,7 +51,7 @@ flux get kustomizations
 | Spegel | nodes share pulled images with each other |
 | echo | smoke test at `echo.z7x.org` on the internal gateway |
 | home-assistant | `home.z7x.org` on both gateways, backed by the HA VM (selector-less Service + EndpointSlice to 10.10.10.20:80) |
-| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), Wizarr invites (`invite.z7x.org`), Jellyball live sports (`jellyball.z7x.org`), Dispatcharr live TV (`dispatcharr.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
+| media stack | Jellyfin (`media.z7x.org`), Seerr (`requests.z7x.org`), Wizarr invites (`invite.z7x.org`), Audiobookshelf (`books.z7x.org`), Jellyball live sports (`jellyball.z7x.org`), Dispatcharr live TV (`dispatcharr.z7x.org`), the *arrs, qBittorrent+gluetun, SABnzbd -- see "Media stack" below |
 | Proxmox CSI plugin | `csi-proxmox`: provisions the `proxmox-vmdata` (default) and `proxmox-fast` StorageClasses -- see "Storage" below |
 | VolSync, etcd-backup, opnsense-backup | `apps/backup/`: restic-to-R2 offsite backups -- see "Backups and restore" below |
 
@@ -131,7 +131,8 @@ scripts/vault-set.py vault_lab_admin_previous_password vault_lab_admin_password 
 Not shared, on purpose: AdGuard (`admin` / `vault_adguard_password`; external-dns, the DoT cert
 push, its exporter, Homepage and the Fire TV app all log in with it), OPNsense `root`
 (`vault_opnsense_root_password`) and Proxmox `root@pam` (recovery accounts), and the personal
-or GitHub logins of Jellyfin, Seerr (signs in with Jellyfin), Home Assistant and Cabotage.
+or GitHub logins of Jellyfin, Seerr (signs in with Jellyfin), Home Assistant and Cabotage, and
+Audiobookshelf's admin `jacob` (`vault_audiobookshelf_password`, generated; it's a public login).
 
 `../scripts/bw-sync.py` puts all of them, plus AdGuard and OPNsense, into Bitwarden's **Homelab**
 folder (one item per app with its URLs, so the extension autofills), copied from the vault; a
@@ -328,9 +329,9 @@ HelmRelease here.
   with Jellyfin on `requests.z7x.org` so Seerr has an owner. Until then the Job skips with a
   message, and you re-run it afterwards (`kubectl -n media delete job seerr-setup && flux
   reconcile ks seerr`).
-- **Wizarr (`invite.z7x.org`):** invite links for Jellyfin. Create one on the admin page
-  (internal gateway, Pocket ID; Wizarr's own login is off, `DISABLE_BUILTIN_AUTH`) and paste it
-  into Discord or a text: `/j/<code>`, `/join` and the onboarding wizard are open on both
+- **Wizarr (`invite.z7x.org`):** invite links for Jellyfin and Audiobookshelf. Create one on the
+  admin page (internal gateway, Pocket ID; Wizarr's own login is off, `DISABLE_BUILTIN_AUTH`) and
+  paste it into Discord or a text: `/j/<code>`, `/join` and the onboarding wizard are open on both
   gateways, nothing else of Wizarr is routed from the internet (`app/httproute.yaml`). Accepting
   creates a Jellyfin account (Movies, Shows, Music, Anime, Anime Movies) and ends on Seerr and
   Discord steps; new Jellyfin users can sign in to Seerr and request. The `wizarr-setup` Job
@@ -338,9 +339,12 @@ HelmRelease here.
   read-only. It completes `/setup` on a fresh install with a random, unrecorded password (the
   built-in login is off; `recovery_tool.py` resets it). It also sets the HomeNet Jellyfin server
   (`jellyfin.media.svc.cluster.local:8096`, external `https://media.z7x.org`, the `jellyfin-sso`
-  Secret's API key, those five libraries) and the "Automatic requests" and "Discord community"
-  wizard steps. Wizarr has no Discord bot; the Discord step is the server's widget, which stays
-  blank until Server Settings > Engagement > Server Widget is enabled in Discord.
+  Secret's API key, those five libraries), the HomeNet Books Audiobookshelf server (Audiobooks and
+  Ebooks, downloads allowed so friends can listen offline; its API key is minted by the Job when
+  Wizarr has none that works) and the "Automatic requests" and "Discord community" wizard steps.
+  Tick both servers when creating an invite to give someone Jellyfin and Audiobookshelf with one
+  username and password. Wizarr has no Discord bot; the Discord step is the server's widget, which
+  stays blank until Server Settings > Engagement > Server Widget is enabled in Discord.
 - **Books (`apps/media/bindery`):** one Bindery for ebooks and audiobooks (new authors default to
   both): roots `/media/library/books` and `/media/library/audiobooks`, SABnzbd and qBittorrent
   with category `books`, E-Book profile epub first, Audiobook profile m4b first. Bindery isn't a
@@ -350,6 +354,21 @@ HelmRelease here.
   login only for host names a public site can't have, so `BINDERY_ALLOWED_HOSTS` in
   `app/helmrelease.yaml` lists the two dotted names used: `bindery.z7x.org` (behind lab-sso) and
   `bindery.media.svc.cluster.local` (the Job). Any other dotted name gets Bindery's login page.
+- **Reading and listening (`apps/media/audiobookshelf`, `books.z7x.org`):** Audiobookshelf serves
+  what Bindery downloads, on both gateways, so friends use it from anywhere: the web app, its
+  Android app, and on iPhone ShelfPlayer, Plappa or Morrow (the official iOS app is a full
+  TestFlight beta). It mounts `/media` read-only and has two libraries, Audiobooks
+  (`/media/library/audiobooks`, audiobooks only) and Ebooks (`/media/library/books`). Its folder
+  watcher can't see files written by another NFS client, so it's off and both libraries rescan
+  every 30 minutes; Bindery also triggers an Audiobooks scan right after each audiobook import
+  (Bindery's Audiobookshelf integration only does that for audiobooks). Friends get accounts from
+  Wizarr invites; the admin is `jacob` with a generated password (`vault_audiobookshelf_password`,
+  Bitwarden "Homelab: Audiobookshelf"). Its admin pages share the app's paths, so unlike Wizarr's
+  they can't be kept off the internet; that password is the protection. The `audiobookshelf-setup`
+  Job (`app/setup.py`) creates that admin on a fresh install and keeps the libraries, its own
+  nightly backup (03:00, keep 3) and Bindery's link (URL, Audiobooks library, an API key it mints
+  when Bindery has none that works) in step through Audiobookshelf's API. Send to Kindle needs an
+  SMTP account (Settings > Email), not set up yet.
 - **Anime:** separate Jellyfin libraries (Anime, Anime Movies) on their own Sonarr/Radarr root
   folders. Recyclarr syncs TRaSH's `[Anime] Remux-1080p` profile to both apps (TRaSH has no
   2160p anime profile), and Sonarr's copy scores Anime Dual Audio +2000, more than the whole tier
@@ -464,9 +483,9 @@ HelmRelease here.
   Cloudflare caches `.mp4`/`.mkv` etc. by default, which risks violating its ToS for video
   delivery. `cloudflare_api_token` was granted `Zone > Cache Rules > Edit`, and
   `ansible/roles/cloudflare_cache_rules` (`ansible-playbook playbooks/site.yml --tags cloudflare`)
-  idempotently manages a bypass-cache rule for `media.z7x.org` in the zone's
-  `http_request_cache_settings` phase, matched by description so a second run changes nothing and
-  any other rules in that phase are left alone.
+  idempotently manages bypass-cache rules for `media.z7x.org` and `books.z7x.org` (Audiobookshelf's
+  audio and ebook files) in the zone's `http_request_cache_settings` phase, matched by description
+  so a second run changes nothing and any other rules in that phase are left alone.
 
 ## Backups and restore
 
@@ -536,19 +555,23 @@ doesn't support clone/snapshot, so the mover reads the PVC directly; safe becaus
 node-pinned and the mover lands on the same node). The including app's `ks.yaml` must list
 `cluster-settings` and `cluster-secrets` in `postBuild.substituteFrom` alongside its own vars, and
 VolSync (the controller, `apps/backup/volsync`) must be installed first. Media files (NFS) are
-never in scope -- only PVCs opted into this component are backed up. The `media`, `auth` and
-`status` namespaces carry `volsync.backube/privileged-movers: "true"`, so the mover can read files
-owned by any uid and restores keep their owners.
+never in scope -- only PVCs opted into this component are backed up, and nothing writes media
+into one: SABnzbd and qBittorrent download to `/media/downloads`, and the transcode and stream
+scratch folders of Jellyfin (`/config/transcodes`) and Audiobookshelf (`/metadata/streams`, plus
+`cache` and `tmp`) are node-local volumes mounted over the PVC. The `media`, `auth` and `status`
+namespaces carry `volsync.backube/privileged-movers: "true"`, so the mover can read files owned by
+any uid and restores keep their owners.
 
 **Backed up:** every app's own state -- Pocket ID (users, passkeys, OIDC clients), Uptime Kuma,
 Jellyfin, Seerr, Wizarr, Sonarr, Radarr, Lidarr, Prowlarr, SABnzbd, qBittorrent, Bazarr,
-Cleanuparr, Bindery, Dispatcharr and Jellyball. **Not backed up on purpose:** Prometheus, Mimir and
-Loki (metrics and logs; history, not configuration, and about 14 GB that churns constantly);
+Cleanuparr, Bindery, Audiobookshelf, Dispatcharr and Jellyball. **Not backed up on purpose:**
+Prometheus, Mimir and Loki (metrics and logs; history, not configuration, and about 14 GB that
+churns constantly);
 Grafana (dashboards come from git, sign-in from Pocket ID); and Cabotage (its own platform with
 its own Postgres). The mover copies live files, so a SQLite database can be caught mid-write.
-The *arrs keep their own scheduled backup zips in `/config/Backups`, and Dispatcharr writes
-`/data/backups/*.zip` at 03:00; both get uploaded with everything else, so when a restored
-database won't open, restore from those zips.
+The *arrs keep their own scheduled backup zips in `/config/Backups`, Dispatcharr writes
+`/data/backups/*.zip` at 03:00 and Audiobookshelf `/metadata/backups` at 03:00; all get uploaded
+with everything else, so when a restored database won't open, restore from those zips.
 
 **Cost (measured 2026-11-05):** the app volumes hold about 0.75 GB in total. Restic compresses
 and deduplicates it, and the bucket already holds 0.35 GB (etcd, OPNsense, Jellyfin). With 11

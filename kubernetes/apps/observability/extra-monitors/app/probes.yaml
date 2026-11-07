@@ -18,6 +18,7 @@ spec:
         - https://home.z7x.org
         - https://media.z7x.org
         - https://requests.z7x.org
+        - https://books.z7x.org/healthcheck
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: Probe

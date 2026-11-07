@@ -10,6 +10,12 @@ cloudflare_cache_rules:
     action_parameters:
       cache: false
     enabled: true
+  - description: "books.z7x.org: bypass cache (Audiobookshelf audio and ebook files)"
+    expression: '(http.host eq "books.z7x.org")'
+    action: set_cache_settings
+    action_parameters:
+      cache: false
+    enabled: true
 
 # Fire TV DNS-over-TLS (fire-tv/DECISIONS.md "DNS"): public names for AdGuard's DoT/HTTPS cert
 # and server_name, and for the stick's Android Private DNS hostname. DNS-only (never proxied --

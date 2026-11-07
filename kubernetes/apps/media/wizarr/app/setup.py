@@ -1,5 +1,6 @@
-"""Codify Wizarr's Jellyfin media server, enabled libraries and the two post-invite wizard-step
-presets, idempotently, so a fresh install converges without clicking through the admin UI by hand.
+"""Codify Wizarr's media servers (Jellyfin and Audiobookshelf), their enabled libraries and the two
+post-invite wizard-step presets, idempotently, so a fresh install converges without clicking
+through the admin UI by hand.
 
 Wizarr's REST API (docs/API.md, /api/swagger.json) is read-only for servers/libraries/wizard
 steps (GET only) -- every write this script needs goes through the same HTML admin forms a human
@@ -27,6 +28,10 @@ Job's header comment):
    checked first via GET /settings/wizard/export/<server_type>, a JSON dump of every existing step
    (no form, no side effects) -- create-preset itself has no dedupe and would add a duplicate step
    on every run otherwise.
+4. Audiobookshelf: Wizarr creates accounts there with an Audiobookshelf API key, which
+   Audiobookshelf shows only once. The key Wizarr already holds (read back from the server's edit
+   form) is kept while it still works (GET /api/me); otherwise this script signs in to
+   Audiobookshelf as its admin (ABS_ROOT_PASSWORD), deletes older "wizarr" keys and mints a new one.
 """
 
 import json
@@ -42,10 +47,19 @@ SVC = "media.svc.cluster.local"
 WIZARR = os.environ.get("WIZARR_URL", f"http://wizarr.{SVC}:5690").rstrip("/")
 
 JELLYFIN_URL = os.environ.get("JELLYFIN_URL", f"http://jellyfin.{SVC}:8096")
-JELLYFIN_API_KEY = os.environ["JELLYFIN_API_KEY"]
-JELLYFIN_EXTERNAL_URL = "https://media.z7x.org"
-SERVER_NAME = "HomeNet"
-LIBRARY_NAMES = ["Movies", "Shows", "Music", "Anime", "Anime Movies"]  # Playlists stays off.
+ABS_URL = os.environ.get("ABS_URL", f"http://audiobookshelf.{SVC}:13378")
+ABS_ROOT_USERNAME = "jacob"
+ABS_KEY_NAME = "wizarr"
+# name, type, URLs and the libraries an invite grants; Jellyfin's Playlists stays off. Downloads:
+# off for Jellyfin (as before), on for Audiobookshelf so friends can listen offline in its apps.
+SERVERS = [
+    {"name": "HomeNet", "type": "jellyfin", "url": JELLYFIN_URL,
+     "external_url": "https://media.z7x.org", "api_key": os.environ["JELLYFIN_API_KEY"],
+     "libraries": ["Movies", "Shows", "Music", "Anime", "Anime Movies"], "allow_downloads": False},
+    {"name": "HomeNet Books", "type": "audiobookshelf", "url": ABS_URL,
+     "external_url": "https://books.z7x.org", "api_key": None,  # minted, see ensure_abs_key()
+     "libraries": ["Audiobooks", "Ebooks"], "allow_downloads": True},
+]
 
 DISCORD_SERVER_ID = "809526790488981544"  # public guild id, not a secret  # gitleaks:allow
 SEERR_URL = "https://requests.z7x.org"
@@ -139,13 +153,13 @@ def any_csrf_token(sess: Session) -> str:
     return token
 
 
-def scan_jellyfin_libraries(sess: Session) -> dict[str, str]:
-    """name -> external_id, resolved by asking Jellyfin directly (POST /settings/scan-libraries,
-    the same call the "Scan Libraries" button makes). Only touches Library rows with
-    server_id=NULL (a legacy, unbound table scoped away from any real MediaServer), so it's safe
-    to call even once a real server already exists."""
+def scan_libraries(sess: Session, server: dict) -> dict[str, str]:
+    """name -> external_id, resolved by asking the media server directly (POST
+    /settings/scan-libraries, the same call the "Scan Libraries" button makes). Only touches Library
+    rows with server_id=NULL (a legacy, unbound table scoped away from any real MediaServer), so
+    it's safe to call even once a real server already exists."""
     _url, body = sess.post("/settings/scan-libraries", {
-        "server_type": "jellyfin", "server_url": JELLYFIN_URL, "api_key": JELLYFIN_API_KEY})
+        "server_type": server["type"], "server_url": server["url"], "api_key": server["api_key"]})
     pairs = re.findall(
         r'value="([^"]+)"\s+id="lib-\d+"\s*(checked)?\s*class=.*?>\s*([^<]+)</label>',
         body, re.DOTALL)
@@ -157,51 +171,93 @@ def scan_jellyfin_libraries(sess: Session) -> dict[str, str]:
     return by_name
 
 
-def find_server(sess: Session) -> tuple[int, dict] | tuple[None, None]:
+def find_server(sess: Session, name: str) -> tuple[int, dict] | tuple[None, None]:
     _url, body = sess.get("/settings/servers")
-    m = re.search(r'data-server-id="(\d+)">.*?title="([^"]*)"', body, re.DOTALL)
-    if m is None or m.group(2) != SERVER_NAME:
+    cards = re.findall(r'data-server-id="(\d+)">.*?title="([^"]*)"', body, re.DOTALL)
+    server_id = next((int(sid) for sid, title in cards if title == name), None)
+    if server_id is None:
         return None, None
-    server_id = int(m.group(1))
     _url, edit_html = sess.get(f"/settings/servers/{server_id}/edit")
     fields = {k: (re.search(rf'id="{k}"[^>]*value="([^"]*)"', edit_html) or [None, ""])[1]
               for k in ("server_url", "external_url", "api_key")}
-    enabled = set(re.findall(r'value="([0-9a-f]{32})"\s+id="lib-\d+"\s+checked', edit_html))
-    return server_id, {**fields, "libraries": enabled}
+    enabled = set(re.findall(r'value="([^"]+)"\s+id="lib-\d+"\s+checked', edit_html))
+    downloads = re.search(r'<input[^>]*id="allow_downloads"[^>]*>', edit_html)
+    return server_id, {**fields, "libraries": enabled,
+                       "allow_downloads": bool(downloads and "checked" in downloads.group(0))}
 
 
-def ensure_media_server(sess: Session) -> None:
-    by_name = scan_jellyfin_libraries(sess)
-    missing = [n for n in LIBRARY_NAMES if n not in by_name]
+def abs_call(method: str, path: str, token: str | None = None, body: dict | None = None):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(f"{ABS_URL}{path}", method=method, headers=headers,
+                                 data=json.dumps(body).encode() if body is not None else None)
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            return resp.status, json.loads(resp.read() or b"null")
+    except urllib.error.HTTPError as e:
+        return e.code, None
+
+
+def ensure_abs_key(sess: Session, server: dict) -> None:
+    """Fill server["api_key"]: the key Wizarr already has if Audiobookshelf still accepts it, else a
+    fresh one (Audiobookshelf can't show an existing key again)."""
+    _server_id, current = find_server(sess, server["name"])
+    if current and current["api_key"] and abs_call("GET", "/api/me", current["api_key"])[0] == 200:
+        server["api_key"] = current["api_key"]
+        return
+    status, login = abs_call("POST", "/login", body={
+        "username": ABS_ROOT_USERNAME, "password": os.environ["ABS_ROOT_PASSWORD"]})
+    if status != 200:
+        sys.exit(f"Audiobookshelf: login as {ABS_ROOT_USERNAME!r} -> {status} (has its setup Job run?)")
+    token, root_id = login["user"]["accessToken"], login["user"]["id"]
+    for key in abs_call("GET", "/api/api-keys", token)[1]["apiKeys"]:
+        if key["name"] == ABS_KEY_NAME:
+            abs_call("DELETE", f"/api/api-keys/{key['id']}", token)
+    status, created = abs_call("POST", "/api/api-keys", token,
+                               {"name": ABS_KEY_NAME, "userId": root_id, "isActive": True})
+    if status != 200:
+        sys.exit(f"Audiobookshelf: creating an API key -> {status}")
+    server["api_key"] = created["apiKey"]["apiKey"]
+    print("Audiobookshelf: new API key minted for Wizarr")
+
+
+def ensure_media_server(sess: Session, server: dict) -> None:
+    by_name = scan_libraries(sess, server)
+    missing = [n for n in server["libraries"] if n not in by_name]
     if missing:
-        sys.exit(f"Jellyfin has no library named {', '.join(missing)}")
-    desired_libraries = {by_name[n] for n in LIBRARY_NAMES}
+        sys.exit(f"{server['type']} has no library named {', '.join(missing)}")
+    desired_libraries = {by_name[n] for n in server["libraries"]}
 
     desired_fields = {
-        "server_name": SERVER_NAME, "server_type": "jellyfin", "server_url": JELLYFIN_URL,
-        "api_key": JELLYFIN_API_KEY, "external_url": JELLYFIN_EXTERNAL_URL,
+        "server_name": server["name"], "server_type": server["type"], "server_url": server["url"],
+        "api_key": server["api_key"], "external_url": server["external_url"],
     }
     form = {**desired_fields, "libraries": sorted(desired_libraries)}
+    if server["allow_downloads"]:
+        form["allow_downloads"] = "on"  # An unchecked checkbox is simply absent.
 
-    server_id, current = find_server(sess)
+    server_id, current = find_server(sess, server["name"])
     if server_id is None:
         path = "/settings/servers/create"
         url, body = sess.post(path, form)
         if url.endswith(path):
-            sys.exit(f"Wizarr: creating {SERVER_NAME} failed\n{body[:400]}")
-        print(f"Wizarr: media server {SERVER_NAME} added")
+            sys.exit(f"Wizarr: creating {server['name']} failed\n{body[:400]}")
+        print(f"Wizarr: media server {server['name']} added")
         return
 
     changed = [k for k in ("server_url", "external_url", "api_key") if current[k] != desired_fields[k]]
     if current["libraries"] != desired_libraries:
         changed.append("libraries")
+    if current["allow_downloads"] != server["allow_downloads"]:
+        changed.append("allow_downloads")
     if not changed:
         return
     path = f"/settings/servers/{server_id}/edit"
     url, body = sess.post(path, form)
     if url.endswith(path):
-        sys.exit(f"Wizarr: updating {SERVER_NAME} failed\n{body[:400]}")
-    print(f"Wizarr: media server {SERVER_NAME}: {', '.join(changed)}")
+        sys.exit(f"Wizarr: updating {server['name']} failed\n{body[:400]}")
+    print(f"Wizarr: media server {server['name']}: {', '.join(changed)}")
 
 
 def existing_step_titles(sess: Session, server_type: str) -> set[str]:
@@ -233,7 +289,10 @@ def main() -> int:
     wait_for_wizarr(sess)
     ensure_setup_complete(sess)
     login(sess)
-    ensure_media_server(sess)
+    for server in SERVERS:
+        if server["type"] == "audiobookshelf":
+            ensure_abs_key(sess, server)
+        ensure_media_server(sess, server)
     ensure_wizard_presets(sess)
 
     print("done")

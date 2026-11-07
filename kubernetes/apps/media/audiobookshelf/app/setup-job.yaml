@@ -1,0 +1,53 @@
+# Sets up Audiobookshelf's admin account, Audiobooks/Ebooks libraries and backups, and links Bindery
+# to it (setup.py). One run per change of the script (hashed ConfigMap name) or of the password
+# (media-config/credentials-rev, bumped by scripts/media-secrets.py). Re-run by hand:
+#   kubectl -n media delete job audiobookshelf-setup && flux reconcile ks audiobookshelf
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: audiobookshelf-setup
+  namespace: media
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      annotations:
+        media-config/credentials-rev: "2026-11-07T23:44:59Z"
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          image: python:3.15-slim
+          # -u: unbuffered, so `kubectl logs` shows each step as it happens.
+          command: ["python3", "-u", "/script/setup.py"]
+          env:
+            - name: ABS_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: audiobookshelf
+                  key: ABS_ROOT_PASSWORD
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: audiobookshelf-setup-script

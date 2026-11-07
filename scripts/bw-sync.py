@@ -44,6 +44,7 @@ ITEMS: dict[str, tuple[str, str, list[str]]] = {
                               ["http://10.10.10.53", "https://dns.z7x.org:8443"]),
     "Homelab: OPNsense": ("root", "vault_opnsense_root_password",
                           ["https://10.10.10.1", "https://hnfw01.internal.z7x.org", "https://hnfw02.internal.z7x.org"]),
+    "Homelab: Audiobookshelf": ("jacob", "vault_audiobookshelf_password", ["https://books.z7x.org"]),
 }
 
 

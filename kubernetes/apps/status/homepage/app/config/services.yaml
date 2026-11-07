@@ -40,9 +40,16 @@
         href: https://invite.z7x.org
         siteMonitor: http://wizarr.media.svc.cluster.local:5690/health
         icon: wizarr.svg
-        description: Jellyfin invites
+        description: Jellyfin and Audiobookshelf invites
         namespace: media
         app: wizarr
+    - Audiobookshelf:
+        href: https://books.z7x.org
+        siteMonitor: http://audiobookshelf.media.svc.cluster.local:13378/healthcheck
+        icon: audiobookshelf.svg
+        description: Audiobooks and ebooks
+        namespace: media
+        app: audiobookshelf
     - Dispatcharr:
         href: https://dispatcharr.z7x.org
         siteMonitor: http://dispatcharr.media.svc.cluster.local:9191/api/core/version/

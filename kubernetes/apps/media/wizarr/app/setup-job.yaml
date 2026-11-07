@@ -1,8 +1,9 @@
-# Gives Wizarr its Jellyfin media server (name HomeNet, Movies/Shows/Music/Anime/Anime Movies
-# libraries enabled, Playlists off) and the "Automatic requests"/"Discord community" post-invite
-# wizard steps (setup.py). DISABLE_BUILTIN_AUTH on the wizarr HelmRelease means this Job's own
-# GET /login (no credentials) is enough to act as admin -- no API key or password to source or
-# store here. One run per change of the script (hashed ConfigMap name) or of the credentials
+# Gives Wizarr its two media servers -- Jellyfin (HomeNet: Movies/Shows/Music/Anime/Anime Movies,
+# Playlists off) and Audiobookshelf (HomeNet Books: Audiobooks/Ebooks, downloads on) -- and the
+# "Automatic requests"/"Discord community" post-invite wizard steps (setup.py). DISABLE_BUILTIN_AUTH
+# on the wizarr HelmRelease means this Job's own GET /login (no credentials) is enough to act as
+# Wizarr's admin; ABS_ROOT_PASSWORD is only for minting Wizarr's Audiobookshelf API key when it has
+# none that works. One run per change of the script (hashed ConfigMap name) or of the credentials
 # (media-config/credentials-rev, bumped by scripts/media-secrets.py). Re-run by hand:
 #   kubectl -n media delete job wizarr-setup && flux reconcile ks wizarr
 apiVersion: batch/v1
@@ -37,6 +38,11 @@ spec:
                 secretKeyRef:
                   name: jellyfin-sso
                   key: JELLYFIN_API_KEY
+            - name: ABS_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: audiobookshelf
+                  key: ABS_ROOT_PASSWORD
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

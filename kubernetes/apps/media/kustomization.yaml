@@ -11,6 +11,7 @@ resources:
   - ./prowlarr/ks.yaml
   - ./bazarr/ks.yaml
   - ./bindery/ks.yaml
+  - ./audiobookshelf/ks.yaml
   - ./recyclarr/ks.yaml
   - ./unpackerr/ks.yaml
   - ./cleanuparr/ks.yaml
