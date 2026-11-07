@@ -206,6 +206,18 @@ Not installed: Artisan Jelly (built against Jellyfin 10.10, doesn't load on 12).
 and theme only change the web client and the mobile apps that render it; Wholphin on the Fire TV
 draws its own UI.
 
+**Hardware transcoding.** Jellyfin transcodes on hnhv01's Intel UHD 630 with QuickSync. The iGPU
+(`0000:00:02.0`) is passed through to hnk8s05: `ansible/roles/pve_gpu` binds it to `vfio-pci` on
+the host, the `hostpci` field on hnk8s05's `k8s_nodes` entry adds it to the VM, and the Talos
+schematic carries the `i915` and `intel-ucode` extensions. Intel's GPU device plugin
+(`apps/kube-system/intel-gpu-plugin`, pinned to hnk8s05 by hostname, 4 shares) advertises
+`gpu.intel.com/i915`. Jellyfin requests one, which also keeps it on hnk8s05. `plugins.py` sets
+QSV with VAAPI decoding (H.264, HEVC 8/10-bit, VP9, VC-1, MPEG-2), HEVC encoding and VPP HDR
+tone mapping. The low-power encoders stay off because no GuC/HuC firmware loads. Measured on a
+4K Dolby Vision/HDR10 episode transcoded to 720p H.264: 5.5x realtime at 0.8 CPU, against 0.8x
+at 2.7 CPUs in software. `ansible/playbooks/site.yml` still needs a play for `pve_gpu` on
+hnhv01; until then it's applied by hand.
+
 ## Storage
 
 `apps/storage/`: [proxmox-csi-plugin](https://github.com/sergelogvinov/proxmox-csi-plugin)
@@ -235,6 +247,16 @@ sits on whichever Proxmox node the volume lands on.
   `topology.kubernetes.io/region` (the Proxmox cluster name, `homelab`) and
   `topology.kubernetes.io/zone` (the Proxmox node each Talos VM runs on, `k8s_nodes[].host`) via
   `KubeNodeConfig`. Every node that can run CSI-backed pods needs both labels.
+- **Control planes are a last resort for apps.** Talos gives hnk8s01-03 a
+  `node-role.kubernetes.io/control-plane:PreferNoSchedule` taint (`machine.yaml.j2`), so new pods
+  go to the workers first and only spill onto control planes when the workers are full. This
+  came after 2026-11-03, when Jellyfin plus Dispatcharr ran hnk8s03 out of memory and every
+  apiserver restarted. The rebalance also moved cabotage's Redis and Alertmanager to zone hnhv01
+  (`kubectl_manifest.redis_zone_pin` in `terraform/cabotage`, `alertmanagerSpec.nodeSelector`).
+  Still on control planes on purpose: coredns, cilium-operator, the Envoy gateways and Flux
+  (spread for HA); Dispatcharr (its anti-affinity keeps it off Jellyfin's node, and its volume
+  is on hnhv01); and cabotage's single Postgres. hnk8s05 is now at about 98% of its CPU
+  requested, so it is the next limit.
 - **VM requirements:** `VirtIO SCSI single` controller (already the Talos VM default) and disk
   hotplug, which Proxmox enables by default (`hotplug: network,disk,usb` unless overridden) --
   nothing extra to set.
@@ -299,24 +321,26 @@ HelmRelease here.
   (`main.localLogin` off; first sign-in creates the Seerr user). Anime series go to Sonarr's
   `[Anime] Remux-1080p` profile in `/media/library/anime`; anime movies follow an Override Rule
   (genre Animation plus TMDb's "anime" keyword) to the same profile in Radarr and
-  `/media/library/anime-movies`. Settings live in `settings.json` on its PVC. Its
-  setup wizard can strand you: once a media server is saved, `/setup` jumps straight to the
-  libraries step, and without a session cookie every call there is a 401 ("Unable to load
-  libraries"). Finish it with Seerr's own API key instead (`main.apiKey` in `settings.json`,
-  `X-Api-Key`): `POST /api/v1/settings/jellyfin/library/sync`, `PUT .../library/<id>`
-  `{"enabled":true}`, `POST /api/v1/settings/{radarr,sonarr}`, `POST /api/v1/settings/initialize`.
+  `/media/library/anime-movies`. The `seerr-setup` Job (`app/setup.py`) keeps all of that in
+  step through Seerr's API, looking up profile and library ids by name. Its API key is preset
+  (`API_KEY` env from the `jellyfin-plugins` secret's `SEERR_API_KEY`, which Jellyfin Enhanced
+  uses too), so it's the same after a rebuild. One manual step on a fresh install: sign in once
+  with Jellyfin on `requests.z7x.org` so Seerr has an owner. Until then the Job skips with a
+  message, and you re-run it afterwards (`kubectl -n media delete job seerr-setup && flux
+  reconcile ks seerr`).
 - **Wizarr (`invite.z7x.org`):** invite links for Jellyfin. Create one on the admin page
   (internal gateway, Pocket ID; Wizarr's own login is off, `DISABLE_BUILTIN_AUTH`) and paste it
   into Discord or a text: `/j/<code>`, `/join` and the onboarding wizard are open on both
   gateways, nothing else of Wizarr is routed from the internet (`app/httproute.yaml`). Accepting
-  creates a Jellyfin account (Movies, Shows, Music) and ends on a Seerr step; new Jellyfin users
-  can sign in to Seerr and request. Settings live in its SQLite on the PVC, set once through its
-  forms: `/setup` created an `admin` account (unused while the built-in login is off; its
-  `recovery_tool.py` resets it), Settings > Media Servers holds Jellyfin
-  (`jellyfin.media.svc.cluster.local:8096`, external `https://media.z7x.org`, the
-  `jellyfin-sso` Secret's API key), Settings > Wizard has the "Automatic requests" and "Discord
-  community" presets. Wizarr has no Discord bot; the Discord step is the server's widget, which
-  stays blank until Server Settings > Engagement > Server Widget is enabled in Discord.
+  creates a Jellyfin account (Movies, Shows, Music, Anime, Anime Movies) and ends on Seerr and
+  Discord steps; new Jellyfin users can sign in to Seerr and request. The `wizarr-setup` Job
+  (`app/setup.py`) sets everything through Wizarr's own admin forms, because its REST API is
+  read-only. It completes `/setup` on a fresh install with a random, unrecorded password (the
+  built-in login is off; `recovery_tool.py` resets it). It also sets the HomeNet Jellyfin server
+  (`jellyfin.media.svc.cluster.local:8096`, external `https://media.z7x.org`, the `jellyfin-sso`
+  Secret's API key, those five libraries) and the "Automatic requests" and "Discord community"
+  wizard steps. Wizarr has no Discord bot; the Discord step is the server's widget, which stays
+  blank until Server Settings > Engagement > Server Widget is enabled in Discord.
 - **Books (`apps/media/bindery`):** one Bindery for ebooks and audiobooks (new authors default to
   both): roots `/media/library/books` and `/media/library/audiobooks`, SABnzbd and qBittorrent
   with category `books`, E-Book profile epub first, Audiobook profile m4b first. Bindery isn't a
