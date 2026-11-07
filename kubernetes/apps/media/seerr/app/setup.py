@@ -149,24 +149,25 @@ def ensure_jellyfin() -> None:
         api("POST", "/settings/jellyfin", desired)
         print(f"Seerr: Jellyfin connection: {', '.join(changed)}")
 
-    # Library sync/enable: a plain GET .../jellyfin/library (no "enable") disables every library
-    # as a side effect, so the enabled set is always read from the side-effect-free settings
-    # endpoint above, and the sync+enable call below only runs when it would actually change
-    # something.
+    # Seerr 3.5: POST .../library/sync refreshes its list from Jellyfin, PUT .../library/<id>
+    # {"enabled": bool} toggles one. (Jellyseerr's GET ...?sync=true&enable= is gone: 400.)
     folders = jellyfin_api("/Library/VirtualFolders")
     by_name = {f["Name"]: f["ItemId"] for f in folders}
     missing = [n for n in LIBRARY_NAMES if n not in by_name]
     if missing:
         sys.exit(f"Jellyfin has no library named {', '.join(missing)}")
-    desired_ids = sorted(by_name[n] for n in LIBRARY_NAMES)
+    desired_ids = {by_name[n] for n in LIBRARY_NAMES}
 
-    current = api("GET", "/settings/jellyfin")
-    current_enabled = sorted(lib["id"] for lib in current["libraries"] if lib["enabled"])
-    if current_enabled == desired_ids:
-        return
-    enabled = api("GET", f"/settings/jellyfin/library?sync=true&enable={','.join(desired_ids)}")
-    names = sorted(lib["name"] for lib in enabled if lib["enabled"])
-    print(f"Seerr: Jellyfin libraries enabled: {', '.join(names)}")
+    libraries = api("GET", "/settings/jellyfin")["libraries"]
+    if not desired_ids <= {lib["id"] for lib in libraries}:
+        api("POST", "/settings/jellyfin/library/sync")
+        libraries = api("GET", "/settings/jellyfin")["libraries"]
+        print("Seerr: Jellyfin library list synced")
+    for lib in libraries:
+        want = lib["id"] in desired_ids
+        if lib["enabled"] != want:
+            api("PUT", f"/settings/jellyfin/library/{lib['id']}", {"enabled": want})
+            print(f"Seerr: Jellyfin library {lib['name']} {'enabled' if want else 'disabled'}")
 
 
 def test_dvr(kind: str, host: str, port: int, api_key: str) -> dict:
