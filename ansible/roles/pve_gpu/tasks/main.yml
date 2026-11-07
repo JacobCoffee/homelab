@@ -1,0 +1,55 @@
+# Reserves hnhv01's iGPU for PCI passthrough to hnk8s05 (Jellyfin QuickSync transcoding). The
+# card sits alone in IOMMU group 0 (checked by hand: `find /sys/kernel/iommu_groups -maxdepth 1`
+# lists 11 groups; `readlink /sys/bus/pci/devices/0000:00:02.0/iommu_group` -> group 0, with only
+# this device in it) and IOMMU translation is already active without any intel_iommu= cmdline
+# flag (this host's kernel/firmware turn DMAR on by default -- `dmesg | grep DMAR` shows "IOMMU
+# enabled"/"Default domain type: Translated"), so no cmdline change or reboot is needed for that
+# part. The host is headless (serial console only, no /dev/dri consumer -- `fuser /dev/dri/*` and
+# vtcon/fb state were checked empty before the first bind), so i915 can be unbound live.
+- name: GPU | persist vfio-pci binding (survives reboot)
+  ansible.builtin.template:
+    src: vfio-gpu.conf.j2
+    dest: "{{ pve_gpu_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_gpu_conf
+
+- name: GPU | refresh initramfs so the blacklist/softdep take effect on next boot
+  ansible.builtin.command: update-initramfs -u -k all
+  when: pve_gpu_conf is changed
+  changed_when: true
+
+- name: GPU | current driver for {{ pve_gpu_pci_id }}
+  ansible.builtin.stat:
+    path: "/sys/bus/pci/devices/{{ pve_gpu_pci_id }}/driver"
+  register: pve_gpu_driver_link
+
+- name: GPU | bound driver
+  ansible.builtin.set_fact:
+    pve_gpu_bound_driver: "{{ pve_gpu_driver_link.stat.lnk_source | default('') | basename }}"
+
+# Runtime rebind (no reboot): unbind from i915, then bind to vfio-pci via driver_override +
+# drivers_probe. Proxmox would also do this automatically the first time a VM with this
+# hostpci starts, but doing it here makes the role idempotent and the state visible outside
+# of a VM start.
+- name: GPU | load vfio-pci
+  community.general.modprobe:
+    name: vfio-pci
+    state: present
+  when: pve_gpu_bound_driver != 'vfio-pci'
+
+- name: GPU | unbind from i915
+  ansible.builtin.shell: |
+    set -e
+    echo '{{ pve_gpu_pci_id }}' > /sys/bus/pci/devices/{{ pve_gpu_pci_id }}/driver/unbind
+  when: pve_gpu_bound_driver == 'i915'
+  changed_when: true
+
+- name: GPU | bind to vfio-pci
+  ansible.builtin.shell: |
+    set -e
+    echo vfio-pci > /sys/bus/pci/devices/{{ pve_gpu_pci_id }}/driver_override
+    echo '{{ pve_gpu_pci_id }}' > /sys/bus/pci/drivers_probe
+  when: pve_gpu_bound_driver in ['i915', '']
+  changed_when: true

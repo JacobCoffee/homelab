@@ -96,6 +96,26 @@ SEERR_INTERNAL_URL = "http://seerr.media.svc.cluster.local:5055"
 SEERR_PUBLIC_URL = "https://requests.z7x.org"
 JELLYFIN_PUBLIC_URL = "https://media.z7x.org"
 
+# hnk8s05's passed-through Intel UHD 630 (ansible/roles/pve_gpu,
+# kubernetes/apps/kube-system/intel-gpu-plugin). QuickSync (qsv) over the VAAPI backend: the
+# official Jellyfin image ships oneVPL/libmfx already, no extra plugin needed. Coffee Lake Gen9.5
+# decodes H.264, HEVC (8/10-bit), VP9, VC1 and MPEG2 and encodes H.264/HEVC; GuC/HuC firmware
+# doesn't load on this card (checked: `talosctl dmesg` has no "GuC/HuC firmware" lines), so the
+# low-power encoders stay off. VPP handles tonemapping; no OpenCL needed for QSV.
+RENDER_DEVICE = "/dev/dri/renderD128"
+ENCODING = {
+    "HardwareAccelerationType": "qsv",
+    "QsvDevice": RENDER_DEVICE,
+    "VaapiDevice": RENDER_DEVICE,
+    "EnableHardwareEncoding": True,
+    "AllowHevcEncoding": True,
+    "HardwareDecodingCodecs": ["h264", "hevc", "mpeg2video", "vc1", "vp9"],
+    "EnableDecodingColorDepth10Hevc": True,
+    "EnableTonemapping": True,
+    "EnableVppTonemapping": True,
+    "EnableIntelLowPowerH264HwEncoder": False,
+    "EnableIntelLowPowerHevcHwEncoder": False,
+}
 KEFINTWEAKS_VERSION = "v0.5.3"
 JF_AVATARS_VERSION = "2.4.1"
 SCRIPTS = {
@@ -292,6 +312,15 @@ def set_jellyseerr() -> None:
     print("Jellyfin Enhanced: Seerr integration set")
 
 
+def set_encoding() -> None:
+    _, config = call("GET", "/System/Configuration/encoding")
+    if all(config.get(k) == v for k, v in ENCODING.items()):
+        return
+    config.update(ENCODING)
+    call("POST", "/System/Configuration/encoding", config)
+    print("encoding: QuickSync hardware transcoding set")
+
+
 def main():
     wait_for_server()
     ensure_repositories(REPOSITORIES, remove=REMOVED_REPOSITORIES)
@@ -304,6 +333,7 @@ def main():
     set_library_options()
     set_open_subtitles()
     set_jellyseerr()
+    set_encoding()
     print("ok")
 
 

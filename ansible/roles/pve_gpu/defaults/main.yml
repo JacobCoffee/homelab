@@ -1,0 +1,6 @@
+# hnhv01's onboard Intel UHD 630 (00:02.0, 8086:3e98), the only GPU in the lab. It's reserved
+# whole for passthrough to hnk8s05 (Jellyfin QuickSync transcoding; kubernetes/apps/media/jellyfin
+# and kubernetes/apps/kube-system/intel-gpu-plugin) -- nothing on the host itself uses it.
+pve_gpu_pci_id: "0000:00:02.0"
+pve_gpu_vendor_device: "8086:3e98"
+pve_gpu_conf_path: /etc/modprobe.d/vfio-gpu.conf

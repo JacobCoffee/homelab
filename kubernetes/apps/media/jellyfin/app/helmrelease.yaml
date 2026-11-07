@@ -1,6 +1,9 @@
 # docker.io/jellyfin/jellyfin:12.4.20261026-211555, latest 12.4.x build as of 2026-11-01.
-# CPU-only transcoding (no GPU in the Talos VMs): resources sized to not starve a 4 vCPU node
-# under a transcode burst. Admin account creation is a manual first-run step (see README).
+# QuickSync hardware transcoding on hnhv01's Intel UHD 630, passed through to hnk8s05
+# (ansible/roles/pve_gpu, kubernetes/apps/kube-system/intel-gpu-plugin). The
+# gpu.intel.com/i915 request is the only thing pinning the pod to hnk8s05 (it's the only
+# node advertising that resource); Dispatcharr's anti-affinity against jellyfin still applies
+# on top of that. Admin account creation is a manual first-run step (see README).
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -44,13 +47,17 @@ spec:
             # The memory request is what it actually holds with the plugins and the live TV
             # guide loaded (~2Gi). At 512Mi the scheduler packed it onto hnk8s03 (8GB, also
             # cabotage's stack) next to Dispatcharr, which ran the node out of memory.
+            # gpu.intel.com/i915: intel-gpu-plugin's sharedDevNum lets several transcodes
+            # share the one device; requests must equal limits for extended resources.
             resources:
               requests:
                 cpu: 500m
                 memory: 2Gi
+                gpu.intel.com/i915: 1
               limits:
                 cpu: "3"
                 memory: 4Gi
+                gpu.intel.com/i915: 1
     defaultPodOptions:
       securityContext:
         runAsNonRoot: true

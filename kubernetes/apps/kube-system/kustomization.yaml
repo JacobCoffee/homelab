@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ./cilium/ks.yaml
   - ./cilium-config/ks.yaml
+  - ./intel-gpu-plugin/ks.yaml
   - ./kubelet-csr-approver/ks.yaml
   - ./metrics-server/ks.yaml
   - ./spegel/ks.yaml

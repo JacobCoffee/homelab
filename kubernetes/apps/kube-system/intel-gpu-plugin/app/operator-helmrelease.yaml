@@ -1,0 +1,21 @@
+# Provides the GpuDevicePlugin CRD + controller the intel-gpu-plugin HelmRelease (this
+# directory) uses. Only the gpu device kind is enabled -- no DSA/IAA/QAT/SGX hardware here.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: intel-device-plugins-operator
+  namespace: kube-system
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: intel-device-plugins-operator
+      version: "0.37.1"
+      sourceRef:
+        kind: HelmRepository
+        name: intel
+        namespace: kube-system
+  values:
+    manager:
+      devices:
+        gpu: true

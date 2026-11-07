@@ -1,10 +1,14 @@
 # Talos release and Image Factory schematic (kubernetes/talos/schematic.yaml: adds
-# qemu-guest-agent). Re-post the schematic to factory.talos.dev after editing it.
+# qemu-guest-agent, plus i915/intel-ucode for hnk8s05's passed-through Intel UHD 630).
+# Re-post the schematic to factory.talos.dev after editing it.
 # Renovate bumps the annotated pins; changing them here doesn't upgrade running nodes
-# (talosctl upgrade / upgrade-k8s does, see kubernetes/README.md).
+# (talosctl upgrade / upgrade-k8s does, see kubernetes/README.md). New hnk8s05 schematic
+# (adds GPU extensions) was applied to the running node directly with `talosctl upgrade
+# --image factory.talos.dev/installer/<id>:v1.14.5 -n 10.10.30.15 --preserve`; the other
+# nodes stay on the prior installer image until their next talosctl upgrade picks this up.
 # renovate: datasource=github-releases depName=siderolabs/talos
 talos_version: v1.14.5
-talos_schematic_id: ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515
+talos_schematic_id: d32a2cb3cd2dd937e38505169bc1e0401d08ec95b6cb599156a7184010665b4e
 # renovate: datasource=github-releases depName=kubernetes/kubernetes extractVersion=^v(?<version>.+)$
 k8s_version: 1.37.2
 

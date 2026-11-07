@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Reserve the iGPU ({{ pve_gpu_pci_id }}, {{ pve_gpu_vendor_device }}) for vfio-pci passthrough
+# to hnk8s05 (ansible/roles/pve_gpu) instead of the host's own i915 driver.
+blacklist i915
+softdep i915 pre: vfio-pci
+options vfio-pci ids={{ pve_gpu_vendor_device }}

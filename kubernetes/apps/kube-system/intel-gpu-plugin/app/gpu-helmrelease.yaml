@@ -1,0 +1,30 @@
+# hnk8s05 is the only node with a GPU (hnhv01's Intel UHD 630, passed through by
+# ansible/roles/pve_gpu); pinning by hostname instead of relying on Node Feature Discovery
+# labels keeps this app self-contained (no NFD DaemonSet to run just for one node/one device).
+# sharedDevNum lets more than one container request gpu.intel.com/i915 against the same card --
+# Jellyfin only ever runs a handful of concurrent transcodes, never enough to saturate it.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: intel-gpu-plugin
+  namespace: kube-system
+spec:
+  interval: 1h
+  dependsOn:
+    - name: intel-device-plugins-operator
+      namespace: kube-system
+  chart:
+    spec:
+      chart: intel-device-plugins-gpu
+      version: "0.37.1"
+      sourceRef:
+        kind: HelmRepository
+        name: intel
+        namespace: kube-system
+  values:
+    name: intel-gpu-plugin
+    sharedDevNum: 4
+    enableMonitoring: false
+    nodeFeatureRule: false
+    nodeSelector:
+      kubernetes.io/hostname: hnk8s05

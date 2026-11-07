@@ -2,3 +2,8 @@ customization:
   systemExtensions:
     officialExtensions:
       - siderolabs/qemu-guest-agent
+      # hnk8s05 (hnhv01's passed-through Intel UHD 630, 00:02.0): QuickSync hardware
+      # transcoding for Jellyfin. i915 ships the kernel driver + GuC/HuC firmware;
+      # intel-ucode is the microcode update Intel recommends alongside it.
+      - siderolabs/i915
+      - siderolabs/intel-ucode
