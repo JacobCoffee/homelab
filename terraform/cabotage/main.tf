@@ -257,3 +257,37 @@ resource "kubectl_manifest" "redis_probe_tuning" {
 
   depends_on = [module.cabotage]
 }
+
+# --- Redis zone pin (hnhv01) ---
+#
+# redis/cabotage-cabotage-0's PVC was provisioned in zone hnhv02 (proxmox-vmdata is
+# WaitForFirstConsumer, so the zone is whichever Proxmox host the pod first landed on), which
+# limits scheduling to hnk8s03 (control plane, etcd) or hnk8s04 (2 CPU/3GB, the slow-disk
+# worker already blamed above for the AOF-replay crashloop). Neither is a good home: the first
+# starves a control plane under the new PreferNoSchedule taint
+# (ansible/roles/talos/templates/machine.yaml.j2) once something else wants the capacity, the
+# second is where this exact Redis previously crashlooped on disk I/O. Pin the pod to the
+# hnhv01 Proxmox host (hnk8s01/02/05, all NVMe-backed) via nodeSelector; the live PVC is
+# migrated to that zone out-of-band (backup, delete, let WaitForFirstConsumer reprovision
+# there, restore) alongside this change so the pod can actually schedule once applied.
+resource "kubectl_manifest" "redis_zone_pin" {
+  yaml_body = yamlencode({
+    apiVersion = "redis.redis.opstreelabs.in/v1beta2"
+    kind       = "Redis"
+    metadata = {
+      name      = "cabotage"
+      namespace = "redis"
+    }
+    spec = {
+      nodeSelector = {
+        "topology.kubernetes.io/zone" = "hnhv01"
+      }
+    }
+  })
+
+  server_side_apply = true
+  field_manager      = "homelab-redis-zone-pin"
+  force_conflicts    = true
+
+  depends_on = [module.cabotage]
+}

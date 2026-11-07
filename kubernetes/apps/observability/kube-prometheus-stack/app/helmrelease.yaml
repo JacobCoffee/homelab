@@ -138,6 +138,14 @@ spec:
     alertmanager:
       alertmanagerSpec:
         replicas: 1
+        # Alertmanager's PVC was provisioned in zone hnhv02 (proxmox-vmdata is
+        # WaitForFirstConsumer; zone follows wherever the pod first scheduled), pinning it to
+        # hnk8s03 (control plane) or hnk8s04 (2 CPU/3GB, no room). The live PVC is migrated to
+        # hnhv01 out-of-band (backup, delete, let WaitForFirstConsumer reprovision there,
+        # restore) alongside this nodeSelector so it can land on hnk8s05 instead and stop
+        # competing with etcd/apiserver for a control plane's memory.
+        nodeSelector:
+          topology.kubernetes.io/zone: hnhv01
         resources:
           requests: { cpu: 10m, memory: 32Mi }
           limits: { memory: 96Mi }
