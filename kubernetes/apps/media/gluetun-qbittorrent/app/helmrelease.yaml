@@ -109,6 +109,10 @@ spec:
               VPN_SERVICE_PROVIDER: airvpn
               VPN_TYPE: wireguard
               SERVER_COUNTRIES: United States
+              # AirVPN's NYC servers all exit through one network (AS11878, tzulo), and the
+              # MyAnonamouse seedbox session is ASN-locked: a reconnect to another US city lands
+              # on another network, which MAM rejects ("Invalid session - ASN mismatch").
+              SERVER_CITIES: New York City
               FIREWALL_OUTBOUND_SUBNETS: 10.244.0.0/16,10.96.0.0/12
               FIREWALL_INPUT_PORTS: "8080"
               WIREGUARD_PRIVATE_KEY:

@@ -276,6 +276,7 @@ def configure_prowlarr() -> None:
         "baseUrl": "https://www.myanonamouse.net/",
         "mamId": os.environ.get("MAM_ID", ""),
         "searchLanguages": [1],  # English
+        "searchType": 5,  # Not VIP: VIP-only torrents can't be downloaded below VIP rank
     }, "MAM_ID", [])
 
 
