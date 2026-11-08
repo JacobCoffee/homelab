@@ -304,7 +304,8 @@ def main() -> None:
         "clients/lab-gateway.svg": lab_apps_svg(),
     }
     # the apps with their own OIDC client use their colour logo
-    for cid, icon in {"grafana": "grafana", "proxmox": "proxmox", "jellyfin": "jellyfin", "opnsense": "opnsense"}.items():
+    for cid, icon in {"grafana": "grafana", "proxmox": "proxmox", "jellyfin": "jellyfin", "opnsense": "opnsense",
+                      "audiobookshelf": "audiobookshelf"}.items():
         outputs[f"clients/{cid}.svg"] = (ICONS / f"{icon}.svg").read_text()
     view, body = inner((ICONS / "flux.simple.svg").read_text())
     outputs["clients/flux.svg"] = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view}"><g fill="{SIMPLE_HEX["flux"]}">{body}</g></svg>\n'

@@ -367,12 +367,15 @@ HelmRelease here.
   watcher can't see files written by another NFS client, so it's off and both libraries rescan
   every 30 minutes; Bindery also triggers an Audiobooks scan right after each audiobook import
   (Bindery's Audiobookshelf integration only does that for audiobooks). Friends get accounts from
-  Wizarr invites; the admin is `jacob` with a generated password (`vault_audiobookshelf_password`,
-  Bitwarden "Homelab: Audiobookshelf"). Its admin pages share the app's paths, so unlike Wizarr's
-  they can't be kept off the internet; that password is the protection. The `audiobookshelf-setup`
-  Job (`app/setup.py`) creates that admin on a fresh install and keeps the libraries, its own
-  nightly backup (03:00, keep 3) and Bindery's link (URL, Audiobooks library, an API key it mints
-  when Bindery has none that works) in step through Audiobookshelf's API. Send to Kindle needs an
+  Wizarr invites and sign in with a password. The admin `jacob` signs in with "Sign in with Pocket
+  ID" (client `audiobookshelf` in `../scripts/pocket-id.py`, lab-admins only; matched to `jacob`
+  by username, nobody is auto-registered); its generated password (`vault_audiobookshelf_password`,
+  Bitwarden "Homelab: Audiobookshelf") is the break-glass login and the setup Jobs' own. Its admin
+  pages share the app's paths, so unlike Wizarr's they can't be kept off the internet. The
+  `audiobookshelf-setup` Job (`app/setup.py`) creates that admin on a fresh install and keeps the
+  libraries, its own nightly backup (03:00, keep 3), the Pocket ID settings and Bindery's link
+  (URL, Audiobooks library, an API key it mints when Bindery has none that works) in step through
+  Audiobookshelf's API. Send to Kindle needs an
   SMTP account (Settings > Email), not set up yet.
 - **Anime:** separate Jellyfin libraries (Anime, Anime Movies) on their own Sonarr/Radarr root
   folders. Recyclarr syncs TRaSH's `[Anime] Remux-1080p` profile to both apps (TRaSH has no

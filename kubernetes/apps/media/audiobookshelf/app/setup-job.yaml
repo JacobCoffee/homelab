@@ -1,6 +1,7 @@
-# Sets up Audiobookshelf's admin account, Audiobooks/Ebooks libraries and backups, and links Bindery
-# to it (setup.py). One run per change of the script (hashed ConfigMap name) or of the password
-# (media-config/credentials-rev, bumped by scripts/media-secrets.py). Re-run by hand:
+# Sets up Audiobookshelf's admin account, Audiobooks/Ebooks libraries, backups and Pocket ID
+# sign-in, and links Bindery to it (setup.py). One run per change of the script (hashed ConfigMap
+# name) or of the password (media-config/credentials-rev, bumped by scripts/media-secrets.py; a
+# rotated OIDC client secret from scripts/pocket-id.py needs the manual re-run). Re-run by hand:
 #   kubectl -n media delete job audiobookshelf-setup && flux reconcile ks audiobookshelf
 apiVersion: batch/v1
 kind: Job
@@ -32,6 +33,11 @@ spec:
                 secretKeyRef:
                   name: audiobookshelf
                   key: ABS_ROOT_PASSWORD
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: audiobookshelf
+                  key: OIDC_CLIENT_SECRET
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

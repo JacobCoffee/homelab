@@ -47,6 +47,8 @@ SOPS = {
         {"client-secret": "vault_pocket_id_grafana_secret"},
     "kubernetes/apps/flux-system/flux-web/app/secret.sops.yaml":
         {"client-secret": "vault_pocket_id_flux_secret"},
+    "kubernetes/apps/media/audiobookshelf/app/secret.sops.yaml":
+        {"OIDC_CLIENT_SECRET": "vault_pocket_id_audiobookshelf_secret"},
 }
 BRANDING = ROOT / "kubernetes/apps/auth/pocket-id/branding"
 # application image endpoint -> (file in BRANDING, query); built by BRANDING/build.py.
@@ -98,6 +100,17 @@ CLIENTS: dict[str, dict] = {
         "name": "Jellyfin",
         "callbackURLs": ["https://media.z7x.org/sso/OID/redirect/pocket-id"],
         "launchURL": "https://media.z7x.org",
+    },
+    # Audiobookshelf serves under /audiobookshelf; /mobile-redirect is for its apps' SSO. Only the
+    # admin uses this (friends have password accounts from Wizarr); setup.py links it by username.
+    "audiobookshelf": {
+        "name": "Audiobookshelf",
+        "callbackURLs": [
+            "https://books.z7x.org/audiobookshelf/auth/openid/callback",
+            "https://books.z7x.org/audiobookshelf/auth/openid/mobile-redirect",
+        ],
+        "launchURL": "https://books.z7x.org",
+        "pkceEnabled": True,
     },
     "flux": {
         "name": "Flux",

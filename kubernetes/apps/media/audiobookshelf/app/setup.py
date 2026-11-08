@@ -1,4 +1,4 @@
-"""Codify Audiobookshelf: admin account, libraries, its own backups, and the Bindery link.
+"""Codify Audiobookshelf: admin account, libraries, backups, Pocket ID sign-in, and the Bindery link.
 
 Everything goes through Audiobookshelf's HTTP API (server/routers/ApiRouter.js, v2.37):
 
@@ -13,6 +13,11 @@ Everything goes through Audiobookshelf's HTTP API (server/routers/ApiRouter.js, 
    scan right after each audiobook import. Bindery needs an API key, which Audiobookshelf shows
    only once, so one is minted (and older "bindery" keys deleted) only when Bindery has none or
    its saved one stopped working.
+5. Sign in with Pocket ID (OpenID Connect, client "audiobookshelf" in scripts/pocket-id.py) next to
+   the password form. Endpoints come from Pocket ID's discovery document. Existing accounts are
+   matched by username (Pocket ID's preferred_username "jacob" is the root user) and nobody is
+   auto-registered, so friends keep their Wizarr-made password accounts. Audiobookshelf caches
+   its OIDC client, so when these settings change while OIDC is on, it's switched off and on again.
 
 Idempotent: re-running changes nothing that already matches.
 """
@@ -45,6 +50,13 @@ LIBRARIES = [
     },
 ]
 SERVER_SETTINGS = {"backupSchedule": "0 3 * * *", "backupsToKeep": 3, "maxBackupSize": 1}
+
+ISSUER = "https://id.z7x.org"
+OIDC_CLIENT_ID = "audiobookshelf"
+OIDC_CLIENT_SECRET = os.environ["OIDC_CLIENT_SECRET"]
+# Audiobookshelf serves under its default ROUTER_BASE_PATH; the callbacks registered in Pocket ID
+# are https://books.z7x.org/audiobookshelf/auth/openid/{callback,mobile-redirect}.
+BASE_PATH = "/audiobookshelf"
 
 TIMEOUT = 30
 
@@ -168,6 +180,38 @@ def ensure_bindery_link(abs_: Abs, root_id: str, audiobooks_id: str) -> None:
     print("Bindery: Audiobookshelf API key set and tested")
 
 
+def ensure_openid(abs_: Abs) -> None:
+    status, disco = call("GET", f"{ISSUER}/.well-known/openid-configuration")
+    if status != 200:
+        sys.exit(f"Pocket ID discovery -> {status}")
+    desired = {
+        "authOpenIDIssuerURL": disco["issuer"],
+        "authOpenIDAuthorizationURL": disco["authorization_endpoint"],
+        "authOpenIDTokenURL": disco["token_endpoint"],
+        "authOpenIDUserInfoURL": disco["userinfo_endpoint"],
+        "authOpenIDJwksURL": disco["jwks_uri"],
+        "authOpenIDLogoutURL": disco.get("end_session_endpoint"),
+        "authOpenIDTokenSigningAlgorithm": disco["id_token_signing_alg_values_supported"][0],
+        "authOpenIDClientID": OIDC_CLIENT_ID,
+        "authOpenIDClientSecret": OIDC_CLIENT_SECRET,
+        "authOpenIDButtonText": "Sign in with Pocket ID",
+        "authOpenIDAutoLaunch": False,
+        "authOpenIDAutoRegister": False,
+        "authOpenIDMatchExistingBy": "username",
+        "authOpenIDSubfolderForRedirectURLs": BASE_PATH,
+    }
+    current = abs_.api("GET", "/api/auth-settings")
+    drift = {k: v for k, v in desired.items() if current.get(k) != v}
+    active = "openid" in current["authActiveAuthMethods"]
+    if not drift and active:
+        return
+    if active:  # Drop the cached client so the new settings take effect.
+        abs_.api("PATCH", "/api/auth-settings", {"authActiveAuthMethods": ["local"]})
+    abs_.api("PATCH", "/api/auth-settings", drift)
+    abs_.api("PATCH", "/api/auth-settings", {"authActiveAuthMethods": ["local", "openid"]})
+    print(f"Audiobookshelf: Pocket ID sign-in {', '.join(drift) or 'enabled'}")
+
+
 def main() -> int:
     wait_for(f"{ABS}/healthcheck", "Audiobookshelf")
     wait_for(f"{BINDERY}/api/v1/health", "Bindery")
@@ -176,6 +220,7 @@ def main() -> int:
     ensure_server_settings(abs_)
     ids = ensure_libraries(abs_)
     ensure_bindery_link(abs_, root["id"], ids["Audiobooks"])
+    ensure_openid(abs_)
     print("done")
     return 0
 
