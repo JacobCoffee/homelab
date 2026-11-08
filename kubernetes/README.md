@@ -109,6 +109,9 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
 - Friends get Pocket ID accounts only from a sign-up link: `scripts/pocket-id.py --invite` prints
   one (7 days, one account; `ALLOW_USER_SIGNUPS: withToken`). The account lands in the
   `book-friends` group, which only the `bindery` client lets in.
+- Signing in at `id.z7x.org` lands on **My Apps** (`HOME_PAGE_URL: /settings/apps`): a tile for
+  every client whose `launchURL` one of your groups may open. Friends see Book requests; you see
+  everything. An app shows up there only once it has a client in `scripts/pocket-id.py`.
 - The sign-in pages carry the Homelab theme, in two parts. `apps/auth/pocket-id/branding/` holds
   the images: the animated orbit of the lab's apps (the right-hand panel), the rack logo, the
   favicon and a logo per OIDC client. `branding/build.py` builds them from `branding/icons/`, and

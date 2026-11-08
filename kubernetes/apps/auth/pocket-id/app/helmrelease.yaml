@@ -44,6 +44,9 @@ spec:
               # The Homelab theme's amber (app/theme/lab.css, branding/build.py).
               ACCENT_COLOR: "#FFB224"
               SESSION_DURATION: "720"
+              # Land on "My Apps" after signing in: every client with a launchURL that one of the
+              # user's groups may open (scripts/pocket-id.py), so friends see only theirs.
+              HOME_PAGE_URL: /settings/apps
               # Only through a sign-up link (scripts/pocket-id.py --invite), which puts the new
               # account in book-friends: Bindery's requester login and nothing else.
               ALLOW_USER_SIGNUPS: withToken
