@@ -30,10 +30,11 @@ spec:
           # login for the pod network only (AuthSubnetWhitelist 10.244.0.0/16: Envoy's pod IPs, and
           # the media/status/observability pods the lab-sso-ingress policy lets in). The image's
           # default bypassed every RFC1918 client, including the whole tailnet/lab; this rewrites
-          # [WebUI] on every start because qBittorrent can't take these settings as flags. The
-          # admin login from gluetun-secret stays for anything outside that subnet. It also drops
-          # the image's legacy [Preferences] WebUI\* defaults so a fresh PVC can't migrate the old
-          # bypass back in. (No ${...} in the script: Flux postBuild substitution would rewrite it.)
+          # the WebUI settings on every start because qBittorrent can't take them as flags. The
+          # admin login from gluetun-secret stays for anything outside that subnet. 5.2 reads them
+          # from [Preferences] as WebUI\*, 5.3+ from [WebUI]: both are written, so moving between
+          # versions never falls back to the image's bypass or to no password at all. (No ${...}
+          # in the script: Flux postBuild substitution would rewrite it.)
           #
           # [BitTorrent] is bound to gluetun's tun0: qBittorrent starts alongside gluetun, before
           # the tunnel exists, and unbound it only ever listened on eth0/lo, so its peer and DHT
@@ -50,36 +51,31 @@ spec:
                 f=/config/qBittorrent/qBittorrent.conf
                 mkdir -p /config/qBittorrent
                 [ -f "$f" ] || cp /defaults/qBittorrent.conf "$f"
-                WANT="AuthSubnetWhitelistEnabled=true
-                AuthSubnetWhitelist=10.244.0.0/16
-                LocalHostAuth=true
-                CSRFProtection=true
-                Username=admin
-                Password_PBKDF2=\"$QBT_WEBUI_PASSWORD_PBKDF2\""
-                export WANT
-                awk '
-                  BEGIN { n = split(ENVIRON["WANT"], L, "\n")
-                          for (i = 1; i <= n; i++) { sub(/^[ \t]+/, "", L[i]); k = substr(L[i], 1, index(L[i], "=") - 1); v[k] = substr(L[i], index(L[i], "=") + 1); ord[i] = k } }
-                  function flush(j) { for (j = 1; j <= n; j++) if (!(ord[j] in seen)) print ord[j] "=" v[ord[j]]; flushed = 1 }
-                  /^\[.*\]$/ { if (sec == "WebUI") flush(); sec = substr($0, 2, length($0) - 2); if (sec == "WebUI") web = 1; print; next }
-                  /^WebUI\\/ { next }
-                  sec == "WebUI" { k = substr($0, 1, index($0, "=") - 1); if (k in v) { print k "=" v[k]; seen[k] = 1; next } }
-                  { print }
-                  END { if (sec == "WebUI" && !flushed) flush()
-                        if (!web) { print ""; print "[WebUI]"; for (j = 1; j <= n; j++) print ord[j] "=" v[ord[j]] } }
-                ' "$f" > "$f.new"
-                mv "$f.new" "$f"
-                awk -v want='Session\\Interface=tun0|Session\\InterfaceName=tun0' '
-                  BEGIN { n = split(want, L, "|"); for (i = 1; i <= n; i++) { k[i] = substr(L[i], 1, index(L[i], "=") - 1); v[k[i]] = L[i] } }
-                  function flush(j) { for (j = 1; j <= n; j++) if (!(k[j] in seen)) print v[k[j]]; flushed = 1 }
-                  /^\[.*\]$/ { if (sec == "BitTorrent") flush(); sec = substr($0, 2, length($0) - 2); if (sec == "BitTorrent") bt = 1; print; next }
-                  sec == "BitTorrent" { key = substr($0, 1, index($0, "=") - 1); if (key in v) { print v[key]; seen[key] = 1; next } }
-                  { print }
-                  END { if (sec == "BitTorrent" && !flushed) flush()
-                        if (!bt) { print ""; print "[BitTorrent]"; for (j = 1; j <= n; j++) print v[k[j]] } }
-                ' "$f" > "$f.new"
-                mv "$f.new" "$f"
-                grep -E '^(AuthSubnetWhitelist|AuthSubnetWhitelistEnabled|LocalHostAuth|CSRFProtection|Username|Session\\Interface|Session\\InterfaceName)=' "$f"
+                # ensure SECTION KEY=VALUE...: set these keys in [SECTION], adding it if missing.
+                ensure() {
+                  SEC=$1
+                  shift
+                  WANT=$(printf '%s\n' "$@")
+                  export SEC WANT
+                  awk '
+                    BEGIN { sec = ENVIRON["SEC"]; n = split(ENVIRON["WANT"], L, "\n")
+                            for (i = 1; i <= n; i++) { k = substr(L[i], 1, index(L[i], "=") - 1); v[k] = L[i]; ord[i] = k } }
+                    function flush(j) { for (j = 1; j <= n; j++) if (!(ord[j] in seen)) print v[ord[j]]; flushed = 1 }
+                    /^\[.*\]$/ { if (cur == sec) flush(); cur = substr($0, 2, length($0) - 2); if (cur == sec) found = 1; print; next }
+                    cur == sec { k = substr($0, 1, index($0, "=") - 1); if (k in v) { print v[k]; seen[k] = 1; next } }
+                    { print }
+                    END { if (cur == sec && !flushed) flush()
+                          if (!found) { print ""; print "[" sec "]"; for (j = 1; j <= n; j++) print v[ord[j]] } }
+                  ' "$f" > "$f.new"
+                  mv "$f.new" "$f"
+                }
+                pw="\"$QBT_WEBUI_PASSWORD_PBKDF2\""
+                ensure WebUI AuthSubnetWhitelistEnabled=true AuthSubnetWhitelist=10.244.0.0/16 \
+                  LocalHostAuth=true CSRFProtection=true Username=admin "Password_PBKDF2=$pw"
+                ensure Preferences 'WebUI\AuthSubnetWhitelistEnabled=true' 'WebUI\AuthSubnetWhitelist=10.244.0.0/16' \
+                  'WebUI\LocalHostAuth=true' 'WebUI\CSRFProtection=true' 'WebUI\Username=admin' "WebUI\\Password_PBKDF2=$pw"
+                ensure BitTorrent 'Session\Interface=tun0' 'Session\InterfaceName=tun0'
+                grep -E '^(WebUI\\)?(AuthSubnetWhitelist|AuthSubnetWhitelistEnabled|LocalHostAuth|CSRFProtection|Username)=|^Session\\Interface(Name)?=' "$f"
             env:
               QBT_WEBUI_PASSWORD_PBKDF2:
                 valueFrom:
