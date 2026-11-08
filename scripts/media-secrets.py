@@ -33,6 +33,8 @@ TARGETS = [
         "vault_newshosting_username": "NEWSHOSTING_USERNAME",
         "vault_newshosting_password": "NEWSHOSTING_PASSWORD",
         "vault_nzbfinder_api_key": "NZBFINDER_API_KEY",
+        # MyAnonamouse session for Prowlarr's searches (home IP, Charter ASN).
+        "vault_mam_id": "MAM_ID",
     }),
     (MEDIA / "jellyfin/app/plugins-secret.sops.yaml", MEDIA / "jellyfin/app/plugins-job.yaml", {
         "vault_opensubtitles_username": "OPENSUBTITLES_USERNAME",
@@ -55,6 +57,11 @@ TARGETS = [
     (MEDIA / "bindery/app/secret.sops.yaml", MEDIA / "bindery/app/setup-job.yaml", {
         "vault_bindery_api_key": "BINDERY_API_KEY",
     }),
+    # MyAnonamouse dynamic-seedbox session (VPN exit IP, "allow dynamic seedbox"). The
+    # mam-seedbox container reads it as a mounted file, so no restart: job is None.
+    (MEDIA / "gluetun-qbittorrent/app/secret.sops.yaml", None, {
+        "vault_mam_seedbox_id": "MAM_SEEDBOX_ID",
+    }),
 ]
 
 
@@ -74,8 +81,10 @@ def main() -> int:
         if not present:
             continue
         rev = yaml.safe_load(secret.read_text())["sops"]["lastmodified"]
-        job.write_text(re.sub(r'(media-config/credentials-rev: )".*"', rf'\1"{rev}"', job.read_text(), count=1))
-        touched += [secret, job]
+        if job is not None:
+            job.write_text(re.sub(r'(media-config/credentials-rev: )".*"', rf'\1"{rev}"', job.read_text(), count=1))
+            touched.append(job)
+        touched.append(secret)
     if not touched:
         print("none of the keys are in the vault; run scripts/vault-set.py first", file=sys.stderr)
         return 1

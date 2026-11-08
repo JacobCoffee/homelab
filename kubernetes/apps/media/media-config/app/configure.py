@@ -9,9 +9,10 @@ SABnzbd   Folders: completed jobs land in /media/downloads/usenet/<category>, in
 qBittorrent  TRaSH Saving Management: default save path /media/downloads/torrents (its default was
           /config/Downloads, on the config PVC and not hardlinkable into the library), Automatic
           torrent management with relocate-on-change, categories movies/tv/music/books.
-Prowlarr  Sonarr/Radarr/Lidarr as full-sync applications, so every indexer added here appears in
-          them by itself; NZBFinder and Anime Tosho (the animetosho.net successor; the original
-          animetosho.org shut its feed down in October 2026) as indexers.
+Prowlarr  Sonarr/Radarr/Lidarr as full-sync applications for indexers tagged "arrs", so each one
+          added here with that tag appears in them by itself; NZBFinder and Anime Tosho (the
+          animetosho.net successor; the original animetosho.org shut its feed down in October
+          2026) as such indexers, and MyAnonamouse untagged, for Bindery only (MAM_ID).
 *arrs     SABnzbd and qBittorrent as download clients (their category per app), the
           /media/library/<kind> root folder, and a Jellyfin connection that refreshes the library
           on every import, upgrade, rename or delete (Jellyfin can't watch the NFS tree itself).
@@ -234,29 +235,48 @@ def upsert(kind: str, base: str, key: str, existing: list, schema_item: dict, na
 
 def configure_prowlarr() -> None:
     api = f"{PROWLARR_URL}/api/v1"
-    schema = call("GET", f"{api}/applications/schema", PROWLARR_KEY)
-    existing = call("GET", f"{api}/applications", PROWLARR_KEY)
-    for name, url, _, key, *_ in ARRS:
-        item = next(s for s in schema if s["implementation"] == name)
-        upsert("Prowlarr app", f"{api}/applications", PROWLARR_KEY, existing, item, name,
-               {"syncLevel": "fullSync"},
-               {"prowlarrUrl": PROWLARR_URL, "baseUrl": url, "apiKey": key})
+    # Sonarr/Radarr/Lidarr only get indexers tagged "arrs". MyAnonamouse stays untagged: it is
+    # for Bindery (which pulls every indexer itself), and Lidarr's audio categories would
+    # otherwise sync it there, grabbing with the 10-minute seeding limit, a hit and run on MAM.
+    tags = call("GET", f"{api}/tag", PROWLARR_KEY)
+    arrs_tag = next((t["id"] for t in tags if t["label"] == "arrs"), None)
+    if arrs_tag is None:
+        arrs_tag = call("POST", f"{api}/tag", PROWLARR_KEY, {"label": "arrs"})["id"]
+        print("Prowlarr: tag arrs created")
 
     schema = call("GET", f"{api}/indexer/schema", PROWLARR_KEY)
     existing = call("GET", f"{api}/indexer", PROWLARR_KEY)
     profile = call("GET", f"{api}/appprofile", PROWLARR_KEY)[0]["id"]
-    indexers = [
-        # (schema preset name, indexer name, field values, credential that must be present)
-        ("AnimeTosho (Usenet)", "Anime Tosho", {"baseUrl": "https://feed.animetosho.net", "apiKey": None}, "-"),
-        ("NZBFinder", "NZBFinder", {"apiKey": os.environ.get("NZBFINDER_API_KEY", "")}, "NZBFINDER_API_KEY"),
-    ]
-    for preset, name, values, needs in indexers:
+
+    def indexer(preset: str, protocol: str, name: str, values: dict, needs: str, tags: list) -> None:
         if needs != "-" and not os.environ.get(needs):
             print(f"Prowlarr: {needs} not set yet, {name} skipped")
-            continue
-        item = next(s for s in schema if s["name"] == preset and s["protocol"] == "usenet")
+            return
+        item = next(s for s in schema if s["name"] == preset and s["protocol"] == protocol)
         upsert("Prowlarr indexer", f"{api}/indexer", PROWLARR_KEY, existing, item, name,
-               {"enable": True, "appProfileId": profile, "priority": 25}, values)
+               {"enable": True, "appProfileId": profile, "priority": 25, "tags": tags}, values)
+
+    # Tag these before the apps get their tag, so a sync in between never drops them.
+    indexer("AnimeTosho (Usenet)", "usenet", "Anime Tosho",
+            {"baseUrl": "https://feed.animetosho.net", "apiKey": None}, "-", [arrs_tag])
+    indexer("NZBFinder", "usenet", "NZBFinder",
+            {"apiKey": os.environ.get("NZBFINDER_API_KEY", "")}, "NZBFINDER_API_KEY", [arrs_tag])
+
+    apps_schema = call("GET", f"{api}/applications/schema", PROWLARR_KEY)
+    apps = call("GET", f"{api}/applications", PROWLARR_KEY)
+    for name, url, _, key, *_ in ARRS:
+        item = next(s for s in apps_schema if s["implementation"] == name)
+        upsert("Prowlarr app", f"{api}/applications", PROWLARR_KEY, apps, item, name,
+               {"syncLevel": "fullSync", "tags": [arrs_tag]},
+               {"prowlarrUrl": PROWLARR_URL, "baseUrl": url, "apiKey": key})
+
+    # The search session (MAM Preferences > Security), for this cluster's egress IP, Charter's
+    # ASN. Seeding limits for its torrents are set in Bindery (bindery/app/setup.py).
+    indexer("MyAnonamouse", "torrent", "MyAnonamouse", {
+        "baseUrl": "https://www.myanonamouse.net/",
+        "mamId": os.environ.get("MAM_ID", ""),
+        "searchLanguages": [1],  # English
+    }, "MAM_ID", [])
 
 
 def configure_qbittorrent() -> None:

@@ -187,6 +187,51 @@ spec:
                 memory: 256Mi
               limits:
                 memory: 2Gi
+          # MyAnonamouse only accepts announces from an IP registered to the account. This pod's
+          # exit is AirVPN's and changes on reconnect, so whenever gluetun reports a new public
+          # IP, this tells MAM's dynamic seedbox API (it rate limits changes to one an hour; a
+          # refused call is retried). It shares the pod's network, so the call itself leaves
+          # through the tunnel, which is how MAM learns the IP. The session (MAM_SEEDBOX_ID,
+          # created with "allow dynamic seedbox") comes from scripts/media-secrets.py as a
+          # mounted file, and the cookie MAM may rotate is kept on the config PVC.
+          mam-seedbox:
+            image:
+              repository: ghcr.io/home-operations/qbittorrent
+              tag: "5.2.4"
+            command: ["/bin/sh", "-c"]
+            args:
+              - |
+                set -u
+                dir=/config/mam
+                mkdir -p "$dir"
+                last=""
+                while :; do
+                  id=$(cat /mam/MAM_SEEDBOX_ID 2>/dev/null)
+                  ip=$(curl -s -m 10 http://127.0.0.1:8000/v1/publicip/ip | sed -n 's/.*"public_ip":"\([^"]*\)".*/\1/p')
+                  if [ -z "$id" ]; then
+                    echo "no MAM_SEEDBOX_ID yet"
+                  elif [ -n "$ip" ] && [ "$ip" != "$last" ]; then
+                    # A new session from the vault replaces the stored cookie.
+                    if [ "$(cat "$dir/source" 2>/dev/null)" != "$id" ]; then
+                      printf '.myanonamouse.net\tTRUE\t/\tTRUE\t0\tmam_id\t%s\n' "$id" > "$dir/cookies"
+                      printf '%s' "$id" > "$dir/source"
+                    fi
+                    resp=$(curl -s -m 30 -b "$dir/cookies" -c "$dir/cookies" https://t.myanonamouse.net/json/dynamicSeedbox.php)
+                    echo "$(date -Is) $ip: $resp"
+                    case "$resp" in *'"Success":true'* | *'"Success": true'*) last=$ip ;; esac
+                  fi
+                  sleep 300
+                done
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1000
+              runAsGroup: 1000
+            resources:
+              requests:
+                cpu: 5m
+                memory: 16Mi
+              limits:
+                memory: 64Mi
     defaultPodOptions:
       securityContext:
         fsGroup: 1000
@@ -217,6 +262,19 @@ spec:
               - path: /config
             app:
               - path: /config
+            mam-seedbox:
+              - path: /config
+      mam-seedbox:
+        type: secret
+        name: gluetun-secret
+        items:
+          - key: MAM_SEEDBOX_ID
+            path: MAM_SEEDBOX_ID
+        advancedMounts:
+          qbittorrent:
+            mam-seedbox:
+              - path: /mam
+                readOnly: true
       media:
         type: nfs
         server: "${MEDIA_NFS_SERVER}"
