@@ -776,8 +776,25 @@ A merged Talos or Kubernetes bump only changes config for new installs; upgrade 
 nodes one at a time, then Kubernetes:
 
 ```sh
-talosctl -n 10.10.30.11 upgrade --image factory.talos.dev/installer/<schematic>:<version>   # then .12, .13, then the workers (.14, ...)
+# per node: .11, .12, .13, then the workers (.14, .15); wait for etcd and the node between them
+kubectl drain hnk8s01 --ignore-daemonsets --delete-emptydir-data
+talosctl -n 10.10.30.11 upgrade --image factory.talos.dev/installer/<schematic>:<version> --drain=false
+talosctl -n 10.10.30.11,10.10.30.12,10.10.30.13 service etcd   # all HEALTH OK
+kubectl uncordon hnk8s01
+# once every node is done
 talosctl -n 10.10.30.11 upgrade-k8s --to <version>
+```
+
+Drain with kubectl first and pass `--drain=false`: writing the new image stalls etcd on the
+consumer NVMe, Talos then stops that node's API server, and when it holds the API VIP,
+talosctl's own cordon (through the VIP) fails and the upgrade stops before rebooting. Draining
+can stall etcd on every control plane at once too: expect a minute without the API while pods
+move. Cabotage's single Postgres instance has a disruption budget that blocks draining its node;
+put CloudNativePG in maintenance first and take it out afterwards:
+
+```sh
+kubectl -n postgres patch cluster cabotage --type merge -p '{"spec":{"nodeMaintenanceWindow":{"inProgress":true,"reusePVC":true}}}'
+kubectl -n postgres patch cluster cabotage --type json -p '[{"op":"remove","path":"/spec/nodeMaintenanceWindow"}]'
 ```
 
 ## Cabotage PaaS

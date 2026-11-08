@@ -52,9 +52,11 @@ spec:
         limits: { memory: 64Mi }
 
     kube-state-metrics:
+      # Steady state is ~120Mi (it caches every object it reports on); 128Mi OOM-killed it on the
+      # re-list after the 2026-11-08 node upgrades.
       resources:
-        requests: { cpu: 20m, memory: 64Mi }
-        limits: { memory: 128Mi }
+        requests: { cpu: 20m, memory: 128Mi }
+        limits: { memory: 256Mi }
       # Flux's controllers no longer export readiness (gotk_reconcile_condition is gone since Flux
       # 2.1); per Flux's monitoring guide, kube-state-metrics turns the Flux objects' Ready
       # condition into gotk_resource_info{ready="True|False|Unknown", suspended=...}. The
