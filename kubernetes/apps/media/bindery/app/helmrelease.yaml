@@ -4,7 +4,7 @@
 # /media/library/audiobooks), download clients and the Prowlarr indexer sync are set via its API
 # by the setup Job (app/setup.py) -- it has no env-based config for those. It's public at
 # bindery.z7x.org so friends can request books: auth mode "enabled" (set by setup.py) with Pocket
-# ID as the only login; book-friends sign in as requesters, lab-admins as admins.
+# ID as the only login; the books group signs in as requesters, lab-admins as admins.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

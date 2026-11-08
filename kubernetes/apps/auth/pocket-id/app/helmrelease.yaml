@@ -47,9 +47,13 @@ spec:
               # Land on "My Apps" after signing in: every client with a launchURL that one of the
               # user's groups may open (scripts/pocket-id.py), so friends see only theirs.
               HOME_PAGE_URL: /settings/apps
-              # Only through a sign-up link (scripts/pocket-id.py --invite), which puts the new
-              # account in book-friends: Bindery's requester login and nothing else.
-              ALLOW_USER_SIGNUPS: withToken
+              # Friends' accounts come only from scripts/pocket-id.py --add-user, and nobody renames
+              # their own: Jellyfin and Audiobookshelf link a login to the account with the same
+              # username, so a chosen or edited username could land in someone else's account.
+              ALLOW_USER_SIGNUPS: disabled
+              ALLOW_OWN_ACCOUNT_EDIT: "false"
+              # Friends' accounts have no email (nothing sends mail yet).
+              REQUIRE_USER_EMAIL: "false"
               # No SMTP: mark addresses verified so apps that check email_verified accept them.
               EMAILS_VERIFIED: "true"
             envFrom:

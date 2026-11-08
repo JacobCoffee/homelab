@@ -3,15 +3,16 @@
 # requires-python = ">=3.12"
 # dependencies = ["requests>=2.32", "pyyaml>=6"]
 # ///
-"""Keep Pocket ID (https://id.z7x.org) in step with this file: the lab-admins and book-friends
-groups, the owner account in lab-admins, one OIDC client per app (open to lab-admins unless its
-entry names other groups), and the Homelab branding (background, logos, favicon, client logos
-from kubernetes/apps/auth/pocket-id/branding/).
+"""Keep Pocket ID (https://id.z7x.org) in step with this file: the groups, the owner account in
+lab-admins, one OIDC client per app (open to lab-admins unless its entry names other groups), and
+the Homelab branding (background, logos, favicon, client logos from
+kubernetes/apps/auth/pocket-id/branding/).
 
     scripts/pocket-id.py            # apply
     scripts/pocket-id.py --check    # only report what would change
     scripts/pocket-id.py --link     # also print a fresh one-time sign-in link for the owner
-    scripts/pocket-id.py --invite   # also print a sign-up link for one friend (7 days)
+    scripts/pocket-id.py --add-user leah --groups media,live-tv,books
+                                    # also create/update a friend and print their sign-in link
 
 Talks to the REST API with STATIC_API_KEY (vault_pocket_id_static_api_key). Client secrets are
 generated into the vault as vault_pocket_id_<client>_secret and handed to Pocket ID, so the vault
@@ -21,9 +22,12 @@ a rotation, re-run whatever reads the key (the sops Secrets, ansible --tags pock
 While the owner has no passkey yet, it prints a one-time link (30 minutes) that signs in once so
 a passkey can be added under My Account.
 
-Friends sign up only through an --invite link (ALLOW_USER_SIGNUPS withToken in the Pocket ID
-HelmRelease). The link puts them in book-friends, which only the "bindery" client lets in, where
-they become requesters.
+Friends: only --add-user makes accounts (ALLOW_USER_SIGNUPS disabled), and nobody can rename
+their own (ALLOW_OWN_ACCOUNT_EDIT false). That matters because Jellyfin and Audiobookshelf link a
+Pocket ID login to their existing account with the same username: give a friend the username they
+already have there (their Wizarr account) and both keep working. --groups replaces the friend's
+groups; the link (7 days, one use) signs them in once so they can add a passkey, and running
+--add-user again for them prints a new one (new phone, lost passkey).
 """
 
 from __future__ import annotations
@@ -67,12 +71,18 @@ IMAGES = {
     "favicon": ("favicon.svg", {}),
 }
 ADMINS = "lab-admins"
-FRIENDS = "book-friends"
-GROUPS = [
-    {"name": ADMINS, "friendlyName": "Lab admins"},
-    {"name": FRIENDS, "friendlyName": "Book friends"},
-]
-INVITE_TTL = "168h"
+# What a friend can open (each client below lists the groups it lets in):
+#   media    Jellyfin (every library) and the Seerr tile; Seerr itself signs in with Jellyfin
+#   live-tv  Live TV in Jellyfin, on top of media
+#   books    Bindery (as a requester) and Audiobookshelf
+FRIEND_GROUPS = {
+    "media": "Movies & TV",
+    "live-tv": "Live TV",
+    "books": "Books",
+}
+GROUPS = [{"name": ADMINS, "friendlyName": "Lab admins"}] + [
+    {"name": name, "friendlyName": friendly} for name, friendly in FRIEND_GROUPS.items()]
+FRIEND_LINK_TTL = "168h"
 # Created with these values; afterwards only isAdmin and the group are enforced, so profile edits
 # made under My Account (username, names) stick. Found by email.
 OWNER = {
@@ -110,13 +120,26 @@ CLIENTS: dict[str, dict] = {
         ],
         "launchURL": "https://hnhv01.internal.z7x.org:8006",
     },
+    # SSO plugin (apps/media/jellyfin/app/install-sso.py): lab-admins are admins, media signs in,
+    # live-tv adds Live TV. A login lands in the Jellyfin account with the same username.
     "jellyfin": {
         "name": "Jellyfin",
         "callbackURLs": ["https://media.z7x.org/sso/OID/redirect/pocket-id"],
         "launchURL": "https://media.z7x.org",
+        "groups": [ADMINS, "media"],
     },
-    # Audiobookshelf serves under /audiobookshelf; /mobile-redirect is for its apps' SSO. Only the
-    # admin uses this (friends have password accounts from Wizarr); setup.py links it by username.
+    # Only a tile on My Apps: Seerr has no OpenID Connect, so people sign in there with Jellyfin
+    # (Quick Connect for Pocket ID users, who have no Jellyfin password). The callback is pinned so
+    # Pocket ID never adopts one, and no secret is set or stored.
+    "seerr": {
+        "name": "Requests",
+        "callbackURLs": ["https://requests.z7x.org/"],
+        "launchURL": "https://requests.z7x.org",
+        "groups": [ADMINS, "media"],
+        "secret": False,
+    },
+    # Audiobookshelf serves under /audiobookshelf; /mobile-redirect is for its apps' SSO. Its
+    # setup.py links a login to the account with the same username and creates one otherwise.
     "audiobookshelf": {
         "name": "Audiobookshelf",
         "callbackURLs": [
@@ -125,16 +148,17 @@ CLIENTS: dict[str, dict] = {
         ],
         "launchURL": "https://books.z7x.org",
         "pkceEnabled": True,
+        "groups": [ADMINS, "books"],
     },
-    # Bindery (bindery.z7x.org): friends in book-friends sign in as requesters,
-    # lab-admins as admins (BINDERY_OIDC_ADMIN_GROUP in its HelmRelease). Its setup.py registers
-    # the provider with id "pocket-id", which is the last path segment here.
+    # Bindery (bindery.z7x.org): books signs in as a requester, lab-admins as admin
+    # (BINDERY_OIDC_ADMIN_GROUP in its HelmRelease). Its setup.py registers the provider with id
+    # "pocket-id", which is the last path segment here.
     "bindery": {
         "name": "Book requests",
         "callbackURLs": ["https://bindery.z7x.org/api/v1/auth/oidc/pocket-id/callback"],
         "launchURL": "https://bindery.z7x.org",
         "pkceEnabled": True,
-        "groups": [ADMINS, FRIENDS],
+        "groups": [ADMINS, "books"],
     },
     "flux": {
         "name": "Flux",
@@ -241,6 +265,8 @@ def ensure_client(api: Api, cid: str, spec: dict, gids: dict[str, str], vault: d
         api.change(f"limit client {cid} to {', '.join(names)}", "PUT",
                    f"/oidc/clients/{cid}/allowed-user-groups", json={"userGroupIds": sorted(wanted)})
 
+    if not spec.get("secret", True):
+        return
     key = f"vault_pocket_id_{cid.replace('-', '_')}_secret"
     secret = vault.get(key)
     if not secret:
@@ -300,12 +326,37 @@ def sync_sops(api: Api, path: Path, key: str, value: str) -> None:
         sops("set", "--value-stdin", str(path), index, stdin=json.dumps(value)).check_returncode()
 
 
+def ensure_friend(api: Api, username: str, groups: list[str], gids: dict[str, str]) -> str | None:
+    """Create the friend if missing and set their groups to exactly these; their user id."""
+    unknown = [g for g in groups if g not in FRIEND_GROUPS]
+    if unknown:
+        sys.exit(f"unknown group(s) {', '.join(unknown)}; friends can have {', '.join(FRIEND_GROUPS)}")
+    want = sorted(gids[g] for g in groups if g in gids)
+    user = next((u for u in api.get_all("/users") if u["username"].lower() == username.lower()), None)
+    if user is None:
+        made = api.change(f"create user {username} in {', '.join(groups)}", "POST", "/users", json={
+            "username": username, "firstName": username, "displayName": username,
+            "isAdmin": False, "userGroupIds": want})
+        return made["id"] if made else None
+    if user["isAdmin"] or gids.get(ADMINS) in {g["id"] for g in api.req("GET", f"/users/{user['id']}/groups")}:
+        sys.exit(f"{user['username']} is an admin; --add-user only manages friends")
+    have = sorted(g["id"] for g in api.req("GET", f"/users/{user['id']}/groups"))
+    if have != want:
+        api.change(f"set {user['username']}'s groups to {', '.join(groups) or 'none'}", "PUT",
+                   f"/users/{user['id']}/user-groups", json={"userGroupIds": want})
+    return user["id"]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--link", action="store_true")
-    ap.add_argument("--invite", action="store_true")
+    ap.add_argument("--add-user", metavar="USERNAME",
+                    help="their username in Jellyfin/Audiobookshelf, if they have one")
+    ap.add_argument("--groups", default="", help=f"comma-separated, from: {', '.join(FRIEND_GROUPS)}")
     args = ap.parse_args()
+    if args.groups and not args.add_user:
+        ap.error("--groups goes with --add-user")
 
     vault = vault_get()
     api = Api(vault["vault_pocket_id_static_api_key"], args.check)
@@ -325,11 +376,13 @@ def main() -> None:
             # submits 12-character codes while email login codes are disabled.
             token = api.req("POST", f"/users/{uid}/one-time-access-token", json={"ttl": "30m"})["token"]
             print(f"{'no passkey yet; ' if not passkeys else ''}sign in once (30 min): {BASE}/lc/{token}")
-    if args.invite and not args.check:
-        # One account per link; it joins book-friends and nothing else.
-        made = api.req("POST", "/signup-tokens", json={
-            "ttl": INVITE_TTL, "usageLimit": 1, "userGroupIds": [gids[FRIENDS]]})
-        print(f"friend sign-up link (7 days, one use): {BASE}/st/{made['token']}")
+    if args.add_user:
+        groups = [g.strip() for g in args.groups.split(",") if g.strip()]
+        fid = ensure_friend(api, args.add_user, groups, gids)
+        if fid and not args.check:
+            token = api.req("POST", f"/users/{fid}/one-time-access-token",
+                            json={"ttl": FRIEND_LINK_TTL})["token"]
+            print(f"{args.add_user}: sign in once and add a passkey (7 days): {BASE}/lc/{token}")
     print("ok, no changes" if not api.changes else f"{len(api.changes)} change(s)")
 
 

@@ -14,10 +14,13 @@ Everything goes through Audiobookshelf's HTTP API (server/routers/ApiRouter.js, 
    only once, so one is minted (and older "bindery" keys deleted) only when Bindery has none or
    its saved one stopped working.
 5. Sign in with Pocket ID (OpenID Connect, client "audiobookshelf" in scripts/pocket-id.py) next to
-   the password form. Endpoints come from Pocket ID's discovery document. Existing accounts are
-   matched by username (Pocket ID's preferred_username "jacob" is the root user) and nobody is
-   auto-registered, so friends keep their Wizarr-made password accounts. Audiobookshelf caches
-   its OIDC client, so when these settings change while OIDC is on, it's switched off and on again.
+   the password form. Endpoints come from Pocket ID's discovery document; Pocket ID lets in
+   lab-admins and books. A login is matched to the account with the same username (Pocket ID's
+   "jacob" is the root user, a friend's username is their Wizarr one), and anyone without an
+   account gets a regular "user" one. Usernames are safe to match on because only
+   scripts/pocket-id.py --add-user makes Pocket ID accounts and nobody can rename their own.
+   Audiobookshelf caches its OIDC client, so when these settings change while OIDC is on, it's
+   switched off and on again.
 
 Idempotent: re-running changes nothing that already matches.
 """
@@ -197,7 +200,7 @@ def ensure_openid(abs_: Abs) -> None:
         "authOpenIDClientSecret": OIDC_CLIENT_SECRET,
         "authOpenIDButtonText": "Sign in with Pocket ID",
         "authOpenIDAutoLaunch": False,
-        "authOpenIDAutoRegister": False,
+        "authOpenIDAutoRegister": True,
         "authOpenIDMatchExistingBy": "username",
         "authOpenIDSubfolderForRedirectURLs": BASE_PATH,
     }

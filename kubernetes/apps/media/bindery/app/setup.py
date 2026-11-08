@@ -53,7 +53,7 @@ OIDC_PROVIDER = {
     "client_id": "bindery",
     "scopes": ["openid", "email", "profile", "groups"],
     # Pocket ID already limits the client to these groups; this is the second lock.
-    "allowed_groups": ["lab-admins", "book-friends"],
+    "allowed_groups": ["lab-admins", "books"],
 }
 
 EBOOK_ROOT = "/media/library/books"

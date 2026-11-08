@@ -7,8 +7,12 @@
    only load at process start, and Jellyfin's own /System/Restart doesn't restart the container).
    The Job's ServiceAccount may patch only that Deployment, the way `kubectl rollout restart` does.
 3. Wait for the plugin to report Active, then PUT its configuration: a "pocket-id" OpenID
-   provider pointed at https://id.z7x.org, client id "jellyfin", RBAC on, group "lab-admins"
-   both allowed to sign in and mapped to Jellyfin admin. NewPath=true locks the callback at
+   provider pointed at https://id.z7x.org, client id "jellyfin", RBAC on: groups "lab-admins"
+   (Jellyfin admin) and "media" may sign in, every library, and Live TV only for "lab-admins" and
+   "live-tv" (the plugin re-applies admin, libraries and Live TV on every login). A login lands in
+   the Jellyfin account with the same username, so friends' Pocket ID usernames match their
+   Wizarr ones (scripts/pocket-id.py --add-user). The plugin's own CanonicalLinks (which login is
+   which account) are kept as they are. NewPath=true locks the callback at
    /sso/OID/redirect/pocket-id, which is exactly what's registered as this client's callback URL
    in Pocket ID (see scripts/pocket-id.py CLIENTS["jellyfin"]).
 
@@ -49,12 +53,12 @@ PROVIDER_CONFIG = {
     "EnabledFolders": [],
     "AdminRoles": ["lab-admins"],
     "PreserveAdminPermissions": True,
-    "Roles": ["lab-admins"],
+    "Roles": ["lab-admins", "media"],
     "EnableFolderRoles": False,
-    "EnableLiveTvRoles": False,
-    "EnableLiveTv": True,
+    "EnableLiveTvRoles": True,
+    "EnableLiveTv": False,
     "EnableLiveTvManagement": False,
-    "LiveTvRoles": [],
+    "LiveTvRoles": ["lab-admins", "live-tv"],
     "LiveTvManagementRoles": [],
     "FolderRoleMapping": [],
     "RoleClaim": "groups",
@@ -67,7 +71,6 @@ PROVIDER_CONFIG = {
     "SchemeOverride": "https",
     "PortOverride": None,
     "NewPath": True,
-    "CanonicalLinks": {},
     "DefaultUsernameClaim": None,
     "AvatarUrlFormat": None,
     "DisableHttps": False,
@@ -83,10 +86,13 @@ def set_config():
     if status != 200 or config is None:
         sys.exit(f"could not read plugin configuration (status {status})")
     config.setdefault("OidConfigs", {})
-    if config["OidConfigs"].get(PROVIDER_NAME) == PROVIDER_CONFIG:
+    current = config["OidConfigs"].get(PROVIDER_NAME) or {}
+    # The plugin records which login is which Jellyfin account here; never reset it.
+    wanted = {**PROVIDER_CONFIG, "CanonicalLinks": current.get("CanonicalLinks") or {}}
+    if current == wanted:
         print(f"{PROVIDER_NAME} provider already configured")
         return
-    config["OidConfigs"][PROVIDER_NAME] = PROVIDER_CONFIG
+    config["OidConfigs"][PROVIDER_NAME] = wanted
     call("POST", f"/Plugins/{PLUGIN_GUID}/Configuration", config)
     print(f"configured {PROVIDER_NAME} provider")
 

@@ -102,16 +102,30 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
   (CiliumNetworkPolicy `lab-sso-ingress`), so going to a pod directly can't skip the passkey.
   In-cluster callers keep using API keys; through the gateway every request needs the passkey
   session, so phone apps that call `sonarr.z7x.org/api` directly won't get through.
-- Only Pocket ID's `lab-admins` group gets in. `../scripts/pocket-id.py` owns that group, the
-  owner account, the OIDC clients and their secrets (`vault_pocket_id_<client>_secret`, copied
-  into the sops Secrets that need them; commit what it lists). `--link` prints a one-time
-  sign-in link (30 minutes) for adding a passkey on a new device or after losing one.
-- Friends get Pocket ID accounts only from a sign-up link: `scripts/pocket-id.py --invite` prints
-  one (7 days, one account; `ALLOW_USER_SIGNUPS: withToken`). The account lands in the
-  `book-friends` group, which only the `bindery` client lets in.
+- The lab's own apps let in only Pocket ID's `lab-admins` group. `../scripts/pocket-id.py` owns
+  the groups, the owner account, the OIDC clients and their secrets
+  (`vault_pocket_id_<client>_secret`, copied into the sops Secrets that need them; commit what it
+  lists). `--link` prints a one-time sign-in link (30 minutes) for adding a passkey on a new
+  device or after losing one.
+- Friends' groups, each listing what it opens:
+
+  | Group | Opens |
+  |---|---|
+  | `media` | Jellyfin (every library, no admin) and the Requests tile; Seerr itself signs in with Jellyfin (Quick Connect for Pocket ID users, who have no Jellyfin password) |
+  | `live-tv` | Live TV in Jellyfin, on top of `media` |
+  | `books` | Bindery (as a requester) and Audiobookshelf |
+
+  `scripts/pocket-id.py --add-user leah --groups media,live-tv,books` creates the account (or
+  sets an existing one's groups to exactly these) and prints a one-use sign-in link, good for 7
+  days, for adding a passkey; run it again for a new link. It's the only way in: sign-ups are off
+  and nobody can rename their own account (`ALLOW_USER_SIGNUPS: disabled`,
+  `ALLOW_OWN_ACCOUNT_EDIT: "false"`), because Jellyfin and Audiobookshelf link a Pocket ID login
+  to their existing account with the same username. Give a friend who already has a Wizarr
+  account that username and both ways in reach the same account. Jellyfin's SSO plugin re-applies
+  admin, libraries and Live TV from the groups on every Pocket ID login.
 - Signing in at `id.z7x.org` lands on **My Apps** (`HOME_PAGE_URL: /settings/apps`): a tile for
-  every client whose `launchURL` one of your groups may open. Friends see Book requests; you see
-  everything. An app shows up there only once it has a client in `scripts/pocket-id.py`.
+  every client whose `launchURL` one of your groups may open. An app shows up there only once it
+  has a client in `scripts/pocket-id.py` (Seerr's `seerr` client is only that tile).
 - The sign-in pages carry the Homelab theme, in two parts. `apps/auth/pocket-id/branding/` holds
   the images: the animated orbit of the lab's apps (the right-hand panel), the rack logo, the
   favicon and a logo per OIDC client. `branding/build.py` builds them from `branding/icons/`, and
@@ -157,13 +171,19 @@ scripts/bw-sync.py
 the archived `9p4/jellyfin-plugin-sso`; its `>= 5.1` releases target Jellyfin `>= 12.0`, matching
 the server here) and configures a `pocket-id` OpenID provider: endpoint `https://id.z7x.org`,
 client id `jellyfin` (secret `vault_pocket_id_jellyfin_secret`, provisioned by
-`scripts/pocket-id.py`), scopes `openid profile email groups`, RBAC on with group `lab-admins`
-both allowed to sign in and mapped to Jellyfin admin (`RoleClaim: groups`). The `jellyfin-sso`
+`scripts/pocket-id.py`), scopes `openid profile email groups`, RBAC on (`RoleClaim: groups`):
+`lab-admins` and `media` may sign in, `lab-admins` is Jellyfin admin, every library is open, and
+Live TV is on only for `lab-admins` and `live-tv`. The plugin re-applies those on every Pocket ID
+login and lands it in the Jellyfin account with the same username (creating one with no usable
+password otherwise); `install-sso.py` never touches its record of which login is which account
+(`CanonicalLinks`). The `jellyfin-sso`
 Secret and `jellyfin-sso-install` Job do the work: add the plugin repository, install the plugin,
 restart Jellyfin to load it, PUT its configuration, and add a "Sign in with Pocket ID" button to
 the login page (`Settings > General > Branding`'s `LoginDisclaimer`/`CustomCss`, merged in rather
 than overwritten). Local accounts and Quick Connect (the only sign-in path for apps/TVs; the
-plugin is web-browser only) keep working untouched.
+plugin is web-browser only) keep working untouched: someone with only a Pocket ID login signs in
+on a TV or phone app by approving its Quick Connect code from the browser, and in Seerr the same
+way.
 
 The Job needs a Jellyfin admin API key, which has no default -- create one in Jellyfin's
 **Dashboard > API Keys**, then:
@@ -366,8 +386,8 @@ HelmRelease here.
   a book or an author and follow the request, but can't grab, download, use OPDS or see settings.
   Requests wait under Requests for an admin to approve (or tick Auto-approve for that friend on
   the Users page). `lab-admins` members are made admin on every login
-  (`BINDERY_OIDC_ADMIN_GROUP`). To add a friend: `scripts/pocket-id.py --invite`, send them the
-  link, they make a passkey and sign in at `bindery.z7x.org`. The `bindery-setup` Job
+  (`BINDERY_OIDC_ADMIN_GROUP`). Friends in the `books` group sign in at `bindery.z7x.org`. The
+  `bindery-setup` Job
   (`app/setup.py`) sets all of it, the Pocket ID provider and the auth mode included, with the
   instance API key (`vault_bindery_api_key` into the `bindery` Secret via
   `scripts/media-secrets.py`; it also seeds a fresh install). The Audiobookshelf setup Job uses the
@@ -380,10 +400,11 @@ HelmRelease here.
   (`/media/library/audiobooks`, audiobooks only) and Ebooks (`/media/library/books`). Its folder
   watcher can't see files written by another NFS client, so it's off and both libraries rescan
   every 30 minutes; Bindery also triggers an Audiobooks scan right after each audiobook import
-  (Bindery's Audiobookshelf integration only does that for audiobooks). Friends get accounts from
-  Wizarr invites and sign in with a password. The admin `jacob` signs in with "Sign in with Pocket
-  ID" (client `audiobookshelf` in `../scripts/pocket-id.py`, lab-admins only; matched to `jacob`
-  by username, nobody is auto-registered); its generated password (`vault_audiobookshelf_password`,
+  (Bindery's Audiobookshelf integration only does that for audiobooks). Friends sign in with the
+  password from their Wizarr invite, or with "Sign in with Pocket ID" if they're in the `books`
+  group (client `audiobookshelf` in `../scripts/pocket-id.py`): a login is matched to the account
+  with the same username (Pocket ID's `jacob` is the root user) and anyone without one gets a
+  regular account. The `jacob` password (`vault_audiobookshelf_password`,
   Bitwarden "Homelab: Audiobookshelf") is the break-glass login and the setup Jobs' own. Its admin
   pages share the app's paths, so unlike Wizarr's they can't be kept off the internet. The
   `audiobookshelf-setup` Job (`app/setup.py`) creates that admin on a fresh install and keeps the
