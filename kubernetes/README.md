@@ -443,7 +443,8 @@ HelmRelease here.
   arr's queue is skipped, and if an arr can't be reached the whole run does nothing. Torrents still
   sitting past their share limit after 24 h are removed too, as a backstop to the arrs' own
   Remove Completed. It tags rather than recategorizes, because a category change would make
-  qBittorrent move the files.
+  qBittorrent move the files. Both rules touch public torrents only: private-tracker ones
+  (MyAnonamouse) are removed after 7 days of seeding, nothing sooner.
 - **Live sports (`apps/media/jellyball`, `jellyball.z7x.org`):**
   [Jellyball](https://github.com/DarthBitBeard/Jellyball) finds the games of the teams ticked in
   its dashboard (Channels & Streams > Sports Catalog > Apply Selected Teams; also always-live
@@ -491,7 +492,11 @@ HelmRelease here.
   `.../usenet/incomplete`, categories movies/tv/music/books, the unwanted-extension blacklist
   that fails fake `.exe`/`.scr` releases) and the Newshosting server; qBittorrent's (save path
   `/media/downloads/torrents`, Automatic torrent management, the same four categories, and
-  minimal seeding: stop at ratio 0.1 or 10 minutes, after which the arrs remove the torrent). In
+  minimal seeding: stop at ratio 0.1 or 10 minutes, after which the arrs remove the torrent; it
+  never queues a seeding torrent, since a queued one doesn't announce and a private tracker then
+  counts no seed time). MyAnonamouse grabs override that per torrent: `bindery-setup` gives its
+  indexer 7 days of seeding and no ratio limit (MAM wants 72 h; the margin covers downtime).
+  qBittorrent is held at 5.2.x because MAM doesn't allow 5.3 yet (`.github/renovate.json5`). In
   Sonarr/Radarr/Lidarr: both as download clients, `/media/library/<kind>` as root folder, and a
   Jellyfin connection that refreshes the library after imports. Prowlarr gets full-sync links to
   those three plus the NZBFinder and Anime Tosho (`feed.animetosho.net`) indexers. Downloads and
