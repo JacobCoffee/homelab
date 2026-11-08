@@ -285,6 +285,8 @@ def configure_qbittorrent() -> None:
         "max_active_torrents": -1,
     }
     prefs = call("GET", f"{api}/app/preferences")
+    if "share_limits_mode" not in prefs:  # 5.3+ only; 5.2 always stops at whichever limit hits first
+        del wanted["share_limits_mode"]
     changed = {k: v for k, v in wanted.items() if prefs.get(k) != v}
     if changed:
         call("POST", f"{api}/app/setPreferences", form={"json": json.dumps(changed)})
