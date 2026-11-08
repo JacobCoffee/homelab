@@ -37,6 +37,16 @@ spec:
                 secretKeyRef:
                   name: arr-api-keys
                   key: PROWLARR_API_KEY
+            - name: BINDERY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bindery
+                  key: BINDERY_API_KEY
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bindery
+                  key: OIDC_CLIENT_SECRET
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

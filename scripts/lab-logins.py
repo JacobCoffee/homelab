@@ -17,14 +17,13 @@ offers:
   qBittorrent                        subnet bypass for the pod network (its init container)
   Bazarr                             auth type None
   SABnzbd                            no username/password
-  Bindery                            auth mode local-only (pod IPs are private)
   Cleanuparr                         "disable auth for local addresses", pod network trusted
   Uptime Kuma                        disableAuth
   Dispatcharr                        Reverse Proxy Auth: its route asserts the user (X-Lab-User)
 
 The shared login (vault_lab_admin_username / vault_lab_admin_password) stays on the accounts that
 still have a job: qBittorrent's, for anything outside the pod network; Grafana's local admin, the
-break-glass login next to "Sign in with Pocket ID" (and the Git Sync job's); and the Kuma, Bindery,
+break-glass login next to "Sign in with Pocket ID" (and the Git Sync job's); and the Kuma,
 Cleanuparr and Dispatcharr accounts this script uses to change their settings (Dispatcharr's is
 the user the gateway signs in, and its setup Job's login). The files that hand it to an
 app on restart are kept in step:
@@ -206,48 +205,6 @@ def sabnzbd(run: Run, key: str) -> str:
     return "turned off" if eventually(off) else "FAILED: still asks for a login"
 
 
-def bindery(run: Run) -> str:
-    base = f"{run.url('media', 'bindery', 8787)}/api/v1"
-
-    def login(pw: str) -> requests.Session | None:
-        s = requests.Session()
-        r = s.post(f"{base}/auth/login", timeout=TIMEOUT,
-                   json={"username": run.user, "password": pw, "rememberMe": False})
-        return s if r.ok else None
-
-    def csrf(s: requests.Session) -> dict[str, str]:
-        token = s.get(f"{base}/auth/csrf", headers={"X-Requested-With": "bindery-ui"},
-                      timeout=TIMEOUT).json()["csrfToken"]
-        # Mutations need both: the double-submit token and Bindery's UI marker header.
-        return {"X-CSRF-Token": token, "X-Requested-With": "bindery-ui"}
-
-    status = requests.get(f"{base}/auth/status", timeout=TIMEOUT).json()
-    if status.get("setupRequired"):
-        if run.check:
-            return "needs setup (anyone can claim it)"
-        requests.post(f"{base}/auth/setup", timeout=TIMEOUT,
-                      json={"username": run.user, "password": run.password}).raise_for_status()
-    s = login(run.password)
-    if s is None:
-        for old in run.candidates():
-            if (s := login(old)) is not None:
-                if run.check:
-                    return "needs a password update"
-                s.post(f"{base}/auth/password", timeout=TIMEOUT, headers=csrf(s),
-                       json={"currentPassword": old, "newPassword": run.password}).raise_for_status()
-                if (s := login(run.password)) is None:
-                    return NOT_SET
-                break
-        else:
-            return "FAILED: neither the shared nor the previous password works"
-    if status.get("mode") == "local-only":
-        return "ok (off)"
-    if run.check:
-        return "needs turning off"
-    s.put(f"{base}/auth/mode", timeout=TIMEOUT, headers=csrf(s), json={"mode": "local-only"}).raise_for_status()
-    return "turned off (local-only)"
-
-
 def cleanuparr(run: Run) -> str:
     base = f"{run.url('media', 'cleanuparr', 11011)}/api"
 
@@ -426,7 +383,6 @@ def main(argv: list[str]) -> int:
         steps |= {
             "Bazarr": lambda: bazarr(run),
             "SABnzbd": lambda: sabnzbd(run, arr["SABNZBD_API_KEY"]),
-            "Bindery": lambda: bindery(run),
             "Cleanuparr": lambda: cleanuparr(run),
             "Uptime Kuma": lambda: uptime_kuma(run),
             "Dispatcharr": lambda: dispatcharr(run),

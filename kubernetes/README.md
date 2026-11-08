@@ -93,10 +93,10 @@ token in `cert-manager-issuers` and `external-dns-cloudflare` is the vault's
 
 You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/pocket-id`):
 
-- Grafana, Proxmox (realm `pocket-id`, Ansible `pve_oidc`), Jellyfin in the browser and the Flux
-  web UI have their own "Sign in with Pocket ID".
+- Grafana, Proxmox (realm `pocket-id`, Ansible `pve_oidc`), Jellyfin in the browser, Bindery and
+  the Flux web UI have their own "Sign in with Pocket ID".
 - The rest of the internal apps have no SSO of their own, so Envoy's OIDC filter sits in front of
-  them (`apps/network/lab-sso`) and their own logins are off: the *arrs, Bazarr, SABnzbd, Bindery,
+  them (`apps/network/lab-sso`) and their own logins are off: the *arrs, Bazarr, SABnzbd,
   Cleanuparr, qBittorrent, Unpackerr, Dispatcharr (the route asserts the user, see "Media stack"), Uptime Kuma's admin UI (`status.z7x.org`), Wizarr's admin UI (`invite.z7x.org`), Jellyball (the route sends its login, see "Media stack") and the start page. Their pods
   only take traffic from the gateway, their own namespace, `status` and `observability`
   (CiliumNetworkPolicy `lab-sso-ingress`), so going to a pod directly can't skip the passkey.
@@ -106,6 +106,9 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
   owner account, the OIDC clients and their secrets (`vault_pocket_id_<client>_secret`, copied
   into the sops Secrets that need them; commit what it lists). `--link` prints a one-time
   sign-in link (30 minutes) for adding a passkey on a new device or after losing one.
+- Friends get Pocket ID accounts only from a sign-up link: `scripts/pocket-id.py --invite` prints
+  one (7 days, one account; `ALLOW_USER_SIGNUPS: withToken`). The account lands in the
+  `book-friends` group, which only the `bindery` client lets in.
 - The sign-in pages carry the Homelab theme, in two parts. `apps/auth/pocket-id/branding/` holds
   the images: the animated orbit of the lab's apps (the right-hand panel), the rack logo, the
   favicon and a logo per OIDC client. `branding/build.py` builds them from `branding/icons/`, and
@@ -118,7 +121,7 @@ You sign in with a passkey through Pocket ID (`https://id.z7x.org`, `apps/auth/p
 `../scripts/lab-logins.py` keeps the apps' own logins off (`--check` only reports), and keeps the
 shared login, `admin` and `vault_lab_admin_password`, on the accounts that still have a job:
 qBittorrent's (anything outside the pod network), Grafana's local admin (break-glass next to
-Pocket ID, and the Git Sync job's), and the Kuma, Bindery and Cleanuparr accounts the script
+Pocket ID, and the Git Sync job's), and the Kuma and Cleanuparr accounts the script
 changes their settings with. It keeps qBittorrent's hash in `gluetun-secret`, Kuma's seed login
 and Grafana's admin secret in step.
 
@@ -350,18 +353,26 @@ HelmRelease here.
   Deleting someone in Wizarr's Users page removes one server's account per row (each server is
   its own row). Wizarr has no Discord bot; the Discord step is the server's widget, which
   stays blank until Server Settings > Engagement > Server Widget is enabled in Discord.
-- **Books (`apps/media/bindery`):** one Bindery for ebooks and audiobooks (new authors default to
-  both): roots `/media/library/books` and `/media/library/audiobooks`, SABnzbd and qBittorrent
-  with category `books`, E-Book profile epub first, Audiobook profile m4b first. Bindery isn't a
-  Prowlarr sync target; instead it registers Prowlarr and pulls its indexers itself. The
-  `bindery-setup` Job (`app/setup.py`) sets all of it without an API key, through Bindery's
-  local-only auth, and `lab-sso-ingress` keeps other pods out. Since v1.46.4 local-only skips the
-  login only for host names a public site can't have, so `BINDERY_ALLOWED_HOSTS` in
-  `app/helmrelease.yaml` lists the two dotted names used: `bindery.z7x.org` (behind lab-sso) and
-  `bindery.media.svc.cluster.local` (the Job). Any other dotted name gets Bindery's login page.
+- **Books (`apps/media/bindery`, `bindery.z7x.org`):** one Bindery for ebooks and audiobooks (new
+  authors default to both): roots `/media/library/books` and `/media/library/audiobooks`, SABnzbd
+  and qBittorrent with category `books`, E-Book profile epub first, Audiobook profile m4b first.
+  Bindery isn't a Prowlarr sync target; instead it registers Prowlarr and pulls its indexers
+  itself. It's on both gateways so friends can ask for books: auth mode `enabled`, password
+  logins off, and "Pocket ID" (client `bindery`) the only way in. A new account is a
+  **requester** (`BINDERY_OIDC_DEFAULT_ROLE`): it can browse the library's titles, search, request
+  a book or an author and follow the request, but can't grab, download, use OPDS or see settings.
+  Requests wait under Requests for an admin to approve (or tick Auto-approve for that friend on
+  the Users page). `lab-admins` members are made admin on every login
+  (`BINDERY_OIDC_ADMIN_GROUP`). To add a friend: `scripts/pocket-id.py --invite`, send them the
+  link, they make a passkey and sign in at `bindery.z7x.org`. The `bindery-setup` Job
+  (`app/setup.py`) sets all of it, the Pocket ID provider and the auth mode included, with the
+  instance API key (`vault_bindery_api_key` into the `bindery` Secret via
+  `scripts/media-secrets.py`; it also seeds a fresh install). The Audiobookshelf setup Job uses the
+  same key. Break-glass: `kubectl -n media port-forward svc/bindery 8787` and the API key.
 - **Reading and listening (`apps/media/audiobookshelf`, `books.z7x.org`):** Audiobookshelf serves
   what Bindery downloads, on both gateways, so friends use it from anywhere: the web app, its
-  Android app, and on iPhone ShelfPlayer, Plappa or Morrow (the official iOS app is a full
+  Android app, and on iPhone SoundLeaf (free, offline downloads, an ebook reader), ShelfPlayer,
+  Plappa or Morrow (the official iOS app is a full
   TestFlight beta). It mounts `/media` read-only and has two libraries, Audiobooks
   (`/media/library/audiobooks`, audiobooks only) and Ebooks (`/media/library/books`). Its folder
   watcher can't see files written by another NFS client, so it's off and both libraries rescan

@@ -13,7 +13,7 @@ spec:
   template:
     metadata:
       annotations:
-        media-config/credentials-rev: "2026-11-07T23:44:59Z"
+        media-config/credentials-rev: "2026-11-08T00:43:59Z"
     spec:
       restartPolicy: OnFailure
       securityContext:
@@ -38,6 +38,11 @@ spec:
                 secretKeyRef:
                   name: audiobookshelf
                   key: OIDC_CLIENT_SECRET
+            - name: BINDERY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bindery
+                  key: BINDERY_API_KEY
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

@@ -1,6 +1,6 @@
 # Bindery plus its setup Job (app/setup.py): ebook + audiobook root folders, SABnzbd/qBittorrent
-# download clients, and a Prowlarr indexer sync. force: true re-creates the (immutable) Job when
-# its script changes, so each change runs it once.
+# download clients, a Prowlarr indexer sync, and Pocket ID sign-in. force: true re-creates the
+# (immutable) Job when its script changes, so each change runs it once.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -15,6 +15,10 @@ spec:
   retryInterval: 1m
   timeout: 10m
   force: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
   dependsOn:
     - name: media-app-template
     - name: envoy-gateway-config

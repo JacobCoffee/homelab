@@ -44,7 +44,9 @@ spec:
               # The Homelab theme's amber (app/theme/lab.css, branding/build.py).
               ACCENT_COLOR: "#FFB224"
               SESSION_DURATION: "720"
-              ALLOW_USER_SIGNUPS: disabled
+              # Only through a sign-up link (scripts/pocket-id.py --invite), which puts the new
+              # account in book-friends: Bindery's requester login and nothing else.
+              ALLOW_USER_SIGNUPS: withToken
               # No SMTP: mark addresses verified so apps that check email_verified accept them.
               EMAILS_VERIFIED: "true"
             envFrom:

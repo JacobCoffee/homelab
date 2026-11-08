@@ -50,6 +50,11 @@ TARGETS = [
     (MEDIA / "audiobookshelf/app/secret.sops.yaml", MEDIA / "audiobookshelf/app/setup-job.yaml", {
         "vault_audiobookshelf_password": "ABS_ROOT_PASSWORD",
     }),
+    # Bindery's instance API key (read once from Bindery, Settings > General). The setup Jobs of
+    # Bindery and Audiobookshelf use it, and it seeds a fresh install.
+    (MEDIA / "bindery/app/secret.sops.yaml", MEDIA / "bindery/app/setup-job.yaml", {
+        "vault_bindery_api_key": "BINDERY_API_KEY",
+    }),
 ]
 
 

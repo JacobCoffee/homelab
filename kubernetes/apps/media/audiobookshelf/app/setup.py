@@ -37,6 +37,7 @@ BINDERY = os.environ.get("BINDERY_URL", f"http://bindery.{SVC}:8787").rstrip("/"
 ROOT_USERNAME = "jacob"
 ROOT_PASSWORD = os.environ["ABS_ROOT_PASSWORD"]
 BINDERY_KEY_NAME = "bindery"
+BINDERY_API_KEY = os.environ["BINDERY_API_KEY"]
 
 SCAN_CRON = "*/30 * * * *"
 LIBRARIES = [
@@ -85,8 +86,8 @@ class Abs:
 
 
 def bindery(method: str, path: str, body: dict | None = None, ok: bool = False):
-    # Local-only auth: an in-cluster request to Bindery's service name is the admin.
-    status, data = call(method, f"{BINDERY}/api/v1{path}", body, {"X-Requested-With": "bindery-ui"})
+    # Bindery's instance API key (the bindery Secret): Bindery asks everyone else to sign in.
+    status, data = call(method, f"{BINDERY}/api/v1{path}", body, {"X-Api-Key": BINDERY_API_KEY})
     if status >= 300 and not ok:
         sys.exit(f"Bindery: {method} {path} -> {status} {str(data)[:300]}")
     return status, data

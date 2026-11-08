@@ -3,13 +3,15 @@
 # requires-python = ">=3.12"
 # dependencies = ["requests>=2.32", "pyyaml>=6"]
 # ///
-"""Keep Pocket ID (https://id.z7x.org) in step with this file: the lab-admins group, the owner
-account in it, one OIDC client per app, each only open to lab-admins, and the Homelab branding
-(background, logos, favicon, client logos from kubernetes/apps/auth/pocket-id/branding/).
+"""Keep Pocket ID (https://id.z7x.org) in step with this file: the lab-admins and book-friends
+groups, the owner account in lab-admins, one OIDC client per app (open to lab-admins unless its
+entry names other groups), and the Homelab branding (background, logos, favicon, client logos
+from kubernetes/apps/auth/pocket-id/branding/).
 
     scripts/pocket-id.py            # apply
     scripts/pocket-id.py --check    # only report what would change
     scripts/pocket-id.py --link     # also print a fresh one-time sign-in link for the owner
+    scripts/pocket-id.py --invite   # also print a sign-up link for one friend (7 days)
 
 Talks to the REST API with STATIC_API_KEY (vault_pocket_id_static_api_key). Client secrets are
 generated into the vault as vault_pocket_id_<client>_secret and handed to Pocket ID, so the vault
@@ -18,6 +20,10 @@ a rotation, re-run whatever reads the key (the sops Secrets, ansible --tags pock
 
 While the owner has no passkey yet, it prints a one-time link (30 minutes) that signs in once so
 a passkey can be added under My Account.
+
+Friends sign up only through an --invite link (ALLOW_USER_SIGNUPS withToken in the Pocket ID
+HelmRelease). The link puts them in book-friends, which only the "bindery" client lets in, where
+they become requesters.
 """
 
 from __future__ import annotations
@@ -49,6 +55,8 @@ SOPS = {
         {"client-secret": "vault_pocket_id_flux_secret"},
     "kubernetes/apps/media/audiobookshelf/app/secret.sops.yaml":
         {"OIDC_CLIENT_SECRET": "vault_pocket_id_audiobookshelf_secret"},
+    "kubernetes/apps/media/bindery/app/secret.sops.yaml":
+        {"OIDC_CLIENT_SECRET": "vault_pocket_id_bindery_secret"},
 }
 BRANDING = ROOT / "kubernetes/apps/auth/pocket-id/branding"
 # application image endpoint -> (file in BRANDING, query); built by BRANDING/build.py.
@@ -58,7 +66,13 @@ IMAGES = {
     "logo-dark": ("logo-dark.svg", {"light": "false"}),
     "favicon": ("favicon.svg", {}),
 }
-GROUP = {"name": "lab-admins", "friendlyName": "Lab admins"}
+ADMINS = "lab-admins"
+FRIENDS = "book-friends"
+GROUPS = [
+    {"name": ADMINS, "friendlyName": "Lab admins"},
+    {"name": FRIENDS, "friendlyName": "Book friends"},
+]
+INVITE_TTL = "168h"
 # Created with these values; afterwards only isAdmin and the group are enforced, so profile edits
 # made under My Account (username, names) stick. Found by email.
 OWNER = {
@@ -111,6 +125,16 @@ CLIENTS: dict[str, dict] = {
         ],
         "launchURL": "https://books.z7x.org",
         "pkceEnabled": True,
+    },
+    # Bindery (bindery.z7x.org): friends in book-friends sign in as requesters,
+    # lab-admins as admins (BINDERY_OIDC_ADMIN_GROUP in its HelmRelease). Its setup.py registers
+    # the provider with id "pocket-id", which is the last path segment here.
+    "bindery": {
+        "name": "Book requests",
+        "callbackURLs": ["https://bindery.z7x.org/api/v1/auth/oidc/pocket-id/callback"],
+        "launchURL": "https://bindery.z7x.org",
+        "pkceEnabled": True,
+        "groups": [ADMINS, FRIENDS],
     },
     "flux": {
         "name": "Flux",
@@ -170,12 +194,15 @@ class Api:
         return None if self.check else self.req(method, path, **kw)
 
 
-def ensure_group(api: Api) -> str | None:
-    for g in api.get_all("/user-groups"):
-        if g["name"] == GROUP["name"]:
-            return g["id"]
-    made = api.change(f"create group {GROUP['name']}", "POST", "/user-groups", json=GROUP)
-    return made["id"] if made else None
+def ensure_groups(api: Api) -> dict[str, str]:
+    """Group name -> id (missing while --check would create it)."""
+    have = {g["name"]: g["id"] for g in api.get_all("/user-groups")}
+    for group in GROUPS:
+        if group["name"] not in have:
+            made = api.change(f"create group {group['name']}", "POST", "/user-groups", json=group)
+            if made:
+                have[group["name"]] = made["id"]
+    return have
 
 
 def ensure_owner(api: Api, gid: str | None) -> str | None:
@@ -189,12 +216,12 @@ def ensure_owner(api: Api, gid: str | None) -> str | None:
                    json={**user, "isAdmin": True})
     groups = {g["id"] for g in api.req("GET", f"/users/{user['id']}/groups")}
     if gid and gid not in groups:
-        api.change(f"add {OWNER['username']} to {GROUP['name']}", "PUT",
+        api.change(f"add {OWNER['username']} to {ADMINS}", "PUT",
                    f"/users/{user['id']}/user-groups", json={"userGroupIds": sorted(groups | {gid})})
     return user["id"]
 
 
-def ensure_client(api: Api, cid: str, spec: dict, gid: str | None, vault: dict) -> None:
+def ensure_client(api: Api, cid: str, spec: dict, gids: dict[str, str], vault: dict) -> None:
     want = {"name": spec["name"], "callbackURLs": spec["callbackURLs"],
             "launchURL": spec.get("launchURL"), "pkceEnabled": spec.get("pkceEnabled", False),
             "isPublic": False, "isGroupRestricted": True, "skipConsent": True}
@@ -206,11 +233,13 @@ def ensure_client(api: Api, cid: str, spec: dict, gid: str | None, vault: dict) 
 
     if api.check and have is None:
         return
+    names = spec.get("groups", [ADMINS])
+    wanted = {gids[n] for n in names if n in gids}
     full = api.req("GET", f"/oidc/clients/{cid}")
     allowed = {g["id"] for g in full.get("allowedUserGroups", [])}
-    if gid and allowed != {gid}:
-        api.change(f"limit client {cid} to {GROUP['name']}", "PUT",
-                   f"/oidc/clients/{cid}/allowed-user-groups", json={"userGroupIds": [gid]})
+    if wanted and allowed != wanted:
+        api.change(f"limit client {cid} to {', '.join(names)}", "PUT",
+                   f"/oidc/clients/{cid}/allowed-user-groups", json={"userGroupIds": sorted(wanted)})
 
     key = f"vault_pocket_id_{cid.replace('-', '_')}_secret"
     secret = vault.get(key)
@@ -275,14 +304,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--link", action="store_true")
+    ap.add_argument("--invite", action="store_true")
     args = ap.parse_args()
 
     vault = vault_get()
     api = Api(vault["vault_pocket_id_static_api_key"], args.check)
-    gid = ensure_group(api)
-    uid = ensure_owner(api, gid)
+    gids = ensure_groups(api)
+    uid = ensure_owner(api, gids.get(ADMINS))
     for cid, spec in CLIENTS.items():
-        ensure_client(api, cid, spec, gid, vault)
+        ensure_client(api, cid, spec, gids, vault)
     ensure_branding(api)
     for rel, keys in SOPS.items():
         for key, vkey in keys.items():
@@ -295,6 +325,11 @@ def main() -> None:
             # submits 12-character codes while email login codes are disabled.
             token = api.req("POST", f"/users/{uid}/one-time-access-token", json={"ttl": "30m"})["token"]
             print(f"{'no passkey yet; ' if not passkeys else ''}sign in once (30 min): {BASE}/lc/{token}")
+    if args.invite and not args.check:
+        # One account per link; it joins book-friends and nothing else.
+        made = api.req("POST", "/signup-tokens", json={
+            "ttl": INVITE_TTL, "usageLimit": 1, "userGroupIds": [gids[FRIENDS]]})
+        print(f"friend sign-up link (7 days, one use): {BASE}/st/{made['token']}")
     print("ok, no changes" if not api.changes else f"{len(api.changes)} change(s)")
 
 

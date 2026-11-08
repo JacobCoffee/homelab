@@ -25,9 +25,6 @@ spec:
       name: sabnzbd
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      name: bindery
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
       name: cleanuparr
     - group: gateway.networking.k8s.io
       kind: HTTPRoute

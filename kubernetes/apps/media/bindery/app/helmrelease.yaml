@@ -2,7 +2,9 @@
 # comparison against Chaptarr/Bookshelf/LazyLibrarian). Single Go binary, ghcr.io/vavallee/bindery,
 # v1.46.2 is the latest release as of 2026-11-04. Root folders (/media/library/books,
 # /media/library/audiobooks), download clients and the Prowlarr indexer sync are set via its API
-# by the setup Job (app/setup.py) -- it has no env-based config for those.
+# by the setup Job (app/setup.py) -- it has no env-based config for those. It's public at
+# bindery.z7x.org so friends can request books: auth mode "enabled" (set by setup.py) with Pocket
+# ID as the only login; book-friends sign in as requesters, lab-admins as admins.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -23,9 +25,21 @@ spec:
               tag: "v1.48.0"
             env:
               TZ: America/Chicago
-              # Local-only auth skips the login only for these dotted names (v1.46.4 DNS
-              # rebinding guard): the lab-sso route and the setup Job's service name.
-              BINDERY_ALLOWED_HOSTS: bindery.z7x.org,bindery.media.svc.cluster.local
+              # Envoy pods sit in the pod CIDR: trust their X-Forwarded-For/-Proto, so the
+              # per-IP login limit sees the real client and session cookies are Secure.
+              BINDERY_TRUSTED_PROXY: 10.244.0.0/16
+              BINDERY_OIDC_REDIRECT_BASE_URL: https://bindery.z7x.org
+              # Pocket ID is the only login (provider "pocket-id", registered by setup.py). A
+              # new account is a requester; lab-admins members are made admin on every login.
+              BINDERY_LOCAL_AUTH_ENABLED: "false"
+              BINDERY_OIDC_DEFAULT_ROLE: requester
+              BINDERY_OIDC_ADMIN_GROUP: lab-admins
+              # Seeds a fresh install's API key with the one the setup Jobs use.
+              BINDERY_API_KEY:
+                valueFrom:
+                  secretKeyRef:
+                    name: bindery
+                    key: BINDERY_API_KEY
             probes:
               liveness:
                 enabled: true
@@ -79,7 +93,17 @@ spec:
         globalMounts:
           - path: /media
     route:
-      app:
+      external:
+        hostnames: ["bindery.z7x.org"]
+        parentRefs:
+          - name: external
+            namespace: network
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: app
+                port: *port
+      internal:
         hostnames: ["bindery.z7x.org"]
         parentRefs:
           - name: internal

@@ -19,14 +19,14 @@
 4. Quality profiles: Bindery ships "E-Book" (cutoff epub) and "Audiobook" (cutoff audiobook)
    profiles on first boot; set an explicit preference order on each (epub first for ebooks, m4b
    first for audiobooks) and tighten the Audiobook cutoff to m4b specifically.
+5. Sign-in: register Pocket ID (https://id.z7x.org, client "bindery" in scripts/pocket-id.py) as
+   the OIDC provider "pocket-id", then switch the auth mode to "enabled". Bindery is public at
+   bindery.z7x.org so friends can request books; the HelmRelease turns password logins off, makes
+   new accounts requesters and lab-admins members admins. The provider is written every run,
+   since Bindery never returns its client secret to compare against.
 
-Auth: the pod network is a trusted range for Bindery's "local-only" auth mode (same bypass
-qBittorrent and the other *arrs use, see media-config/app/configure.py), and this Job calls
-Bindery over its ClusterIP service name -- but local-only's host-name allowlist also requires an
-address a public site can't have, and a bare Kubernetes Service DNS name ending in
-".svc.cluster.local" qualifies as "under .local". Mutations only need the
-"X-Requested-With: bindery-ui" header (the CSRF double-submit check has nothing to compare against
-once there's no session cookie); no Bindery credentials or API key are needed or stored anywhere.
+Auth: the instance API key (BINDERY_API_KEY, from the bindery Secret), which the HelmRelease also
+uses to seed a fresh install, so the key this Job holds is the one Bindery accepts.
 """
 
 import json
@@ -44,6 +44,17 @@ QBITTORRENT_HOST = os.environ.get("QBITTORRENT_HOST", f"gluetun-qbittorrent.{SVC
 PROWLARR_URL = os.environ.get("PROWLARR_URL", f"http://prowlarr.{SVC}:9696").rstrip("/")
 SABNZBD_API_KEY = os.environ["SABNZBD_API_KEY"]
 PROWLARR_API_KEY = os.environ["PROWLARR_API_KEY"]
+API_KEY = os.environ["BINDERY_API_KEY"]
+OIDC_CLIENT_SECRET = os.environ["OIDC_CLIENT_SECRET"]
+OIDC_PROVIDER = {
+    "id": "pocket-id",
+    "name": "Pocket ID",
+    "issuer": "https://id.z7x.org",
+    "client_id": "bindery",
+    "scopes": ["openid", "email", "profile", "groups"],
+    # Pocket ID already limits the client to these groups; this is the second lock.
+    "allowed_groups": ["lab-admins", "book-friends"],
+}
 
 EBOOK_ROOT = "/media/library/books"
 AUDIOBOOK_ROOT = "/media/library/audiobooks"
@@ -55,7 +66,7 @@ TIMEOUT = 30
 def api(method: str, path: str, body=None):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(f"{API}{path}", data=data, method=method, headers={
-        "Content-Type": "application/json", "X-Requested-With": "bindery-ui"})
+        "Content-Type": "application/json", "X-Api-Key": API_KEY})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             raw = resp.read()
@@ -155,6 +166,17 @@ def ensure_quality_profile(id_: int, name: str, cutoff: str, items: list[str]) -
     print(f"Bindery: quality profile {name}: cutoff {cutoff}, preferring {', '.join(items)}")
 
 
+def ensure_sign_in() -> None:
+    have = next((p for p in api("GET", "/auth/oidc/providers") if p["id"] == OIDC_PROVIDER["id"]), None)
+    api("PUT", "/auth/oidc/providers", [{**OIDC_PROVIDER, "client_secret": OIDC_CLIENT_SECRET}])
+    if have is None or any(have.get(k) != v for k, v in OIDC_PROVIDER.items() if k != "allowed_groups"):
+        print("Bindery: Pocket ID sign-in configured")
+    mode = api("GET", "/auth/config")["mode"]
+    if mode != "enabled":
+        api("PUT", "/auth/mode", {"mode": "enabled"})
+        print(f"Bindery: auth mode {mode} -> enabled")
+
+
 def main() -> int:
     wait_for_bindery()
 
@@ -174,6 +196,8 @@ def main() -> int:
 
     ensure_quality_profile(2, "E-Book", "epub", ["epub", "azw3", "mobi", "pdf"])
     ensure_quality_profile(3, "Audiobook", "m4b", ["m4b", "mp3", "flac", "m4a", "ogg"])
+
+    ensure_sign_in()
 
     print("done")
     return 0
