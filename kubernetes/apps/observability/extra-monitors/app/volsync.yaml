@@ -1,0 +1,23 @@
+# VolSync's controller metrics (volsync_volume_out_of_sync, volsync_missed_intervals_total, ...)
+# sit behind its chart's kube-rbac-proxy on :8443 (metrics.disableAuth false): it accepts
+# Prometheus's ServiceAccount token, which kube-prometheus-stack's ClusterRole already lets GET
+# /metrics. The proxy's certificate is self-signed, hence insecureSkipVerify.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: volsync
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [backup]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: volsync
+      control-plane: volsync-controller
+  endpoints:
+    - port: https
+      scheme: https
+      interval: 1m
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true

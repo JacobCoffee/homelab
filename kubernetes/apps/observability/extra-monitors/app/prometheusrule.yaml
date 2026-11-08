@@ -56,6 +56,29 @@ spec:
           labels: { severity: critical }
           annotations:
             summary: "Backup Job {{ $labels.job_name }} failed in namespace backup"
+        # VolSync (the apps' nightly restic backups to R2, components/volsync). Its controller sets
+        # volsync_volume_out_of_sync to 1 once a ReplicationSource misses its schedule, which with
+        # the 04:00 daily schedule can take up to a day; a failing mover Job shows sooner.
+        - alert: VolSyncBackupOutOfSync
+          expr: max by (obj_namespace, obj_name) (volsync_volume_out_of_sync{role="source"}) == 1
+          for: 30m
+          labels: { severity: critical }
+          annotations:
+            summary: "Backup of {{ $labels.obj_namespace }}/{{ $labels.obj_name }} missed its schedule"
+            description: "Check with: kubectl -n {{ $labels.obj_namespace }} describe replicationsource {{ $labels.obj_name }}"
+        - alert: VolSyncMoverFailing
+          expr: kube_job_status_failed{job_name=~"volsync-src-.*"} > 0
+          for: 1h
+          labels: { severity: warning }
+          annotations:
+            summary: "Backup mover {{ $labels.namespace }}/{{ $labels.job_name }} has failed pods for 1h"
+            description: "Check with: kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}"
+        - alert: VolSyncMetricsMissing
+          expr: absent(volsync_volume_out_of_sync)
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: "No VolSync metrics: backup alerts can't fire (ServiceMonitor observability/volsync)"
 
     - name: firetv
       rules:

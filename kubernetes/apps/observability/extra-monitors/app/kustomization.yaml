@@ -9,3 +9,4 @@ resources:
   - ./prometheusrule.yaml
   - ./lgm.yaml
   - ./opnsense.yaml
+  - ./volsync.yaml

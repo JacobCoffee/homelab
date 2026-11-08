@@ -605,6 +605,11 @@ scratch folders of Jellyfin (`/config/transcodes`) and Audiobookshelf (`/metadat
 namespaces carry `volsync.backube/privileged-movers: "true"`, so the mover can read files owned by
 any uid and restores keep their owners.
 
+Alerts (`apps/observability/extra-monitors`, ServiceMonitor `volsync` scraping the controller):
+`VolSyncBackupOutOfSync` (critical) when a ReplicationSource missed its schedule,
+`VolSyncMoverFailing` when a mover Job has had failed pods for an hour, and
+`VolSyncMetricsMissing` when the metrics stop arriving, since then the other two can't fire.
+
 **Backed up:** every app's own state -- Pocket ID (users, passkeys, OIDC clients), Uptime Kuma,
 Jellyfin, Seerr, Wizarr, Sonarr, Radarr, Lidarr, Prowlarr, SABnzbd, qBittorrent, Bazarr,
 Cleanuparr, Bindery, Audiobookshelf, Dispatcharr and Jellyball. **Not backed up on purpose:**
