@@ -278,6 +278,11 @@ def configure_qbittorrent() -> None:
         "max_seeding_time_enabled": True,
         "max_seeding_time": 10,  # minutes
         "max_ratio_act": 0,  # ShareLimitAction::Stop
+        # Private-tracker torrents (MyAnonamouse) override both limits per torrent and seed for
+        # days. A queued torrent doesn't announce, so the tracker counts no seeding time for it:
+        # never queue seeding, only downloads (3 at a time).
+        "max_active_uploads": -1,
+        "max_active_torrents": -1,
     }
     prefs = call("GET", f"{api}/app/preferences")
     changed = {k: v for k, v in wanted.items() if prefs.get(k) != v}

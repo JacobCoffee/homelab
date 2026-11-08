@@ -16,6 +16,7 @@
    existing Prowlarr registration instead of a second copy of its API key: a freshly synced
    indexer already carries both the Newznab Books (7020) and Audio/Audiobook (3030) categories
    (confirmed live against this cluster's NZBFinder), so no further category tuning is needed.
+   A synced MyAnonamouse indexer gets its seed limits pinned (MAM_SEED_MINUTES below).
 4. Quality profiles: Bindery ships "E-Book" (cutoff epub) and "Audiobook" (cutoff audiobook)
    profiles on first boot; set an explicit preference order on each (epub first for ebooks, m4b
    first for audiobooks) and tighten the Audiobook cutoff to m4b specifically.
@@ -59,6 +60,12 @@ OIDC_PROVIDER = {
 EBOOK_ROOT = "/media/library/books"
 AUDIOBOOK_ROOT = "/media/library/audiobooks"
 CATEGORY = "books"
+# MyAnonamouse counts a torrent seeded less than 72h as a hit and run. Bindery sends these with
+# every grab from it (qBittorrent setShareLimits), overriding the global 10-minute / 0.1 ratio
+# stop: no ratio limit, 7 days of seeding, the margin covering restarts and VPN reconnects (the
+# tracker counts no seeding time while qBittorrent is down). Cleanuparr removes the torrent after
+# the same 7 days (cleanuparr/app/setup.py, "Private trackers - 7 days").
+MAM_SEED_MINUTES = 7 * 24 * 60
 
 TIMEOUT = 30
 
@@ -155,6 +162,16 @@ def sync_prowlarr(prowlarr_id: int) -> None:
           f"updated {result['updated']}")
 
 
+def ensure_mam_seed_limits() -> None:
+    wanted = {"seedRatio": -1, "seedTimeMinutes": MAM_SEED_MINUTES}
+    for idx in api("GET", "/indexer"):
+        if "myanonamouse" not in idx["name"].lower():
+            continue
+        if any(idx.get(k) != v for k, v in wanted.items()):
+            api("PUT", f"/indexer/{idx['id']}", wanted)
+            print(f"Bindery: {idx['name']} seeds {MAM_SEED_MINUTES // 1440} days, no ratio limit")
+
+
 def ensure_quality_profile(id_: int, name: str, cutoff: str, items: list[str]) -> None:
     current = api("GET", f"/qualityprofile/{id_}")
     wanted_items = [{"quality": q, "allowed": True} for q in items]
@@ -193,6 +210,7 @@ def main() -> int:
 
     prowlarr_id = ensure_prowlarr()
     sync_prowlarr(prowlarr_id)
+    ensure_mam_seed_limits()
 
     ensure_quality_profile(2, "E-Book", "epub", ["epub", "azw3", "mobi", "pdf"])
     ensure_quality_profile(3, "Audiobook", "m4b", ["m4b", "mp3", "flac", "m4a", "ogg"])

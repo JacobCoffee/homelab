@@ -24,12 +24,16 @@ discover the API while building this. See scripts/lab-logins.py for Cleanuparr's
      queue" and is left alone -- only a download the arr is done with (imported, now with a
      hardlink; or struck out of the queue and blocklisted by our own Queue Cleaner) can ever be
      both unlinked and untracked at the same time.
-   - Two seeding rules on the four media categories: the unlinked tag removes after at least an
-     hour of seeding time once tagged -- on top of the guards above, a plain, auditable buffer
-     (priority 1); a 24h-past-share-limit backstop catches anything the arrs' own "Remove
-     Completed" missed (priority 2, same 0.1 ratio qBittorrent itself stops at -- see
-     media-config's configure_qbittorrent()). A hardlinked file surviving in the library is
-     unaffected either way: deleting one hardlink never touches the inode's other links.
+   - Two seeding rules on the four media categories, public torrents only: the unlinked tag
+     removes after at least an hour of seeding time once tagged -- on top of the guards above, a
+     plain, auditable buffer (priority 1); a 24h-past-share-limit backstop catches anything the
+     arrs' own "Remove Completed" missed (priority 2, same 0.1 ratio qBittorrent itself stops at
+     -- see media-config's configure_qbittorrent()). A hardlinked file surviving in the library
+     is unaffected either way: deleting one hardlink never touches the inode's other links.
+   - Private-tracker torrents (MyAnonamouse) must seed 72h or count as a hit and run, so they get
+     only a third rule: removed after 7 days of seeding, the same limit their indexer gives
+     qBittorrent (MAM_SEED_MINUTES in bindery/app/setup.py). The margin covers pod restarts and
+     VPN reconnects, during which the tracker counts no seeding time.
 6. Trigger one Queue Cleaner run so its result is visible in the Cleanuparr logs immediately,
    instead of waiting for the first cron tick.
 
@@ -319,7 +323,7 @@ SEEDING_RULES = [
         "tagsAny": [UNLINKED_TAG],
         "tagsAll": [],
         "priority": 1,
-        "privacyType": "Both",
+        "privacyType": "Public",
         "maxRatio": -1,
         "minSeedTime": 0,
         "maxSeedTime": 1,
@@ -335,10 +339,26 @@ SEEDING_RULES = [
         "tagsAny": [],
         "tagsAll": [],
         "priority": 2,
-        "privacyType": "Both",
+        "privacyType": "Public",
         "maxRatio": 0.1,
         "minSeedTime": 24,
         "maxSeedTime": -1,
+        "minSeeders": 0,
+        "maxInactiveDays": -1,
+        "deleteSourceFiles": True,
+        "action": "Delete",
+    },
+    {
+        "name": "Private trackers - 7 days",
+        "categories": CATEGORIES,
+        "trackerPatterns": [],
+        "tagsAny": [],
+        "tagsAll": [],
+        "priority": 3,
+        "privacyType": "Private",
+        "maxRatio": -1,
+        "minSeedTime": 168,
+        "maxSeedTime": 168,
         "minSeeders": 0,
         "maxInactiveDays": -1,
         "deleteSourceFiles": True,
