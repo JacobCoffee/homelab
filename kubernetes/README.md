@@ -242,8 +242,9 @@ schematic carries the `i915` and `intel-ucode` extensions. Intel's GPU device pl
 QSV with VAAPI decoding (H.264, HEVC 8/10-bit, VP9, VC-1, MPEG-2), HEVC encoding and VPP HDR
 tone mapping. The low-power encoders stay off because no GuC/HuC firmware loads. Measured on a
 4K Dolby Vision/HDR10 episode transcoded to 720p H.264: 5.5x realtime at 0.8 CPU, against 0.8x
-at 2.7 CPUs in software. `ansible/playbooks/site.yml` still needs a play for `pve_gpu` on
-hnhv01; until then it's applied by hand.
+at 2.7 CPUs in software. `ansible-playbook playbooks/site.yml --tags gpu` applies `pve_gpu`. The
+binding survives a reboot without that run: `i915` is blacklisted in the initramfs of every
+installed kernel, and Proxmox hands the card to `vfio-pci` when VM 205 starts (`onboot: 1`).
 
 ## Storage
 

@@ -99,6 +99,12 @@
   roles:
     - pve_oidc
 
+- name: "hnhv01's iGPU reserved for passthrough (vfio-pci) to hnk8s05 for Jellyfin QuickSync"
+  hosts: hnhv01
+  tags: [gpu]
+  roles:
+    - pve_gpu
+
 - name: "Cloudflare cache rules (z7x.org): bypass cache for media.z7x.org video streaming"
   hosts: localhost
   connection: local
