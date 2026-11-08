@@ -495,11 +495,17 @@ HelmRelease here.
   minimal seeding: stop at ratio 0.1 or 10 minutes, after which the arrs remove the torrent; it
   never queues a seeding torrent, since a queued one doesn't announce and a private tracker then
   counts no seed time). MyAnonamouse grabs override that per torrent: `bindery-setup` gives its
-  indexer 7 days of seeding and no ratio limit (MAM wants 72 h; the margin covers downtime).
-  qBittorrent is held at 5.2.x because MAM doesn't allow 5.3 yet (`.github/renovate.json5`). In
-  Sonarr/Radarr/Lidarr: both as download clients, `/media/library/<kind>` as root folder, and a
-  Jellyfin connection that refreshes the library after imports. Prowlarr gets full-sync links to
-  those three plus the NZBFinder and Anime Tosho (`feed.animetosho.net`) indexers. Downloads and
+  indexer 7 days of seeding and no ratio limit (MAM wants 72 h; the margin covers downtime), and
+  the qBittorrent pod's `mam-upkeep` container re-applies that to every private `books` torrent
+  each minute, because Bindery can set it before qBittorrent has added the torrent. The same
+  container registers the VPN's exit IP with MAM's dynamic seedbox API whenever it changes; the
+  VPN is pinned to AirVPN's New York servers, one network (AS11878), since the MAM session is
+  locked to it. qBittorrent is held at 5.2.x because MAM doesn't allow 5.3 yet
+  (`.github/renovate.json5`). In Sonarr/Radarr/Lidarr: both as download clients,
+  `/media/library/<kind>` as root folder, and a Jellyfin connection that refreshes the library
+  after imports. Prowlarr gets full-sync links to those three, for indexers tagged `arrs`:
+  NZBFinder and Anime Tosho (`feed.animetosho.net`). MyAnonamouse (`MAM_ID`, English only, no
+  VIP-only torrents) is untagged, for Bindery alone. Downloads and
   library share one filesystem, so imports never copy: usenet ones are moves, torrent ones
   hardlinks (a seeding torrent and its library file are the same blocks). It runs once per
   change of the script or of the credentials, which live in the vault:

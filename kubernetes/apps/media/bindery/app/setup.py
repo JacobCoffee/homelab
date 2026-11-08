@@ -63,8 +63,10 @@ CATEGORY = "books"
 # MyAnonamouse counts a torrent seeded less than 72h as a hit and run. Bindery sends these with
 # every grab from it (qBittorrent setShareLimits), overriding the global 10-minute / 0.1 ratio
 # stop: no ratio limit, 7 days of seeding, the margin covering restarts and VPN reconnects (the
-# tracker counts no seeding time while qBittorrent is down). Cleanuparr removes the torrent after
-# the same 7 days (cleanuparr/app/setup.py, "Private trackers - 7 days").
+# tracker counts no seeding time while qBittorrent is down). Bindery can send them before
+# qBittorrent has added the torrent, so the qBittorrent pod's mam-upkeep container re-applies the
+# same limits every minute. Cleanuparr removes the torrent after the same 7 days
+# (cleanuparr/app/setup.py, "Private trackers - 7 days").
 MAM_SEED_MINUTES = 7 * 24 * 60
 
 TIMEOUT = 30

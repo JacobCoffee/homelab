@@ -191,41 +191,98 @@ spec:
                 memory: 256Mi
               limits:
                 memory: 2Gi
-          # MyAnonamouse only accepts announces from an IP registered to the account. This pod's
-          # exit is AirVPN's and changes on reconnect, so whenever gluetun reports a new public
-          # IP, this tells MAM's dynamic seedbox API (it rate limits changes to one an hour; a
-          # refused call is retried). It shares the pod's network, so the call itself leaves
-          # through the tunnel, which is how MAM learns the IP. The session (MAM_SEEDBOX_ID,
-          # created with "allow dynamic seedbox") comes from scripts/media-secrets.py as a
-          # mounted file, and the cookie MAM may rotate is kept on the config PVC.
-          mam-seedbox:
+          # MyAnonamouse upkeep, every minute:
+          # - Seedbox IP: MAM only accepts announces from an IP registered to the account, and
+          #   this pod's exit is AirVPN's. Whenever gluetun reports a new public IP, this calls
+          #   MAM's dynamic seedbox API (changes are rate limited to one an hour, so a refused
+          #   call is retried 5 minutes later). It shares the pod's network, so the call itself
+          #   leaves through the tunnel, which is how MAM learns the IP. The session
+          #   (MAM_SEEDBOX_ID, "allow dynamic seedbox") comes from scripts/media-secrets.py as a
+          #   mounted file; the cookie MAM may rotate is kept on the config PVC.
+          # - Seeding limits: every private torrent in "books" seeds 7 days with no ratio limit
+          #   (MAM counts under 72h as a hit and run). Bindery sets this per torrent when it
+          #   grabs, but it computes the hash from the .torrent and can call before qBittorrent
+          #   has added it, which qBittorrent ignores; the torrent then stops after the global
+          #   10 minutes. Same 7 days as MAM_SEED_MINUTES in bindery/app/setup.py.
+          #   qBittorrent's localhost needs a login, so this goes through the pod IP, which is
+          #   inside the web UI's whitelisted subnet.
+          mam-upkeep:
             image:
-              repository: ghcr.io/home-operations/qbittorrent
-              tag: "5.2.4"
-            command: ["/bin/sh", "-c"]
+              repository: python
+              tag: 3.15-slim
+            env:
+              POD_IP:
+                valueFrom:
+                  fieldRef:
+                    fieldPath: status.podIP
+            command: ["python3", "-u", "-c"]
             args:
               - |
-                set -u
-                dir=/config/mam
-                mkdir -p "$dir"
-                last=""
-                while :; do
-                  id=$(cat /mam/MAM_SEEDBOX_ID 2>/dev/null)
-                  ip=$(curl -s -m 10 http://127.0.0.1:8000/v1/publicip/ip | sed -n 's/.*"public_ip":"\([^"]*\)".*/\1/p')
-                  if [ -z "$id" ]; then
-                    echo "no MAM_SEEDBOX_ID yet"
-                  elif [ -n "$ip" ] && [ "$ip" != "$last" ]; then
-                    # A new session from the vault replaces the stored cookie.
-                    if [ "$(cat "$dir/source" 2>/dev/null)" != "$id" ]; then
-                      printf '.myanonamouse.net\tTRUE\t/\tTRUE\t0\tmam_id\t%s\n' "$id" > "$dir/cookies"
-                      printf '%s' "$id" > "$dir/source"
-                    fi
-                    resp=$(curl -s -m 30 -b "$dir/cookies" -c "$dir/cookies" https://t.myanonamouse.net/json/dynamicSeedbox.php)
-                    echo "$(date -Is) $ip: $resp"
-                    case "$resp" in *'"Success":true'* | *'"Success": true'*) last=$ip ;; esac
-                  fi
-                  sleep 300
-                done
+                import json, os, time, urllib.parse, urllib.request
+
+                QBT = "http://" + os.environ["POD_IP"] + ":8080/api/v2"
+                MAM = "https://t.myanonamouse.net/json/dynamicSeedbox.php"
+                SEED_MINUTES = 7 * 24 * 60
+                STATE = "/config/mam"
+
+                def fetch(url, headers=None, data=None, timeout=30):
+                    with urllib.request.urlopen(urllib.request.Request(url, data, headers or {}), timeout=timeout) as r:
+                        return r.read().decode(), r.headers.get_all("Set-Cookie") or []
+
+                def read(name):
+                    try:
+                        with open(name) as f:
+                            return f.read().strip()
+                    except OSError:
+                        return ""
+
+                def write(name, value):
+                    with open(name, "w") as f:
+                        f.write(value)
+
+                def enforce_limits():
+                    torrents = json.loads(fetch(QBT + "/torrents/info?category=books")[0])
+                    short = [t["hash"] for t in torrents if t.get("private")
+                             and (t["ratio_limit"] != -1 or t["seeding_time_limit"] != SEED_MINUTES)]
+                    if short:
+                        fetch(QBT + "/torrents/setShareLimits", data=urllib.parse.urlencode({
+                            "hashes": "|".join(short), "ratioLimit": -1, "seedingTimeLimit": SEED_MINUTES,
+                            "inactiveSeedingTimeLimit": -2, "shareLimitAction": "Default"}).encode())
+                        print(f"seeding limits set on {len(short)} torrent(s)")
+
+                def register(ip):
+                    session = read("/mam/MAM_SEEDBOX_ID")
+                    if not session:
+                        print("no MAM_SEEDBOX_ID yet")
+                        return False
+                    if read(STATE + "/source") != session or not read(STATE + "/mam_id"):
+                        write(STATE + "/mam_id", session)  # a new session from the vault
+                        write(STATE + "/source", session)
+                    body, cookies = fetch(MAM, {"Cookie": "mam_id=" + read(STATE + "/mam_id")})
+                    for c in cookies:
+                        if c.startswith("mam_id="):
+                            write(STATE + "/mam_id", c.split(";")[0].removeprefix("mam_id="))
+                    print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), ip, body)
+                    return json.loads(body).get("Success") is True
+
+                os.makedirs(STATE, exist_ok=True)
+                last_ip, next_try = "", 0.0
+                while True:
+                    try:
+                        enforce_limits()
+                    except Exception as e:
+                        print("qBittorrent:", e)
+                    try:
+                        ip = json.loads(fetch("http://127.0.0.1:8000/v1/publicip/ip", timeout=10)[0]).get("public_ip", "")
+                        if ip and ip != last_ip and time.time() >= next_try:
+                            if register(ip):
+                                last_ip = ip
+                            else:
+                                next_try = time.time() + 300
+                    except Exception as e:
+                        print("MAM:", e)
+                        next_try = time.time() + 300
+                    time.sleep(60)
             securityContext:
               runAsNonRoot: true
               runAsUser: 1000
@@ -233,9 +290,9 @@ spec:
             resources:
               requests:
                 cpu: 5m
-                memory: 16Mi
+                memory: 32Mi
               limits:
-                memory: 64Mi
+                memory: 128Mi
     defaultPodOptions:
       securityContext:
         fsGroup: 1000
@@ -266,9 +323,9 @@ spec:
               - path: /config
             app:
               - path: /config
-            mam-seedbox:
+            mam-upkeep:
               - path: /config
-      mam-seedbox:
+      mam-session:
         type: secret
         name: gluetun-secret
         items:
@@ -276,7 +333,7 @@ spec:
             path: MAM_SEEDBOX_ID
         advancedMounts:
           qbittorrent:
-            mam-seedbox:
+            mam-upkeep:
               - path: /mam
                 readOnly: true
       media:

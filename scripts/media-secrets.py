@@ -58,7 +58,7 @@ TARGETS = [
         "vault_bindery_api_key": "BINDERY_API_KEY",
     }),
     # MyAnonamouse dynamic-seedbox session (VPN exit IP, "allow dynamic seedbox"). The
-    # mam-seedbox container reads it as a mounted file, so no restart: job is None.
+    # mam-upkeep container reads it as a mounted file, so no restart: job is None.
     (MEDIA / "gluetun-qbittorrent/app/secret.sops.yaml", None, {
         "vault_mam_seedbox_id": "MAM_SEEDBOX_ID",
     }),
