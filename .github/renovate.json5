@@ -79,5 +79,10 @@
       matchDepNames: ["github.com/cabotage/terraform"],
       allowedVersions: ">1.9.3",
     },
+    {
+      // MyAnonamouse only allows qBittorrent 5.2.x; drop this once its client list accepts 5.3.
+      matchPackageNames: ["ghcr.io/home-operations/qbittorrent"],
+      allowedVersions: "<5.3.0",
+    },
   ],
 }

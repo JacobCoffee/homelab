@@ -1,7 +1,10 @@
 # gluetun (ghcr.io/qdm12/gluetun v3.41.3) and qBittorrent (ghcr.io/home-operations/qbittorrent
-# 5.3.0) in one Pod/controller so they share a network namespace: gluetun owns it, firewalls it
+# 5.2.4) in one Pod/controller so they share a network namespace: gluetun owns it, firewalls it
 # (kill switch -- only the WireGuard tunnel, DNS, and the cluster's own pod/service subnets get
 # through), and qBittorrent rides inside with no network settings of its own.
+#
+# qBittorrent stays on 5.2.x: MyAnonamouse doesn't allow 5.3.x yet (.github/renovate.json5 holds
+# it back; lift that once MAM's client list accepts 5.3).
 #
 # AirVPN, static port forwarding: FIREWALL_VPN_INPUT_PORTS and qBittorrent's --torrenting-port
 # both come from the same FORWARDED_PORT secret key, so the two always agree. FIREWALL_INPUT_PORTS
@@ -39,7 +42,7 @@ spec:
           harden-webui:
             image:
               repository: ghcr.io/home-operations/qbittorrent
-              tag: "5.3.0"
+              tag: "5.2.4"
             command: ["/bin/sh", "-c"]
             args:
               - |
@@ -148,7 +151,7 @@ spec:
           app:
             image:
               repository: ghcr.io/home-operations/qbittorrent
-              tag: "5.3.0"
+              tag: "5.2.4"
             env:
               TZ: America/Chicago
               FORWARDED_PORT:
