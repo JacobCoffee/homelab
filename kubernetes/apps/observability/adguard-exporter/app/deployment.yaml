@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: adguard-exporter
-          image: ghcr.io/henrywhitaker3/adguard-exporter:v1.2.1
+          image: ghcr.io/henrywhitaker3/adguard-exporter:v1.2.3
           env:
             - name: ADGUARD_SERVERS
               value: "http://10.10.10.54,http://10.10.10.55"
