@@ -16,7 +16,7 @@ spec:
           app:
             image:
               repository: ghcr.io/cleanuparr/cleanuparr
-              tag: "2.10.12"
+              tag: "2.11.0"
             env:
               TZ: America/Chicago
             probes:
