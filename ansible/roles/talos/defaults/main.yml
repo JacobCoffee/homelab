@@ -5,7 +5,7 @@
 # (talosctl upgrade / upgrade-k8s does, see kubernetes/README.md "Updates"). Every node runs this
 # schematic (upgraded 2026-11-08).
 # renovate: datasource=github-releases depName=siderolabs/talos
-talos_version: v1.14.5
+talos_version: v1.14.6
 talos_schematic_id: d32a2cb3cd2dd937e38505169bc1e0401d08ec95b6cb599156a7184010665b4e
 # renovate: datasource=github-releases depName=kubernetes/kubernetes extractVersion=^v(?<version>.+)$
 k8s_version: 1.37.2
