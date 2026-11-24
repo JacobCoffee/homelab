@@ -29,6 +29,6 @@ talos_mise: "mise -C {{ talos_repo }} exec --"   # tool versions pinned in the r
 
 # Bootstrap only; afterwards Flux owns Cilium (kubernetes/apps/kube-system/cilium).
 # renovate: datasource=helm depName=cilium registryUrl=https://helm.cilium.io
-cilium_version: 1.20.4
+cilium_version: 1.20.5
 flux_github_owner: JacobCoffee
 flux_github_repo: homelab
