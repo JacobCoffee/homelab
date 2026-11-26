@@ -86,7 +86,7 @@ opnsense_update: true
 # (`gh api repos/MaximeWewer/os-sso/releases/latest`) -- bump the version and both hashes
 # together, they're verified against the FreeBSD-14/15 packages of that exact release.
 # renovate: datasource=github-releases depName=MaximeWewer/os-sso extractVersion=^v(?<version>.+)$
-opnsense_sso_version: "2026.10.3"
+opnsense_sso_version: "2026.11.1"
 opnsense_sso_sha256:
   "14": e0548e5988729ea9a0c2e2b5b59ad534eaa66cb48bdbbb413b6cace9273391b9
   "15": 9b718ac55e4bd0a75b82fa7544cf35099884e73d28aee4d256c01d84148c32d5
